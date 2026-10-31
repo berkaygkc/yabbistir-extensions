@@ -48,10 +48,10 @@ describe("one extension folder per pull request", () => {
   });
 
   test("otherFilesBesideAnExtensionFail", () => {
-    const { extensions, problems } = checkScope([`extensions/${ID}/src/index.ts`, "tools/build.mjs", "docs/publishing.md"]);
+    const { extensions, problems } = checkScope([`extensions/${ID}/src/index.ts`, "README.md", "docs/publishing.md"]);
     assert.deepEqual(extensions, [ID]);
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /tools\/build\.mjs/);
+    assert.match(problems[0], /README\.md/);
     assert.match(problems[0], /docs\/publishing\.md/);
   });
 
@@ -62,8 +62,23 @@ describe("one extension folder per pull request", () => {
   });
 
   test("aPullRequestWithoutAnExtensionPasses", () => {
-    assert.deepEqual(checkScope(["tools/build.mjs", "docs/publishing.md", "templates/action/src/index.ts"]), { extensions: [], problems: [] });
+    assert.deepEqual(checkScope(["docs/publishing.md", "README.md", "llms-full.txt"]), { extensions: [], problems: [] });
     assert.deepEqual(checkScope([]), { extensions: [], problems: [] });
+  });
+
+  test("whatOnlyTheMaintainerChangesFails", () => {
+    const reserved = [".github/workflows/pr.yml", ".github/workflows/static.yml", ".GitHub/workflows/x.yml", "tools/build.mjs", "tools/lib/static-rules.mjs",
+      "packages/api/index.d.ts", "templates/action/src/index.ts", "schema/catalog.schema.json", "package.json", "package-lock.json", "tsconfig.json",
+      ".gitattributes", "docs/.gitattributes"];
+    for (const file of reserved) {
+      const { problems } = checkScope(["docs/publishing.md", file]);
+      assert.equal(problems.length, 1, file);
+      assert.ok(problems[0].includes(file) && /needs a maintainer-authored pull request/.test(problems[0]), problems[0]);
+    }
+    assert.match(checkScope([`extensions/${ID}/.gitattributes`]).problems[0], /maintainer-authored/, "in an extension folder too");
+    // Beside one extension, the lockfile may change (its rules then allow that extension's own libraries only).
+    assert.deepEqual(checkScope([`extensions/${ID}/package.json`, "package-lock.json"]).problems, []);
+    assert.ok(checkScope([`extensions/${ID}/package.json`, `extensions/${OTHER}/package.json`, "package-lock.json"]).problems.some((problem) => /package-lock\.json, and a change there needs a maintainer-authored/.test(problem)));
   });
 
   test("aFileDirectlyInExtensionsIsOutsideTheFolder", () => {
@@ -243,6 +258,15 @@ describe("extension package.json", () => {
     assert.deepEqual(packageProblems(ID, JSON.stringify({ name: ID, private: true, type: "module", dependencies: { "left-pad": "1.3.0" } })), []);
   });
 
+  test("itIsNamedAfterTheExtension", () => {
+    // npm links a workspace under its package name: an extension called fflate would stand in for the tools' fflate.
+    for (const name of ["fflate", "dev.example.other", undefined]) {
+      const problems = packageProblems(ID, JSON.stringify({ name, private: true, main: "src/shim.js" }));
+      assert.equal(problems.length, 1, String(name));
+      assert.match(problems[0], new RegExp(`its name is ${JSON.stringify(name) ?? "undefined"}, not the extension's id`));
+    }
+  });
+
   test("scriptsProgramsAndNativeBuildsAreRefused", () => {
     for (const field of ["bin", "scripts", "directories", "gypfile"]) {
       const problems = packageProblems(ID, JSON.stringify({ name: ID, [field]: field === "gypfile" ? true : { x: "y" } }));
@@ -255,9 +279,8 @@ describe("extension package.json", () => {
 });
 
 describe("extension libraries come from npm", () => {
-  test("registryVersionsRangesTagsAndAliasesPass", () => {
-    const specs = { a: "1.2.3", b: "^1.0.0", c: "~1.2", d: ">=1.0.0 <2.0.0", e: "latest", f: "*", g: "", h: "1.x || 2.x", i: "npm:other@^1.0.0",
-      j: "npm:@scope/other@1.0.0", k: "1.0.0-beta.2" };
+  test("registryVersionsRangesAndTagsPass", () => {
+    const specs = { a: "1.2.3", b: "^1.0.0", c: "~1.2", d: ">=1.0.0 <2.0.0", e: "latest", f: "*", g: "", h: "1.x || 2.x", k: "1.0.0-beta.2" };
     assert.deepEqual(packageProblems(ID, JSON.stringify({ name: ID, dependencies: specs })), []);
   });
 
@@ -265,7 +288,9 @@ describe("extension libraries come from npm", () => {
     const refused = ["git+https://github.com/someone/lib.git", "git://github.com/someone/lib", "github:someone/lib", "someone/lib",
       "someone/lib#main", "gitlab:someone/lib", "file:../lib", "link:../lib", "../lib", "./lib", "~/lib", "/tmp/lib",
       "https://example.com/lib.tgz", "http://example.com/lib.tgz", "workspace:*", "npm:other@git+https://github.com/someone/lib.git",
-      "npm:other@file:../lib", "npm:other@someone/lib", "lib.tgz", "lib-1.0.0.tar", "lib.tar.gz", "LIB.TGZ", "npm:other@lib.tgz", "npm:lib.tgz"];
+      "npm:other@file:../lib", "npm:other@someone/lib", "lib.tgz", "lib-1.0.0.tar", "lib.tar.gz", "LIB.TGZ", "npm:other@lib.tgz", "npm:lib.tgz",
+      // npm: aliases install another package under the name: none at all.
+      "npm:other@^1.0.0", "npm:@scope/other@1.0.0", "npm:kind-of@6.0.3", "NPM:other@1.0.0"];
     for (const kind of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
       for (const spec of refused) {
         const problems = packageProblems(ID, JSON.stringify({ name: ID, [kind]: { lib: spec } }));
@@ -403,8 +428,12 @@ describe("the lockfile beside an extension", () => {
       lock.packages[`extensions/${ID}`].dependencies.pad = `npm:left-pad@1.3.0`;
       lock.packages["node_modules/pad"] = { ...lock.packages["node_modules/left-pad"], name: target };
     });
-    assert.deepEqual(lockfileProblems(base, aliased("left-pad"), { extension: ID }), [], "an npm: alias names its target");
-    assert.ok(lockfileProblems(base, aliased("is-number"), { extension: ID }).some((problem) => /node_modules\/pad \(it is an npm: alias/.test(problem)));
+    // No alias passes, even one whose entry names the package it asks for.
+    for (const target of ["left-pad", "is-number"]) {
+      const problems = lockfileProblems(base, aliased(target), { extension: ID });
+      assert.ok(problems.some((problem) => new RegExp(`node_modules/pad \\(it installs ${target} under the name pad: an alias`).test(problem)), problems.join("\n"));
+      assert.ok(problems.some((problem) => /extensions\/dev\.example\.tool \(it asks for npm: aliases/.test(problem)), problems.join("\n"));
+    }
   });
 
   test("aLibraryWithAnInstallScriptOrAProgramIsRefused", () => {
@@ -482,7 +511,10 @@ describe("the pull request run", () => {
     fs.mkdirSync(path.join(folder, "src"), { recursive: true });
     fs.writeFileSync(path.join(folder, "src", "index.ts"), source);
     fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify({ id: ID, version: "1.2.0" }));
-    for (const file of ["package.json", "package-lock.json"]) fs.copyFileSync(path.join(repo, file), path.join(root, file));
+    for (const file of ["package.json", "package-lock.json", "packages/api/package.json"]) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.copyFileSync(path.join(repo, file), path.join(root, file));
+    }
     for (const [file, text] of Object.entries(extra)) {
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
       fs.writeFileSync(path.join(root, file), text);
@@ -504,6 +536,15 @@ describe("the pull request run", () => {
     return { root, calls, exec };
   }
   const failed = (results) => results.filter((result) => !result.ok).map((result) => result.name);
+  /** extensions/<id>/package.json asking for fflate, with the lockfile entries npm writes for it; `extra` adds fields. */
+  const library = (root, id, extra = {}) => {
+    fs.mkdirSync(path.join(root, "extensions", id), { recursive: true });
+    fs.writeFileSync(path.join(root, "extensions", id, "package.json"), JSON.stringify({ name: id, private: true, dependencies: { fflate: "0.8.3" }, ...extra }));
+    const lock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+    lock.packages[`extensions/${id}`] = { dependencies: { fflate: "0.8.3" } };
+    lock.packages[`node_modules/${id}`] = { resolved: `extensions/${id}`, link: true };
+    fs.writeFileSync(path.join(root, "package-lock.json"), JSON.stringify(lock, null, 2));
+  };
 
   test("anExtensionPullRequestRunsEveryCheck", async () => {
     const { root, calls, exec } = setUp();
@@ -535,7 +576,7 @@ describe("the pull request run", () => {
 
   test("aPullRequestWithoutAnExtensionRunsTheRepositoryChecks", async () => {
     const { root, calls, exec } = setUp();
-    assert.equal((await runChecks({ root, files: ["tools/build.mjs"], exec })).ok, true);
+    assert.equal((await runChecks({ root, files: ["docs/publishing.md"], exec })).ok, true);
     assert.deepEqual(calls.map((call) => call.split(" -- ")[0]), ["run typecheck", "run docs", "run test:tools", "run catalog"]);
   });
 
@@ -584,9 +625,12 @@ describe("the pull request run", () => {
   });
 
   test("anExtensionPackageJsonWithScriptsFails", async () => {
-    const plain = setUp({ extra: { [`extensions/${ID}/package.json`]: JSON.stringify({ name: ID, private: true, dependencies: { a: "1.0.0" } }) } });
-    assert.equal((await runChecks({ root: plain.root, files: [`extensions/${ID}/package.json`], exec: plain.exec })).ok, true);
-    const scripted = setUp({ extra: { [`extensions/${OTHER}/package.json`]: JSON.stringify({ name: OTHER, scripts: { postinstall: "node x.js" } }) } });
+    const plain = setUp();
+    library(plain.root, ID);
+    const passing = await runChecks({ root: plain.root, files: [`extensions/${ID}/package.json`], exec: plain.exec });
+    assert.equal(passing.ok, true, JSON.stringify(passing.results.filter((result) => !result.ok)));
+    const scripted = setUp();
+    library(scripted.root, OTHER, { scripts: { postinstall: "node x.js" } });
     const { ok, results } = await runChecks({ root: scripted.root, files: [`extensions/${ID}/src/index.ts`], exec: scripted.exec });
     assert.equal(ok, false);
     assert.deepEqual(failed(results), ["no install scripts or programs in extensions/*/package.json"], "every extension's, not only the changed one");
@@ -609,7 +653,8 @@ describe("the pull request run", () => {
     // Without an extension too: the macOS runner never installs that package, so only this check sees the swap.
     const docsOnly = await runChecks({ root, files: ["docs/publishing.md", "package-lock.json"], exec, readBase });
     assert.equal(docsOnly.ok, false);
-    assert.match(docsOnly.results.find((result) => !result.ok).problems[0], /without a package\.json change: node_modules\/@esbuild\/linux-x64/);
+    assert.match(docsOnly.results.find((result) => result.name.startsWith("one extension folder")).problems[0], /package-lock\.json, and a change there needs a maintainer-authored/);
+    assert.match(docsOnly.results.find((result) => result.name.startsWith("package-lock.json")).problems[0], /without a package\.json change: node_modules\/@esbuild\/linux-x64/);
   });
 
   test("nodeModulesCommittedInAnExtensionFail", async () => {
@@ -665,26 +710,106 @@ describe("node tools/static-checks.mjs", () => {
     }
   });
 
-  test("itChecksAPullRequestCheckedOutAsData", () => {
-    // The base branch's checker, copied apart, against a pull request that pins fflate to another package's tarball.
-    const checker = scratch();
+  /** The three checker files, copied apart as the static workflow checks them out. */
+  const checker = () => {
+    const folder = scratch();
     for (const file of files) {
-      fs.mkdirSync(path.dirname(path.join(checker, file)), { recursive: true });
-      fs.copyFileSync(path.join(repo, file), path.join(checker, file));
+      fs.mkdirSync(path.dirname(path.join(folder, file)), { recursive: true });
+      fs.copyFileSync(path.join(repo, file), path.join(folder, file));
     }
+    return folder;
+  };
+  /**
+   * A repository whose main holds this one's package files, and whose branch "pr" is main plus what `change` does.
+   * main is checked out again at the end, so the disk holds main and only git holds the pull request.
+   */
+  const pullRequest = (change, { add = true } = {}) => {
     const pr = scratch();
     git(pr, "init", "-q", "-b", "main");
-    for (const file of ["package.json", "package-lock.json"]) fs.copyFileSync(path.join(repo, file), path.join(pr, file));
+    for (const file of ["package.json", "package-lock.json", "packages/api/package.json"]) {
+      fs.mkdirSync(path.dirname(path.join(pr, file)), { recursive: true });
+      fs.copyFileSync(path.join(repo, file), path.join(pr, file));
+    }
     git(pr, "add", "-A");
     git(pr, "commit", "-q", "-m", "base");
-    const lock = JSON.parse(fs.readFileSync(path.join(pr, "package-lock.json"), "utf8"));
-    lock.packages["node_modules/fflate"].resolved = "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz";
-    fs.writeFileSync(path.join(pr, "package-lock.json"), JSON.stringify(lock, null, 2));
-    git(pr, "commit", "-q", "-am", "pin");
-    const run = spawnSync(process.execPath, [path.join(checker, "tools", "static-checks.mjs"), "--root", pr, "--base", "HEAD~1"], { encoding: "utf8" });
-    assert.equal(run.status, 1, run.stdout + run.stderr);
-    assert.match(run.stdout, /node_modules\/fflate/);
-    assert.match(run.stdout, /static checks failed/);
+    git(pr, "checkout", "-q", "-b", "pr");
+    change(pr);
+    if (add) git(pr, "add", "-A", "-f");
+    git(pr, "commit", "-q", "--allow-empty", "-m", "pull request");
+    git(pr, "checkout", "-q", "-f", "main");
+    return pr;
+  };
+  /** Runs the copied checker as static.yml does: --root <the pull request's repository> --base main --head pr. */
+  const runChecker = (pr, env = {}) => {
+    const { NODE_TEST_CONTEXT, ...inherited } = process.env;
+    const run = spawnSync(process.execPath, [path.join(checker(), "tools", "static-checks.mjs"), "--root", pr, "--base", "main", "--head", "pr"],
+      { encoding: "utf8", env: { ...inherited, GITHUB_ACTIONS: "", ...env } });
+    return { status: run.status, out: `${run.stdout}${run.stderr}` };
+  };
+  /** Adds `file` with `text` to the index only: names a disk could not hold (newlines, twins) reach git this way. */
+  const stage = (root, file, text) => {
+    fs.writeFileSync(path.join(root, ".staged"), text);
+    const blob = spawnSync("git", ["hash-object", "-w", ".staged"], { cwd: root, encoding: "utf8" }).stdout.trim();
+    fs.rmSync(path.join(root, ".staged"));
+    git(root, "update-index", "--add", "--cacheinfo", `100644,${blob},${file}`);
+  };
+
+  test("itChecksThePullRequestsCommitThroughGitNotTheDisk", () => {
+    // The pull request pins fflate to another package's tarball; the disk holds main, which passes.
+    const swapped = runChecker(pullRequest((pr) => {
+      const lock = JSON.parse(fs.readFileSync(path.join(pr, "package-lock.json"), "utf8"));
+      lock.packages["node_modules/fflate"].resolved = "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz";
+      fs.writeFileSync(path.join(pr, "package-lock.json"), JSON.stringify(lock, null, 2));
+    }));
+    assert.equal(swapped.status, 1, swapped.out);
+    assert.match(swapped.out, /node_modules\/fflate: it does not come from its own tarball/);
+    assert.match(swapped.out, /static checks failed/);
+    const docs = runChecker(pullRequest((pr) => {
+      fs.mkdirSync(path.join(pr, "docs"));
+      fs.writeFileSync(path.join(pr, "docs", "x.md"), "A fix.\n");
+    }));
+    assert.equal(docs.status, 0, docs.out);
+    assert.match(docs.out, /All 3 static checks passed/);
+  });
+
+  test("aLinkInThePullRequestFails", () => {
+    // attack Q: the lockfile is a link to a copy, which a check and npm in different folders would read differently.
+    const { status, out } = runChecker(pullRequest((pr) => {
+      fs.writeFileSync(path.join(pr, "docs.md"), "typo\n");
+      fs.renameSync(path.join(pr, "package-lock.json"), path.join(pr, "foo.json"));
+      fs.symlinkSync("foo.json", path.join(pr, "package-lock.json"));
+    }));
+    assert.equal(status, 1, out);
+    assert.match(out, /package-lock\.json: a symbolic link or a submodule, not a regular file/);
+    assert.match(out, /^ {8}package-lock\.json: it is a symbolic link/m);
+  });
+
+  test("aPullRequestThatEditsAWorkflowFails", () => {
+    for (const file of [".github/workflows/pr.yml", ".github/workflows/static.yml", "tools/lib/static-rules.mjs"]) {
+      const { status, out } = runChecker(pullRequest((pr) => {
+        fs.mkdirSync(path.dirname(path.join(pr, file)), { recursive: true });
+        fs.writeFileSync(path.join(pr, file), "run: node checker/tools/static-checks.mjs || true\n");
+      }));
+      assert.equal(status, 1, `${file}\n${out}`);
+      assert.ok(out.includes(`the pull request changes ${file}, and a change there needs a maintainer-authored pull request`), out);
+    }
+  });
+
+  test("pullRequestTextCannotWriteWorkflowCommands", () => {
+    const id = "dev.x:y,z";
+    const file = "tools/x\n::notice::injected %25 a:b,c.mjs";
+    const { status, out } = runChecker(pullRequest((pr) => {
+      stage(pr, `extensions/${id}/README.md`, "# x\n");
+      stage(pr, file, "x\n");
+    }, { add: false }), { GITHUB_ACTIONS: "true" });
+    assert.equal(status, 1, out);
+    const commands = out.split("\n").map((line) => line.trimStart()).filter((line) => line.startsWith("::"));
+    assert.ok(commands.length > 0, out);
+    for (const command of commands) assert.match(command, /^::error title=[^:]*::/, command);
+    const scope = commands.find((command) => command.includes("maintainer-authored"));
+    assert.ok(scope.includes("tools/x%0A::notice::injected %2525 a:b,c.mjs"), scope);
+    assert.ok(scope.startsWith("::error title=one extension folder per pull request%2C and nothing only the maintainer changes (extensions/dev.x%3Ay%2Cz/)::"), scope);
+    assert.ok(out.includes("tools/x\\u000a::notice::injected %25 a:b,c.mjs"), "the plain log shows the newline as \\u000a");
   });
 });
 
@@ -808,7 +933,8 @@ describe("the workflows", () => {
     assert.match(text, /fetch-depth: 0/);
     assert.match(text, /node tools\/pr-checks\.mjs/);
     assert.match(text, /node-version: 24\n/, "npm 11: npm 10 runs a git dependency's prepare even with --ignore-scripts");
-    const { checks } = jobsOf(text);
+    const { checks, ...others } = jobsOf(text);
+    assert.deepEqual(Object.keys(others), [], "the static checks are static.yml's, where the pull request cannot change them");
     assert.match(checks, /run: npm ci --ignore-scripts\n/, "no install script of the pull request runs before the checks");
     assert.doesNotMatch(text, /run: npm ci\n/);
   });
@@ -825,15 +951,28 @@ describe("the workflows", () => {
     return jobs;
   };
 
-  test("theStaticJobRunsTheBaseBranchsCheckerOnThePullRequestAsData", () => {
-    const { static: job } = jobsOf(workflow("pr.yml"));
-    assert.ok(job, "pr.yml has a static job");
-    assert.doesNotMatch(job, /\bnpm\b|setup-node|node_modules/, "nothing installed");
-    assert.match(job, /path: pr\n/);
-    assert.match(job, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}\n {10}path: checker\n/);
-    assert.match(job, /sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n/);
-    assert.deepEqual([...job.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]),
-      ["node checker/tools/lockfile-state.mjs --root pr", "node checker/tools/static-checks.mjs --root pr --base \"$BASE_SHA\""]);
+  test("theStaticWorkflowRunsTheBaseBranchsCheckerOnThePullRequestAsData", () => {
+    const text = workflow("static.yml");
+    // pull_request_target: the workflow file and the checker come from the base branch, whatever the pull request edits.
+    assert.match(text, /^on:\n {2}pull_request_target:\n {4}types: \[opened, reopened, synchronize, edited\]\n\n/m);
+    assert.doesNotMatch(text, /^ {2}pull_request:/m);
+    assert.match(text, /^permissions:\n {2}contents: read\n(?! )/m, "a token that can only read");
+    assert.doesNotMatch(text, /^ {4}permissions:/m, "no job asks for more");
+    const code = text.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
+    assert.doesNotMatch(code, /secrets\.|\bnpm\b|setup-node|node_modules|cache|github-script|\benvironment:/, "no secret, nothing installed, no cache");
+    const jobs = jobsOf(text);
+    assert.deepEqual(Object.keys(jobs), ["static"]);
+    assert.match(jobs.static, /^ {4}name: Static checks$/m, "the check branch protection requires");
+    const checkouts = jobs.static.split("- uses: ").slice(1);
+    assert.equal(checkouts.length, 2, jobs.static);
+    assert.match(checkouts[0], /^actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.sha \}\}\n {10}path: checker\n {10}sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n {10}persist-credentials: false\n/);
+    assert.match(checkouts[1], /^actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n {10}path: pr\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/);
+    assert.deepEqual([...jobs.static.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]),
+      ["node checker/tools/static-checks.mjs --root pr --base \"$BASE_SHA\" --head \"$HEAD_SHA\""], "the base branch's checker, and only it, runs");
+    assert.match(jobs.static, /BASE_SHA: \$\{\{ github\.sha \}\}\n {10}HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n/);
+    // Commit SHAs and the pull request's number only: no text the pull request writes reaches an expression.
+    const expressions = [...new Set(text.match(/\$\{\{.*?\}\}/g))].sort();
+    assert.deepEqual(expressions, ["${{ github.event.pull_request.head.sha }}", "${{ github.event.pull_request.number }}", "${{ github.sha }}"]);
   });
 
   test("publishingStopsOnALockfileStateProblemBeforeInstalling", () => {
@@ -859,7 +998,7 @@ describe("the workflows", () => {
     assert.match(build, /run: npm ci --ignore-scripts\n/);
     assert.match(build, /node-version: 24\n/, "npm 11, which keeps --ignore-scripts for git dependencies too");
     assert.match(build, /run: node tools\/catalog\.mjs --out site\/v1\n/, "not npm run, which puts node_modules/.bin first on PATH");
-    assert.doesNotMatch(build, /npm run|cache:/);
+    assert.doesNotMatch(build, /npm run|(?<![\w-])cache:/);
     assert.match(deploy, /needs: sign/);
     assert.match(deploy, /^ {4}if: github\.ref == 'refs\/heads\/main'$/m);
     assert.match(deploy, /name: github-pages/);
@@ -867,8 +1006,19 @@ describe("the workflows", () => {
     assert.doesNotMatch(sign, /pages: write|id-token/);
   });
 
-  test("actionsThatSeeTheKeyOrAWriteTokenArePinnedToCommits", () => {
-    for (const name of ["publish.yml", "pr-label.yml"]) {
+  test("publishingUsesNoNpmCache", () => {
+    // npm takes a cached package by its integrity alone, whatever address the lockfile names: publish starts cold.
+    const text = workflow("publish.yml");
+    assert.doesNotMatch(text, /^\s*cache:|actions\/cache|cache-dependency-path/m);
+    const setups = text.split("- uses: ").filter((step) => step.startsWith("actions/setup-node@"));
+    assert.equal(setups.length, 1);
+    assert.match(setups[0], /\n {10}package-manager-cache: false\n/, "setup-node caches by itself when package.json names npm as its packageManager");
+  });
+
+  test("everyActionIsPinnedToACommit", () => {
+    const names = fs.readdirSync(path.join(repo, ".github", "workflows")).filter((name) => name.endsWith(".yml")).sort();
+    assert.deepEqual(names, ["pr-label.yml", "pr.yml", "publish.yml", "static.yml"]);
+    for (const name of names) {
       const uses = [...workflow(name).matchAll(/uses: (\S+)(.*)$/gm)];
       assert.ok(uses.length > 0, name);
       for (const [, action, comment] of uses) {

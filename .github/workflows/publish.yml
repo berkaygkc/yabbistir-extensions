@@ -31,9 +31,12 @@ jobs:
           # The catalog dates each extension by main's commits.
           fetch-depth: 0
           persist-credentials: false
+      # No npm cache, restored or automatic: npm takes a cached package by its integrity alone, so every publish
+      # downloads each package from the address the lockfile names.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+          package-manager-cache: false
       # Before anything is installed: what main's lockfile would install, and the files npm and the build would read.
       - run: node tools/lockfile-state.mjs
       - run: npm ci --ignore-scripts

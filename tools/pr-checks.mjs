@@ -2,10 +2,11 @@
 // npm run pr-checks [-- --base <ref>]
 //
 // Runs the checks a pull request gets (docs/publishing.md, "The checks") on the commits between <ref> and HEAD:
-// one extension folder and nothing else; no install scripts or programs in any extension's package.json; a lockfile
-// change limited to the extension's own libraries; for that extension, readable source (src/ and every file the build
-// bundles), npm run build, the size of the package and of index.js, npm run validate and npm test; then, for every
-// pull request, npm run typecheck, npm run docs -- --check, the tools' own tests, and a catalog built from the result.
+// one extension folder and nothing only the maintainer changes; no install scripts or programs in any extension's
+// package.json; the install state; a lockfile change limited to the extension's own libraries; for that extension,
+// readable source (src/ and every file the build bundles), npm run build, the size of the package and of index.js,
+// npm run validate and npm test; then, for every pull request, npm run typecheck, npm run docs -- --check, the tools'
+// own tests, and a catalog built from the result.
 // Every check runs, and a summary lists each one; exits with 1 when any fails. Uncommitted changes are not included.
 //
 //   --base <ref>   where the branch started (default: origin/main)
@@ -15,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { baseReader, changedFiles, runChecks } from "./lib/pr-checks.mjs";
+import { baseReader, changedFiles, commandData, commandProperty, printable, runChecks } from "./lib/pr-checks.mjs";
 
 const inActions = process.env.GITHUB_ACTIONS === "true";
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -49,7 +50,7 @@ async function main(argv) {
 
   const exec = (args) => {
     const shown = `npm ${args.join(" ")}`;
-    console.log(inActions ? `::group::${shown}` : `\n▸ ${shown}`);
+    console.log(inActions ? `::group::${commandData(shown)}` : `\n▸ ${printable(shown)}`);
     const result = spawnSync(npm, args, { cwd: root, stdio: "inherit" });
     if (inActions) console.log("::endgroup::");
     return result.status ?? 1;
@@ -58,10 +59,11 @@ async function main(argv) {
 
   console.log("\nChecks:");
   for (const result of results) {
-    console.log(`  ${result.ok ? "ok  " : "FAIL"}  ${result.name}`);
+    console.log(`  ${result.ok ? "ok  " : "FAIL"}  ${printable(result.name)}`);
     for (const problem of result.problems) {
-      console.log(`        ${problem}`);
-      if (inActions) console.log(`::error title=${result.name}::${problem}`);
+      // Pull request text (paths, names) is in these lines: no control character may start a workflow command.
+      console.log(`        ${printable(problem)}`);
+      if (inActions) console.log(`::error title=${commandProperty(result.name)}::${commandData(problem)}`);
     }
   }
   const failed = results.filter((result) => !result.ok).length;

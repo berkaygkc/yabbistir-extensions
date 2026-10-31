@@ -1,49 +1,63 @@
 // The rules a pull request is checked by that read files and git only: nothing installed, nothing of the pull request
-// run. tools/static-checks.mjs applies them in the static job of .github/workflows/pr.yml, which takes this file from
-// the base branch and reads the pull request as data, so no test or edit in the pull request can change its result;
-// tools/lib/pr-checks.mjs applies them too, with the build and the tests. Node's built-in modules and
-// tools/lockfile-state.mjs only: this file must run where nothing is installed.
+// run. tools/static-checks.mjs applies them in .github/workflows/static.yml, which takes this file from the base branch
+// and reads the pull request's commit through git as data, so no test, edit or link in the pull request can change its
+// result; tools/lib/pr-checks.mjs applies them too, to the checkout on disk, with the build and the tests. Node's
+// built-in modules and tools/lockfile-state.mjs only: this file must run where nothing is installed.
 //
 // .github/workflows/pr-label.yml carries copies of permissionChanges and authorToMention: it runs with a write token
 // and never checks out the pull request, so it cannot import them. tools/test/pr-checks.test.mjs keeps the copies
 // identical to the functions here, so both must stay self-contained.
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 
-import { entryProblems, isWorkspace, resolveIn, stateProblems } from "../lockfile-state.mjs";
+import { commitTree, diskTree, entryProblems, isWorkspace, printable, resolveIn, stateProblems } from "../lockfile-state.mjs";
+
+export { commitTree, diskTree, printable };
 
 /** What may change next to an extension's folder: the lockfile when it adds a library, and what npm run docs writes. */
 export const ALLOWED_BESIDE_AN_EXTENSION = ["package-lock.json", "docs/manifest.md", "docs/api.md", "llms-full.txt"];
 
-/** The files a branch changes since it left `base`, both sides of a move included. */
-export function changedFiles(root, base) {
-  const result = spawnSync("git", ["diff", "--name-only", "--no-renames", "-z", `${base}...HEAD`], { cwd: root, encoding: "utf8" });
+/** Refuses a ref git would read as an option. */
+const ref = (name) => {
+  if (typeof name !== "string" || name === "" || name.startsWith("-")) throw new Error(`not a git ref: ${name}`);
+  return name;
+};
+
+/** The files `head` changes since it left `base` (the merge base), both sides of a move included. */
+export function changedFiles(root, base, head = "HEAD") {
+  const result = spawnSync("git", ["diff", "--name-only", "--no-renames", "-z", `${ref(base)}...${ref(head)}`], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (result.status !== 0) throw new Error(`git diff against ${base} failed: ${(result.stderr || result.error?.message || "").trim()}`);
   return result.stdout.split("\0").filter(Boolean);
 }
 
-/** Reads a file as it was where the branch left `base` (the merge base); null when it did not exist there. */
-export function baseReader(root, base) {
-  const mergeBase = spawnSync("git", ["merge-base", base, "HEAD"], { cwd: root, encoding: "utf8" });
-  if (mergeBase.status !== 0) throw new Error(`git merge-base ${base} HEAD failed: ${mergeBase.stderr.trim()}`);
-  const commit = mergeBase.stdout.trim();
-  return (file) => {
-    const shown = spawnSync("git", ["show", `${commit}:${file}`], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-    return shown.status === 0 ? shown.stdout : null;
-  };
+/** Reads a file as it was where `head` left `base` (the merge base), through git; null when it was not a regular file there. */
+export function baseReader(root, base, head = "HEAD") {
+  const mergeBase = spawnSync("git", ["merge-base", ref(base), ref(head)], { cwd: root, encoding: "utf8" });
+  if (mergeBase.status !== 0) throw new Error(`git merge-base ${base} ${head} failed: ${mergeBase.stderr.trim()}`);
+  return commitTree(root, mergeBase.stdout.trim()).read;
 }
 
-/** The files git tracks under extensions/, or undefined outside a git repository. */
-export function trackedFiles(root) {
-  const result = spawnSync("git", ["ls-files", "-z", "--", "extensions"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  return result.status === 0 ? result.stdout.split("\0").filter(Boolean) : undefined;
-}
+/** GitHub workflow commands: a value (after ::) and a property (title=…), escaped so text cannot end or add a command. */
+export const commandData = (text) => String(text).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+export const commandProperty = (text) => commandData(text).replaceAll(":", "%3A").replaceAll(",", "%2C");
 
 /**
- * The extensions a pull request changes, and how it breaks the rule of one `extensions/<id>/` folder and nothing else
- * (besides ALLOWED_BESIDE_AN_EXTENSION). A pull request without an extension may change anything.
+ * What only the maintainer changes: what the workflows run, what npm installs, and what shapes every build. A pull
+ * request that touches any of it fails the static checks, so the maintainer merges such a change past them on purpose.
+ * package-lock.json is the exception beside one extension, where only that extension's own libraries may change.
+ */
+export const MAINTAINER_ONLY = [".github/", "tools/", "packages/", "templates/", "schema/", "package.json", "package-lock.json", "tsconfig.json", ".gitattributes"];
+
+const maintainerOnly = (file) => {
+  const lower = file.toLowerCase();
+  return MAINTAINER_ONLY.some((entry) => (entry.endsWith("/") ? lower.startsWith(entry) : lower === entry)) || path.posix.basename(lower) === ".gitattributes";
+};
+const shownFiles = (files) => files.slice(0, 5).join(", ") + (files.length > 5 ? ` and ${files.length - 5} more` : "");
+
+/**
+ * The extensions a pull request changes, and how it breaks the rules: one `extensions/<id>/` folder and nothing else
+ * (besides ALLOWED_BESIDE_AN_EXTENSION), and nothing of MAINTAINER_ONLY.
  */
 export function checkScope(files) {
   const extensions = new Set();
@@ -61,8 +75,11 @@ export function checkScope(files) {
   }
   const outside = others.filter((file) => !ALLOWED_BESIDE_AN_EXTENSION.includes(file));
   if (ids.length > 0 && outside.length > 0) {
-    const shown = outside.slice(0, 5).join(", ") + (outside.length > 5 ? ` and ${outside.length - 5} more` : "");
-    problems.push(`the pull request changes ${shown} besides ${folders} → fix: Send changes to the tools, templates, docs or packages/api in a pull request of their own.`);
+    problems.push(`the pull request changes ${shownFiles(outside)} besides ${folders} → fix: Send changes to the docs in a pull request of their own.`);
+  }
+  const reserved = files.filter((file) => maintainerOnly(file) && !(file === "package-lock.json" && ids.length === 1));
+  if (reserved.length > 0) {
+    problems.push(`the pull request changes ${shownFiles(reserved)}, and a change there needs a maintainer-authored pull request: the workflows, tools/, packages/, templates/, schema/, the root package.json, package-lock.json and tsconfig.json, and .gitattributes files decide what runs, installs and builds → fix: Leave these files as they are, and say in the pull request what should change there; the maintainer makes such changes, and merges them past this check on purpose.`);
   }
   return { extensions: ids, problems };
 }
@@ -70,22 +87,13 @@ export function checkScope(files) {
 /** package.json fields that make npm run or link something when it installs: an extension's package.json is data only. */
 const RUNNING_FIELDS = ["bin", "scripts", "directories", "gypfile"];
 const DEPENDENCY_KINDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
-const PACKAGE_NAME = /^(?:@[A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/;
 const TARBALL = /\.(?:tgz|tar|tar\.gz)$/i;
 
-/** Whether a dependency spec names a registry version: a version, a range or a tag, or an npm: alias to one. */
+/** Whether a dependency spec names a version of the library itself on the registry: a version, a range or a tag. */
 function registrySpec(spec) {
   if (typeof spec !== "string") return false;
-  if (TARBALL.test(spec)) return false;
-  if (spec.startsWith("npm:")) {
-    const rest = spec.slice("npm:".length);
-    const at = rest.indexOf("@", 1);
-    if (at === -1) return PACKAGE_NAME.test(rest);
-    const range = rest.slice(at + 1);
-    return PACKAGE_NAME.test(rest.slice(0, at)) && !range.startsWith("npm:") && registrySpec(range);
-  }
-  // No ":" (git:, file:, link:, http:, github:, workspace:), no "/" (paths, user/repo), no "#", no leading "." or "~/",
-  // and no tarball name (npm reads "lib.tgz" as a file next to package.json).
+  // No ":" (npm: aliases, git:, file:, link:, http:, github:, workspace:), no "/" (paths, user/repo), no "#", no leading
+  // "." or "~/", and no tarball name (npm reads "lib.tgz" as a file next to package.json).
   return /^[\w.^~<>=|*+\- ]*$/.test(spec) && !spec.startsWith(".") && !TARBALL.test(spec);
 }
 
@@ -101,6 +109,9 @@ export function packageProblems(id, text) {
   if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) return [`${file}: it is not valid JSON → fix: Make it a JSON object, as npm writes it.`];
   const problems = RUNNING_FIELDS.filter((field) => Object.hasOwn(manifest, field)).map((field) =>
     `${file}: "${field}" would make npm run or link something at install → fix: Remove "${field}"; an extension's package.json only lists the libraries the build bundles.`);
+  if (manifest.name !== id) {
+    problems.push(`${file}: its name is ${JSON.stringify(manifest.name)}, not the extension's id: npm links a workspace under its name, so it could stand in for a library → fix: Name the package after the extension: { "name": "${id}", "private": true }.`);
+  }
   for (const field of ["bundleDependencies", "bundledDependencies"]) {
     if (Object.hasOwn(manifest, field)) problems.push(`${file}: "${field}" ships copies of libraries that skip the registry → fix: Remove "${field}".`);
   }
@@ -113,7 +124,7 @@ export function packageProblems(id, text) {
     }
     for (const [name, spec] of Object.entries(specs)) {
       if (registrySpec(spec)) continue;
-      problems.push(`${file}: ${kind}.${name}: ${JSON.stringify(spec)} is not a version from the npm registry → fix: Depend on a library published on npm, by version or range: no git, file, link or URL dependencies.`);
+      problems.push(`${file}: ${kind}.${name}: ${JSON.stringify(spec)} is not a version from the npm registry → fix: Depend on a library published on npm, by its own name and a version or range: no npm: alias, git, file, link or URL dependencies.`);
     }
   }
   return problems;
@@ -297,39 +308,39 @@ export function authorToMention(baseText, login, name) {
 }
 
 /**
- * Runs the static checks for a pull request that changes `files`, in the checkout at `root`: one extension folder;
+ * Runs the static checks for a pull request that changes `files`, on `tree` (lockfile-state's commitTree for a
+ * commit read through git, or diskTree for a checkout): one extension folder and nothing reserved for the maintainer;
  * extension package.json files; the install state (tools/lockfile-state.mjs); and, when package-lock.json changes, its
- * diff. `readBase(file)` gives a file's text where the branch started (null: it did not exist); `tracked()` the files
- * git tracks under extensions/ (undefined: those on disk).
+ * diff. `readBase(file)` gives a file's text where the branch started (null: it was not a regular file there).
  * @returns {{ ok: boolean, results: Array<{ name: string, ok: boolean, problems: string[] }>, scope: { extensions: string[] } }}
  */
-export function runStaticChecks({ root, files, readBase = () => null, tracked = () => trackedFiles(root) }) {
+export function runStaticChecks({ tree, files, readBase = () => null }) {
   const results = [];
   const record = (name, problems) => results.push({ name, ok: problems.length === 0, problems });
 
   const scope = checkScope(files);
-  record(`one extension folder per pull request${scope.extensions.length === 1 ? ` (extensions/${scope.extensions[0]}/)` : ""}`, scope.problems);
+  record(`one extension folder per pull request, and nothing only the maintainer changes${scope.extensions.length === 1 ? ` (extensions/${scope.extensions[0]}/)` : ""}`, scope.problems);
 
-  const extensions = path.join(root, "extensions");
-  const packages = (fs.existsSync(extensions) ? fs.readdirSync(extensions).sort() : []).flatMap((id) => {
-    const folder = path.join(extensions, id);
-    const problems = [];
-    if (fs.existsSync(path.join(folder, "package.json"))) problems.push(...packageProblems(id, fs.readFileSync(path.join(folder, "package.json"), "utf8")));
-    if (fs.existsSync(path.join(folder, "binding.gyp"))) {
-      problems.push(`extensions/${id}/binding.gyp: npm would compile it at install → fix: Remove it; extensions are JavaScript the build bundles.`);
+  const packages = [];
+  for (const { path: file } of [...tree.entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    const match = /^extensions\/([^/]+)\/(package\.json|binding\.gyp)$/.exec(file);
+    if (match === null) continue;
+    if (match[2] === "binding.gyp") {
+      packages.push(`${file}: npm would compile it at install → fix: Remove it; extensions are JavaScript the build bundles.`);
+      continue;
     }
-    return problems;
-  });
+    const text = tree.read(file);
+    if (text !== null) packages.push(...packageProblems(match[1], text)); // a link is the install state's to report
+  }
   record("no install scripts or programs in extensions/*/package.json", packages);
 
-  record("the install state: registry lockfile entries, no npm-shrinkwrap.json or .npmrc, no node_modules or case twins under extensions/",
-    stateProblems(root, { files: tracked() }));
+  record("the install state: registry lockfile entries that match package.json, no npm-shrinkwrap.json or .npmrc, no links, no node_modules or case twins under extensions/",
+    stateProblems(tree));
 
   // On every pull request that touches it: the macOS runner never installs the Linux packages, so only this sees them.
   if (files.includes("package-lock.json")) {
-    const headText = (file) => (fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), "utf8") : null);
     const baseLock = readBase("package-lock.json");
-    const headLock = headText("package-lock.json");
+    const headLock = tree.read("package-lock.json");
     const owners = new Set([""]);
     for (const text of [baseLock, headLock]) {
       try {
@@ -342,7 +353,7 @@ export function runStaticChecks({ root, files, readBase = () => null, tracked = 
     for (const owner of owners) {
       const file = owner === "" ? "package.json" : `${owner}/package.json`;
       manifests.base[owner] = readBase(file);
-      manifests.head[owner] = headText(file);
+      manifests.head[owner] = tree.read(file);
     }
     const extension = scope.extensions.length === 1 ? scope.extensions[0] : undefined;
     record(extension === undefined

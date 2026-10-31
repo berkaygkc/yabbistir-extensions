@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { bundledInputs } from "./build.mjs";
-import { runStaticChecks, trackedFiles } from "./static-rules.mjs";
+import { diskTree, runStaticChecks } from "./static-rules.mjs";
 import { listFiles } from "./zip.mjs";
 
 export * from "./static-rules.mjs";
@@ -55,13 +55,15 @@ export function sizeProblems(id, { packageBytes, indexBytes }) {
 }
 
 /**
- * Runs every check for a pull request that changes `files`, in the repository at `root`. `exec(args)` runs
- * `npm <args>` there and returns its exit status; `readBase(file)` gives a file's text where the branch started (null
- * when it did not exist); `inputsOf(id)` gives the extension's bundled files (bundledInputs); `tracked()` the files git
- * tracks under extensions/ (undefined: use `files`). Every check runs, so one push shows every problem.
+ * Runs every check for a pull request that changes `files`, in the checkout at `root`. `exec(args)` runs `npm <args>`
+ * there and returns its exit status; `readBase(file)` gives a file's text where the branch started (null when it did
+ * not exist); `inputsOf(id)` gives the extension's bundled files (bundledInputs); `tracked()` the repository's files
+ * (undefined: what git tracks there, or outside git the files under extensions/). The static rules read the checkout
+ * on disk here (lockfile-state's diskTree), where tools/static-checks.mjs reads a commit through git. Every check runs,
+ * so one push shows every problem.
  * @returns {Promise<{ ok: boolean, results: Array<{ name: string, ok: boolean, problems: string[] }> }>}
  */
-export async function runChecks({ root, files, exec, readBase = () => null, inputsOf = (id) => bundledInputs(root, id), tracked = () => trackedFiles(root) }) {
+export async function runChecks({ root, files, exec, readBase = () => null, inputsOf = (id) => bundledInputs(root, id), tracked = () => undefined }) {
   const results = [];
   const record = (name, problems) => results.push({ name, ok: problems.length === 0, problems });
   const command = (args, name, fix) => {
@@ -70,7 +72,7 @@ export async function runChecks({ root, files, exec, readBase = () => null, inpu
     return ok;
   };
 
-  const statics = runStaticChecks({ root, files, readBase, tracked });
+  const statics = runStaticChecks({ tree: diskTree(root, { files: tracked() }), files, readBase });
   results.push(...statics.results);
   const { scope } = statics;
 

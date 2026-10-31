@@ -1,0 +1,55 @@
+# The static checks of every pull request (docs/publishing.md, "The checks"): the rules that read files and git only,
+# applied by the base branch's own checker to the pull request's commits as data.
+#   - pull_request_target runs this file as it is on the base branch, so a pull request cannot change this job. The
+#     token can only read, no secret is used, nothing is installed and no cache is restored.
+#   - The checker is three files of the base branch's last commit (github.sha, the commit this file was read from), and
+#     uses Node's built-in modules only, on the runner's own Node.
+#   - The pull request's commits are fetched into pr/, and the checker reads them through git (git ls-tree, git
+#     cat-file, git diff) at the pull request's head commit: nothing in pr/ is run, imported or read from disk.
+#   - A pull request that touches .github/, tools/, packages/, templates/, schema/, the root package.json,
+#     package-lock.json (beyond one extension's own libraries) or tsconfig.json, or a .gitattributes, fails here: such
+#     a change is the maintainer's own, merged past this check on purpose.
+# Branch protection requires this job's check, "Static checks", from GitHub Actions. Actions are pinned to full commit
+# SHAs.
+name: Static checks
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The checker: these three files of the base branch, and nothing else of it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: checker
+          sparse-checkout: |
+            /tools/lockfile-state.mjs
+            /tools/static-checks.mjs
+            /tools/lib/static-rules.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      # The pull request, as data: its commits, which the checker reads through git.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Static checks
+        env:
+          BASE_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node checker/tools/static-checks.mjs --root pr --base "$BASE_SHA" --head "$HEAD_SHA"
