@@ -10,7 +10,7 @@ import {
   MAX_INDEX_BYTES, MAX_PACKAGE_BYTES, authorToMention, changedFiles, checkScope, lockfileProblems, packageProblems, permissionChanges,
   readabilityProblems, runChecks, sizeProblems,
 } from "../lib/pr-checks.mjs";
-import { repo } from "./helpers.mjs";
+import { copyPackageFiles, repo } from "./helpers.mjs";
 
 const ID = "dev.example.tool";
 const OTHER = "dev.example.other";
@@ -374,7 +374,9 @@ describe("the lockfile beside an extension", () => {
     const problems = lockfileProblems(base, swapped, { extension: ID });
     assert.equal(problems.length, 1);
     assert.match(problems[0], /node_modules\/@esbuild\/linux-x64/);
-    assert.match(problems[0], /→ fix: /);
+    // The recipe that works with npm 11: the library in the extension's package.json, then npm install at the root.
+    assert.match(problems[0], /→ fix: [^\n]*list each in extensions\/dev\.example\.tool\/package\.json at an exact version, run npm install at the repository's root/);
+    assert.doesNotMatch(problems[0], / -w /);
   });
 
   test("aLibrarySharedWithTheToolsMayNotChange", () => {
@@ -522,10 +524,7 @@ describe("the pull request run", () => {
     fs.mkdirSync(path.join(folder, "src"), { recursive: true });
     fs.writeFileSync(path.join(folder, "src", "index.ts"), source);
     fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify({ id: ID, version: "1.2.0" }));
-    for (const file of ["package.json", "package-lock.json", "packages/api/package.json"]) {
-      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-      fs.copyFileSync(path.join(repo, file), path.join(root, file));
-    }
+    copyPackageFiles(root);
     for (const [file, text] of Object.entries(extra)) {
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
       fs.writeFileSync(path.join(root, file), text);
@@ -737,10 +736,7 @@ describe("node tools/static-checks.mjs", () => {
   const pullRequest = (change, { add = true } = {}) => {
     const pr = scratch();
     git(pr, "init", "-q", "-b", "main");
-    for (const file of ["package.json", "package-lock.json", "packages/api/package.json"]) {
-      fs.mkdirSync(path.dirname(path.join(pr, file)), { recursive: true });
-      fs.copyFileSync(path.join(repo, file), path.join(pr, file));
-    }
+    copyPackageFiles(pr);
     git(pr, "add", "-A");
     git(pr, "commit", "-q", "-m", "base");
     git(pr, "checkout", "-q", "-b", "pr");
@@ -1011,7 +1007,11 @@ describe("the workflows", () => {
     const steps = jobs.static.split(/(?<=\n) {6}- /).slice(1);
     assert.equal(steps.length, 4, jobs.static);
     assert.match(steps[0], /^uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.sha \}\}\n {10}path: checker\n {10}sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n {10}persist-credentials: false\n/);
-    assert.match(steps[1], /^uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n {10}path: pr\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/);
+    assert.match(steps[1], /^uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n {10}path: pr\n {10}fetch-depth: 0\n {10}persist-credentials: false\n {10}allow-unsafe-pr-checkout: true\n/,
+      "actions/checkout v7 refuses a fork's head under pull_request_target without the flag");
+    // That step only: the checker's checkout, and every other workflow, keep checkout's guard.
+    assert.equal(code.match(/allow-unsafe-pr-checkout/g)?.length, 1);
+    for (const name of ["pr.yml", "pr-label.yml", "publish.yml"]) assert.doesNotMatch(workflow(name), /allow-unsafe-pr-checkout/, name);
     // The base branch's checker, and only it, runs; its exit code is what the status reports.
     assert.equal(steps[2], [
       "name: Static checks",

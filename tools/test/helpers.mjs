@@ -30,3 +30,22 @@ export function run(command, args, { root, env = {}, input } = {}) {
 }
 
 export const sha256 = (file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+
+/**
+ * The files npm installs from, as this repository has them: package.json, package-lock.json, and the package.json of
+ * every workspace the lockfile lists (an extension with a library has one). A copy needs them all, or the install state
+ * finds a lockfile entry without its package.json.
+ */
+export function packageFiles() {
+  const lock = JSON.parse(fs.readFileSync(path.join(repo, "package-lock.json"), "utf8"));
+  const workspaces = Object.keys(lock.packages).filter((location) => location !== "" && !location.split("/").includes("node_modules"));
+  return ["package.json", "package-lock.json", ...workspaces.map((folder) => `${folder}/package.json`)];
+}
+
+/** Copies packageFiles() from this repository into `root`. */
+export function copyPackageFiles(root) {
+  for (const file of packageFiles()) {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+    fs.copyFileSync(path.join(repo, file), path.join(root, file));
+  }
+}

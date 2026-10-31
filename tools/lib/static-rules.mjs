@@ -260,7 +260,7 @@ export function lockfileProblems(baseText, headText, { extension, manifests = { 
       else if (after[location]?.hasInstallScript === true || after[location]?.bin !== undefined) running.push(location);
     }
     if (outside.length > 0) {
-      problems.push(`package-lock.json: it changes ${list(outside)}, outside extensions/${extension}'s own libraries → fix: Change only the extension's own libraries (npm install <library> -w extensions/${extension}), and leave the tools' packages as they are.`);
+      problems.push(`package-lock.json: it changes ${list(outside)}, outside extensions/${extension}'s own libraries → fix: Change only the extension's own libraries: list each in extensions/${extension}/package.json at an exact version, run npm install at the repository's root, and leave the tools' packages as they are.`);
     }
     if (running.length > 0) {
       problems.push(`package-lock.json: ${list(running)} ${running.length === 1 ? "has" : "have"} an install script or a command-line program → fix: Use a plain JavaScript library: the build bundles it, and nothing of it should run when npm installs it.`);

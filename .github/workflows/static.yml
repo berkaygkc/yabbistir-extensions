@@ -1,18 +1,16 @@
-# The static checks of every pull request (docs/publishing.md, "The checks"): the rules that read files and git only,
-# applied by the base branch's own checker to the pull request's commits as data.
-#   - pull_request_target runs this file as it is on the base branch, so a pull request cannot change this job. The
-#     token can read the repository and set commit statuses, nothing more; no secret is used, nothing is installed and
-#     no cache is restored.
-#   - The checker is three files of the base branch's last commit (github.sha, the commit this file was read from), and
-#     uses Node's built-in modules only, on the runner's own Node.
-#   - The pull request's commits are fetched into pr/, and the checker reads them through git (git ls-tree, git
-#     cat-file, git diff) at the pull request's head commit: nothing in pr/ is run, imported or read from disk.
-#   - A pull request that touches .github/, tools/, packages/, templates/, schema/, the root package.json,
-#     package-lock.json (beyond one extension's own libraries) or tsconfig.json, or a .gitattributes, fails here: such
-#     a change is the maintainer's own, merged past this check on purpose.
-#   - It runs for pull requests to main only. The result is posted as the commit status store/static-checks on the
-#     pull request's head commit, success only when the checker exited 0. Branch protection requires that status: a workflow a pull request from a fork adds
-#     runs with a read-only token and cannot set a commit status, while it could name a job "Static checks".
+# The static checks of every pull request to main (docs/publishing.md, "The checks").
+#   - pull_request_target runs this file as it is on main: a pull request cannot
+#     change this job. The token reads the repository and sets commit statuses,
+#     nothing more. No secret, no install, no cache.
+#   - The checker is three files of main's last commit (github.sha), on the
+#     runner's own Node, with Node's built-in modules only.
+#   - The pull request's commits go into pr/ as data. The checker reads the head
+#     commit through git (ls-tree, cat-file, diff); nothing in pr/ runs.
+#   - A pull request that touches what only the maintainer changes fails here:
+#     see docs/publishing.md, "What a pull request may change".
+#   - The result is the commit status store/static-checks on the head commit,
+#     success only when the checker exited 0. Branch protection requires it: a
+#     fork's own workflows get a read-only token and cannot set a status.
 # Actions are pinned to full commit SHAs.
 name: Static checks
 
@@ -49,12 +47,17 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
       # The pull request, as data: its commits, which the checker reads through git.
+      # checkout v7 refuses a fork's head under pull_request_target unless told
+      # otherwise. That guard is against running the fork's code with this token;
+      # nothing in pr/ runs, is imported or is read from disk, so it is allowed here,
+      # on this step only.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: pr
           fetch-depth: 0
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
       - name: Static checks
         id: checker
         env:

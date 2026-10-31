@@ -210,6 +210,8 @@ Most extensions need none. When one helps, it must be plain JavaScript that runs
 
 The repository uses npm workspaces, so the library is installed for the whole repository and the build bundles it into `index.js`. Keep `"type": "module"`: the tests load `src/index.ts` as a module. The pull request then changes the extension's folder and the root `package-lock.json`.
 
+`npm run typecheck` needs the library's types. A library that ships none fails it with "Could not find a declaration file for module"; add `src/<library>.d.ts` holding `declare module "<library>";`, or pick a library with types.
+
 ## Before a pull request
 
 `npm test -- <id>`, `npm run validate -- <id>` and `npm run build -- <id>` all pass. Cover the main path, every message the person can see (in each language you ship), and the failures you expect: no input, a missing tool, a failed request, a cancel.

@@ -245,7 +245,7 @@ export function caseCollisions(files) {
 
 const list = (items) => items.slice(0, 8).join(", ") + (items.length > 8 ? ` and ${items.length - 8} more` : "");
 const INSTALL_FIX = "Run npm install and commit the package.json and package-lock.json it leaves; never edit the lockfile by hand.";
-const ENTRY_FIX = "Install the library from the npm registry by its own name and version (npm install <library>@<version>), and never edit the lockfile by hand.";
+const ENTRY_FIX = "List the library in the extension's package.json by its own name, at an exact version, and run npm install at the repository's root; never edit the lockfile by hand.";
 /** The fix for an alias: also the case of a library whose own dependencies npm installs under an alias. */
 export const ALIAS_FIX = "Depend on every library by its own name. Some libraries bring a dependency npm installs under an alias (glob@10 brings string-width-cjs, for example), and the store refuses those too: pick another library, or ask the maintainer.";
 /** Whether a reason entryProblems gives is about an alias. */

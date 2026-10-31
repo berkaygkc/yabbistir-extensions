@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { repo } from "./helpers.mjs";
+import { copyPackageFiles, repo } from "./helpers.mjs";
 
 const TOOL = path.join(repo, "tools", "lockfile-state.mjs");
 const ID = "dev.example.tool";
@@ -27,10 +27,7 @@ function check(root) {
 
 /** This repository's package files and one extension, in `root`. */
 function fill(root) {
-  for (const file of ["package.json", "package-lock.json", "packages/api/package.json"]) {
-    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-    fs.copyFileSync(path.join(repo, file), path.join(root, file));
-  }
+  copyPackageFiles(root);
   fs.mkdirSync(path.join(root, "extensions", ID, "src"), { recursive: true });
   fs.writeFileSync(path.join(root, "extensions", ID, "src", "index.ts"), "export const actions = {};\n");
 }
@@ -79,6 +76,7 @@ describe("node tools/lockfile-state.mjs", () => {
     const { status, out } = check(root);
     assert.equal(status, 1, out);
     assert.match(out, /node_modules\/fflate: .*https:\/\/registry\.npmjs\.org\/fflate\/-\/fflate-0\.8\.3\.tgz/);
+    assert.match(out, /0\.8\.3\.tgz → fix: List the library in the extension's package\.json by its own name, at an exact version, and run npm install at the repository's root/);
     const scoped = check(tree((dir) => editLock(dir, (packages) => {
       packages["node_modules/@esbuild/linux-x64"].resolved = "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz";
     })));
