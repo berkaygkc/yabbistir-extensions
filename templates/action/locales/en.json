@@ -1,0 +1,7 @@
+{
+  "name": "{{name}}",
+  "description": "Turns the text you copied around.",
+  "reverse.title": "Reverse text",
+  "reverse.keywords": ["reverse", "flip", "backwards"],
+  "empty": "There is no text to reverse."
+}

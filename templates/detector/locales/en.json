@@ -1,0 +1,8 @@
+{
+  "name": "{{name}}",
+  "description": "Recognizes issue keys such as ABC-123 when you copy them.",
+  "tag": "ticket",
+  "preview": "Issue key",
+  "project": "Project",
+  "number": "Number"
+}

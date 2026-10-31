@@ -1,0 +1,24 @@
+{
+  "id": "{{id}}",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:number.square",
+  "author": "{{author}}",
+  "license": "MIT",
+  "categories": ["developer"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "shasum", "install": "It comes with macOS." }
+    ]
+  },
+  "contributes": {
+    "actions": [
+      { "id": "checksum", "title": "checksum.title", "keywords": "checksum.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text", "job": true, "verb": "verb" }
+    ]
+  }
+}

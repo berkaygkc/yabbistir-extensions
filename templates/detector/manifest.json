@@ -1,0 +1,18 @@
+{
+  "id": "{{id}}",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:ticket",
+  "author": "{{author}}",
+  "license": "MIT",
+  "categories": ["developer"],
+  "contributes": {
+    "detectors": [
+      { "id": "ticket", "tag": "tag", "accepts": { "kinds": ["text"], "pattern": "^[A-Z][A-Z0-9]{1,9}-[0-9]{1,6}$" },
+        "validate": true, "preview": true }
+    ]
+  }
+}

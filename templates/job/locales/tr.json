@@ -1,0 +1,10 @@
+{
+  "name": "{{name}}",
+  "description": "Kopyaladığın metnin SHA-256 sağlama toplamını hesaplar.",
+  "checksum.title": "SHA-256 sağlama toplamı",
+  "checksum.keywords": ["sağlama", "özet", "hash", "sha", "sha256"],
+  "verb": "Özetle",
+  "working": "Özetleniyor",
+  "done": "Bitti",
+  "failed": "Sağlama toplamı hesaplanamadı."
+}

@@ -13,6 +13,16 @@
   ],
   "scripts": {
     "validate": "node tools/validate.mjs",
-    "test:tools": "node --test \"tools/test/*.test.mjs\" \"packages/api/test/*.test.mjs\""
+    "new": "node tools/new.mjs",
+    "build": "node tools/build.mjs",
+    "dev": "node tools/dev.mjs",
+    "test": "node tools/test.mjs",
+    "test:tools": "node --test \"tools/test/*.test.mjs\" \"packages/api/test/*.test.mjs\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "fflate": "0.8.3",
+    "typescript": "7.0.2"
   }
 }

@@ -1,0 +1,6 @@
+{
+  "name": "{{name}}",
+  "description": "Bir cümleden kopyaladığın bağlantıya yapışan noktalamayı kaldırır.",
+  "tidy.title": "Kopyalanan bağlantıları temizle",
+  "tidy.description": "Kopyalanan bağlantının sonundaki nokta, virgül veya parantezi atar."
+}

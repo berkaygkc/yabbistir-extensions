@@ -1,0 +1,7 @@
+{
+  "name": "{{name}}",
+  "description": "Kopyaladığın metni tersine çevirir.",
+  "reverse.title": "Metni ters çevir",
+  "reverse.keywords": ["ters", "çevir", "tersine"],
+  "empty": "Ters çevrilecek metin yok."
+}

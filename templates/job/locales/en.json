@@ -1,0 +1,10 @@
+{
+  "name": "{{name}}",
+  "description": "Works out the SHA-256 checksum of the text you copied.",
+  "checksum.title": "SHA-256 checksum",
+  "checksum.keywords": ["checksum", "hash", "sha", "sha256"],
+  "verb": "Hash",
+  "working": "Hashing",
+  "done": "Done",
+  "failed": "The checksum could not be worked out."
+}

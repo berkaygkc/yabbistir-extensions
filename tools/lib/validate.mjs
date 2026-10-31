@@ -39,7 +39,7 @@ const TARGETS = ["finder", "terminal", "browser", "editor", "other"];
 const KINDS = ["text", "code", "link", "color", "image", "file"];
 
 // The app matches these with ICU, where \d is any decimal digit.
-const ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9-]+)+$/;
+export const ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9-]+)+$/;
 const VERSION_PATTERN = /^\p{Nd}+\.\p{Nd}+\.\p{Nd}+(-[0-9A-Za-z.-]+)?$/u;
 const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 const TOOL_PATTERN = /^[A-Za-z0-9._+-]+$/;

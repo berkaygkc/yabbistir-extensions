@@ -1,0 +1,6 @@
+{
+  "name": "{{name}}",
+  "description": "Removes the punctuation that sticks to a link you copied from a sentence.",
+  "tidy.title": "Tidy copied links",
+  "tidy.description": "Takes a trailing full stop, comma or bracket off a copied link."
+}

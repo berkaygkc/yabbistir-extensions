@@ -56,6 +56,9 @@ function main(argv) {
     errors += own;
     warnings += issues.length - own;
     if (issues.length === 0) console.log(`${shown}: ok`);
+    if (store && !fs.existsSync(path.join(folder, "index.js"))) {
+      console.log(`${shown}: note: it is not built yet, so index.js was not checked → fix: Run npm run build -- ${id}, which builds it and checks the result.`);
+    }
   }
   if (errors + warnings > 0) {
     const count = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;

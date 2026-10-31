@@ -1,0 +1,8 @@
+{
+  "name": "{{name}}",
+  "description": "ABC-123 gibi iş anahtarlarını kopyaladığında tanır.",
+  "tag": "iş anahtarı",
+  "preview": "İş anahtarı",
+  "project": "Proje",
+  "number": "Numara"
+}
