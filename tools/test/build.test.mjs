@@ -81,6 +81,37 @@ describe("npm run build", () => {
     assert.equal(fs.statSync(path.join(target, ID, "index.js")).mode & 0o777, 0o644);
   });
 
+  test("aStrayTsconfigOrJsconfigCannotRemapAnImport", () => {
+    // A tsconfig.json or jsconfig.json next to or above the source, with "paths", would make esbuild bundle another
+    // file (a docs file, say) in a library's place. The build reads the repository's own tsconfig.json only.
+    const strays = {
+      "extensions/tsconfig.json": { compilerOptions: { paths: { fflate: ["../docs/n.js"] } } },
+      "extensions/jsconfig.json": { compilerOptions: { baseUrl: ".", paths: { fflate: ["../docs/n.js"] } } },
+      [`extensions/${ID}/tsconfig.json`]: { compilerOptions: { paths: { fflate: ["../../docs/n.js"] } } },
+      [`extensions/${ID}/src/jsconfig.json`]: { compilerOptions: { baseUrl: ".", paths: { fflate: ["../../../docs/n.js"] } } },
+    };
+    for (const withRootTsconfig of [false, true]) {
+      const root = fresh();
+      if (withRootTsconfig) fs.copyFileSync(path.join(repo, "tsconfig.json"), path.join(root, "tsconfig.json"));
+      const source = path.join(root, "extensions", ID, "src", "index.ts");
+      fs.writeFileSync(source, `import { zipSync } from "fflate";\n${fs.readFileSync(source, "utf8")}\n(globalThis as any).__probe = zipSync;\n`);
+      fs.mkdirSync(path.join(root, "docs"));
+      fs.writeFileSync(path.join(root, "docs", "n.js"), "export function zipSync() { return \"PWNED_BY_A_DOCS_FILE\"; }\n");
+      const bundle = path.join(root, "dist", ID, "index.js");
+      const clean = run("build", [ID], { root });
+      assert.equal(clean.status, 0, clean.out);
+      const expected = sha256(bundle);
+      for (const [file, config] of Object.entries(strays)) {
+        fs.writeFileSync(path.join(root, file), JSON.stringify(config));
+        const built = run("build", [ID], { root });
+        assert.equal(built.status, 0, built.out);
+        assert.doesNotMatch(fs.readFileSync(bundle, "utf8"), /PWNED_BY_A_DOCS_FILE/, `${file} (root tsconfig.json: ${withRootTsconfig})`);
+        assert.equal(sha256(bundle), expected, `${file} leaves the bundle as it was`);
+        fs.rmSync(path.join(root, file));
+      }
+    }
+  });
+
   test("buildProducesTheShapeTheAppRuns", () => {
     const root = fresh();
     const made = run("build", [ID], { root });

@@ -42,9 +42,16 @@ function describeFailure(error) {
   });
 }
 
-/** How every extension is bundled: one ES2022 file, nothing written by esbuild itself. */
+/**
+ * How every extension is bundled: one ES2022 file, nothing written by esbuild itself. The TypeScript settings are the
+ * repository's own tsconfig.json, named outright (or none, where the root has no tsconfig.json): esbuild otherwise
+ * looks for a tsconfig.json or jsconfig.json next to every source file and in each folder above it, and one with
+ * "paths" placed there (extensions/tsconfig.json, say) would bundle another file in a library's place.
+ */
 function bundleOptions(source, root) {
+  const tsconfig = path.join(root, "tsconfig.json");
   return {
+    ...(fs.existsSync(tsconfig) ? { tsconfig } : { tsconfigRaw: {} }),
     absWorkingDir: root,
     entryPoints: [source],
     outfile: "index.js",
