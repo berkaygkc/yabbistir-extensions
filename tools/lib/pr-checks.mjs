@@ -44,6 +44,12 @@ export function baseReader(root, base) {
   };
 }
 
+/** The files git tracks under extensions/, or undefined outside a git repository. */
+export function trackedFiles(root) {
+  const result = spawnSync("git", ["ls-files", "-z", "--", "extensions"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return result.status === 0 ? result.stdout.split("\0").filter(Boolean) : undefined;
+}
+
 /**
  * The extensions a pull request changes, and how it breaks the rule of one `extensions/<id>/` folder and nothing else
  * (besides ALLOWED_BESIDE_AN_EXTENSION). A pull request without an extension may change anything.
@@ -103,6 +109,22 @@ export function sizeProblems(id, { packageBytes, indexBytes }) {
 
 /** package.json fields that make npm run or link something when it installs: an extension's package.json is data only. */
 const RUNNING_FIELDS = ["bin", "scripts", "directories", "gypfile"];
+const DEPENDENCY_KINDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
+const PACKAGE_NAME = /^(?:@[A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*$/;
+
+/** Whether a dependency spec names a registry version: a version, a range or a tag, or an npm: alias to one. */
+function registrySpec(spec) {
+  if (typeof spec !== "string") return false;
+  if (spec.startsWith("npm:")) {
+    const rest = spec.slice("npm:".length);
+    const at = rest.indexOf("@", 1);
+    if (at === -1) return PACKAGE_NAME.test(rest);
+    const range = rest.slice(at + 1);
+    return PACKAGE_NAME.test(rest.slice(0, at)) && !range.startsWith("npm:") && registrySpec(range);
+  }
+  // No ":" (git:, file:, link:, http:, github:, workspace:), no "/" (paths, user/repo), no "#", no leading "." or "~/".
+  return /^[\w.^~<>=|*+\- ]*$/.test(spec) && !spec.startsWith(".");
+}
 
 /** Whether extensions/<id>/package.json (its `text`) only names libraries: no programs, scripts or native builds. */
 export function packageProblems(id, text) {
@@ -114,8 +136,24 @@ export function packageProblems(id, text) {
     return [`${file}: it is not valid JSON → fix: Make it a JSON object, as npm writes it.`];
   }
   if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) return [`${file}: it is not valid JSON → fix: Make it a JSON object, as npm writes it.`];
-  return RUNNING_FIELDS.filter((field) => Object.hasOwn(manifest, field)).map((field) =>
+  const problems = RUNNING_FIELDS.filter((field) => Object.hasOwn(manifest, field)).map((field) =>
     `${file}: "${field}" would make npm run or link something at install → fix: Remove "${field}"; an extension's package.json only lists the libraries the build bundles.`);
+  for (const field of ["bundleDependencies", "bundledDependencies"]) {
+    if (Object.hasOwn(manifest, field)) problems.push(`${file}: "${field}" ships copies of libraries that skip the registry → fix: Remove "${field}".`);
+  }
+  for (const kind of DEPENDENCY_KINDS) {
+    if (!Object.hasOwn(manifest, kind)) continue;
+    const specs = manifest[kind];
+    if (specs === null || typeof specs !== "object" || Array.isArray(specs)) {
+      problems.push(`${file}: ${kind}: it is not an object of library names and versions → fix: Write it as npm does, { "<library>": "<version>" }.`);
+      continue;
+    }
+    for (const [name, spec] of Object.entries(specs)) {
+      if (registrySpec(spec)) continue;
+      problems.push(`${file}: ${kind}.${name}: ${JSON.stringify(spec)} is not a version from the npm registry → fix: Depend on a library published on npm, by version or range: no git, file, link or URL dependencies.`);
+    }
+  }
+  return problems;
 }
 
 /** JSON with sorted keys, so two lockfiles compare by content. */
@@ -159,54 +197,114 @@ function lockTree(packages, starts) {
 /** The lockfile locations that belong to extension `id` alone: its tree, minus what the root or another workspace reaches. */
 function ownLocations(packages, id) {
   const own = `extensions/${id}`;
-  const isWorkspace = (location) => location !== "" && !location.split("/").includes("node_modules");
   const links = (target) => Object.keys(packages).filter((location) => packages[location]?.link === true && packages[location].resolved === target);
   const mine = lockTree(packages, [own, ...links(own)]);
   const others = lockTree(packages, ["", ...Object.keys(packages).filter((location) => isWorkspace(location) && location !== own)]);
   return new Set([...mine].filter((location) => !others.has(location)));
 }
 
+const isWorkspace = (location) => location !== "" && !location.split("/").includes("node_modules");
+const WORKSPACE_FOLDER = /^(?:extensions|packages)\/[^/]+$/;
+const REGISTRY_TARBALL = /^https:\/\/registry\.npmjs\.org\/(?:@[A-Za-z0-9][\w.-]*\/)?[A-Za-z0-9][\w.-]*\/-\/[\w.-]+\.tgz$/;
+const INTEGRITY = /^sha(?:1|256|384|512)-[A-Za-z0-9+/]+={0,2}$/;
+
+/** Whether a lockfile entry installs from where the store allows: an npm registry tarball with its integrity, or a workspace folder. */
+function fromTheRegistry(location, entry) {
+  if (location === "") return true;
+  if (isWorkspace(location)) return WORKSPACE_FOLDER.test(location);
+  if (entry.link === true) return typeof entry.resolved === "string" && WORKSPACE_FOLDER.test(entry.resolved);
+  return typeof entry.resolved === "string" && REGISTRY_TARBALL.test(entry.resolved) && typeof entry.integrity === "string" && INTEGRITY.test(entry.integrity);
+}
+
+const parseObject = (text) => {
+  if (text === null || text === undefined) return {};
+  try {
+    const value = JSON.parse(String(text).replace(/^\uFEFF/, ""));
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /**
- * How a pull request that changes extension `id` changes package-lock.json (base and head texts; null: no file)
- * beyond that extension's own libraries. The tools' packages (the root's devDependencies, with their platform builds),
- * other workspaces' packages, packages shared with them, the root entry and the file's own fields must stay as they
- * are; and a library of the extension may not have an install script or a command-line program.
+ * The lockfile locations a change to package.json files asks for: each owner (the root "" or a workspace folder) whose
+ * package.json differs, and everything reachable from each dependency whose spec differs. `manifests` holds the
+ * package.json texts by owner location, { base, head }.
  */
-export function lockfileProblems(baseText, headText, id) {
-  const parse = (text) => {
-    if (text === null || text === undefined) return {};
-    try {
-      const value = JSON.parse(String(text));
-      return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
-    } catch {
-      return undefined;
+function askedFor(packages, manifests) {
+  const owners = new Set([...Object.keys(manifests.base ?? {}), ...Object.keys(manifests.head ?? {})]);
+  const asked = [];
+  const starts = [];
+  for (const owner of owners) {
+    const before = parseObject(manifests.base?.[owner]) ?? {};
+    const after = parseObject(manifests.head?.[owner]) ?? {};
+    if (canonical(before) === canonical(after)) continue;
+    asked.push(owner);
+    for (const kind of DEPENDENCY_KINDS) {
+      for (const name of new Set([...Object.keys(before[kind] ?? {}), ...Object.keys(after[kind] ?? {})])) {
+        if (before[kind]?.[name] === after[kind]?.[name]) continue;
+        const found = resolveIn(packages, owner, name);
+        if (found !== undefined) starts.push(found);
+      }
     }
-  };
-  const base = parse(baseText);
-  const head = parse(headText);
+  }
+  return new Set([...asked, ...lockTree(packages, starts)]);
+}
+
+/**
+ * The problems with a pull request's package-lock.json change (base and head texts; null: no file). Always: the file's
+ * own fields stay, and every changed entry installs from the npm registry, with an integrity hash, or is a workspace.
+ * With `extension` (the one extension the pull request changes): only that extension's own libraries change (not the
+ * tools' packages with their platform builds, not another workspace's, not one shared with them, not an entry nothing
+ * needs), and none has an install script or a command-line program. Without: every change is one a package.json change
+ * asks for (`manifests`: package.json texts by owner location, { base, head }).
+ */
+export function lockfileProblems(baseText, headText, { extension, manifests = { base: {}, head: {} } } = {}) {
+  const base = parseObject(baseText);
+  const head = parseObject(headText);
   if (base === undefined || head === undefined) return ["package-lock.json: it is not valid JSON → fix: Run npm install and commit the lockfile it writes."];
-  const fix = `Change only the extension's own libraries (npm install <library> -w extensions/${id}), and leave the tools' packages as they are.`;
   const list = (items) => items.slice(0, 6).join(", ") + (items.length > 6 ? ` and ${items.length - 6} more` : "");
+  const shown = (location) => (location === "" ? "the root entry" : location);
   const problems = [];
 
   const fields = [...new Set([...Object.keys(base), ...Object.keys(head)])].filter((key) => key !== "packages" && canonical(base[key]) !== canonical(head[key]));
-  if (fields.length > 0) problems.push(`package-lock.json: it changes ${list(fields.map((key) => `"${key}"`))} → fix: ${fix}`);
+  if (fields.length > 0) problems.push(`package-lock.json: it changes ${list(fields.map((key) => `"${key}"`))} → fix: Leave the file's own fields as npm wrote them.`);
 
   const before = base.packages ?? {};
   const after = head.packages ?? {};
-  const mineBefore = ownLocations(before, id);
-  const mineAfter = ownLocations(after, id);
-  const outside = [];
-  const running = [];
-  for (const location of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
-    if (canonical(before[location]) === canonical(after[location])) continue;
-    const mine = (!Object.hasOwn(before, location) || mineBefore.has(location)) && (!Object.hasOwn(after, location) || mineAfter.has(location));
-    if (!mine) outside.push(location === "" ? "the root entry" : location);
-    else if (after[location]?.hasInstallScript === true || after[location]?.bin !== undefined) running.push(location);
+  const changed = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
+    .filter((location) => canonical(before[location]) !== canonical(after[location]));
+
+  const elsewhere = changed.filter((location) => Object.hasOwn(after, location) && !fromTheRegistry(location, after[location] ?? {}));
+  if (elsewhere.length > 0) {
+    problems.push(`package-lock.json: ${list(elsewhere)} ${elsewhere.length === 1 ? "does" : "do"} not come from the npm registry (an https://registry.npmjs.org/ tarball with its integrity hash) → fix: Use libraries published on npm, by version: no git, file, link or URL dependencies.`);
   }
-  if (outside.length > 0) problems.push(`package-lock.json: it changes ${list(outside)}, outside extensions/${id}'s own libraries → fix: ${fix}`);
-  if (running.length > 0) {
-    problems.push(`package-lock.json: ${list(running)} ${running.length === 1 ? "has" : "have"} an install script or a command-line program → fix: Use a plain JavaScript library: the build bundles it, and nothing of it should run when npm installs it.`);
+
+  if (extension !== undefined) {
+    const mineBefore = ownLocations(before, extension);
+    const mineAfter = ownLocations(after, extension);
+    const outside = [];
+    const running = [];
+    for (const location of changed) {
+      const mine = (!Object.hasOwn(before, location) || mineBefore.has(location)) && (!Object.hasOwn(after, location) || mineAfter.has(location));
+      if (!mine) outside.push(shown(location));
+      else if (after[location]?.hasInstallScript === true || after[location]?.bin !== undefined) running.push(location);
+    }
+    if (outside.length > 0) {
+      problems.push(`package-lock.json: it changes ${list(outside)}, outside extensions/${extension}'s own libraries → fix: Change only the extension's own libraries (npm install <library> -w extensions/${extension}), and leave the tools' packages as they are.`);
+    }
+    if (running.length > 0) {
+      problems.push(`package-lock.json: ${list(running)} ${running.length === 1 ? "has" : "have"} an install script or a command-line program → fix: Use a plain JavaScript library: the build bundles it, and nothing of it should run when npm installs it.`);
+    }
+    return problems;
+  }
+
+  const askedBefore = askedFor(before, manifests);
+  const askedAfter = askedFor(after, manifests);
+  const unasked = changed.filter((location) =>
+    !((!Object.hasOwn(before, location) || askedBefore.has(location)) && (!Object.hasOwn(after, location) || askedAfter.has(location))));
+  if (unasked.length > 0) {
+    problems.push(`package-lock.json: lockfile changes without a package.json change: ${list(unasked.map(shown))} → fix: Change the dependency in package.json and run npm install; never edit the lockfile by hand.`);
   }
   return problems;
 }
@@ -260,11 +358,11 @@ export function authorToMention(baseText, login, name) {
 /**
  * Runs every check for a pull request that changes `files`, in the repository at `root`. `exec(args)` runs
  * `npm <args>` there and returns its exit status; `readBase(file)` gives a file's text where the branch started (null
- * when it did not exist); `inputsOf(id)` gives the extension's bundled files (bundledInputs). Every check runs, so
- * one push shows every problem.
+ * when it did not exist); `inputsOf(id)` gives the extension's bundled files (bundledInputs); `tracked()` the files git
+ * tracks under extensions/ (undefined: use `files`). Every check runs, so one push shows every problem.
  * @returns {Promise<{ ok: boolean, results: Array<{ name: string, ok: boolean, problems: string[] }> }>}
  */
-export async function runChecks({ root, files, exec, readBase = () => null, inputsOf = (id) => bundledInputs(root, id) }) {
+export async function runChecks({ root, files, exec, readBase = () => null, inputsOf = (id) => bundledInputs(root, id), tracked = () => trackedFiles(root) }) {
   const results = [];
   const record = (name, problems) => results.push({ name, ok: problems.length === 0, problems });
   const command = (args, name, fix) => {
@@ -288,10 +386,36 @@ export async function runChecks({ root, files, exec, readBase = () => null, inpu
   });
   record("no install scripts or programs in extensions/*/package.json", packages);
 
-  if (scope.extensions.length === 1 && files.includes("package-lock.json")) {
-    const lockfile = path.join(root, "package-lock.json");
-    const head = fs.existsSync(lockfile) ? fs.readFileSync(lockfile, "utf8") : null;
-    record(`package-lock.json changes only extensions/${scope.extensions[0]}/'s libraries`, lockfileProblems(readBase("package-lock.json"), head, scope.extensions[0]));
+  const listed = tracked() ?? files;
+  const vendored = listed.filter((file) => /^extensions\/[^/]+\/(?:.*\/)?node_modules(?:\/|$)/.test(file));
+  record("no node_modules inside extensions/", vendored.length === 0 ? [] : [
+    `${vendored.slice(0, 5).join(", ")}${vendored.length > 5 ? ` and ${vendored.length - 5} more` : ""}: node_modules is committed, and the build and the checks would read it as the extension's own → fix: Remove it (git rm -r --cached <folder>/node_modules) and list the library in the extension's package.json.`,
+  ]);
+
+  // On every pull request that touches it: the macOS runner never installs the Linux packages, so only this sees them.
+  if (files.includes("package-lock.json")) {
+    const headText = (file) => (fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), "utf8") : null);
+    const baseLock = readBase("package-lock.json");
+    const headLock = headText("package-lock.json");
+    const owners = new Set([""]);
+    for (const text of [baseLock, headLock]) {
+      try {
+        for (const location of Object.keys(JSON.parse(text ?? "{}").packages ?? {})) if (isWorkspace(location)) owners.add(location);
+      } catch {
+        // lockfileProblems reports a lockfile that is not JSON.
+      }
+    }
+    const manifests = { base: {}, head: {} };
+    for (const owner of owners) {
+      const file = owner === "" ? "package.json" : `${owner}/package.json`;
+      manifests.base[owner] = readBase(file);
+      manifests.head[owner] = headText(file);
+    }
+    const extension = scope.extensions.length === 1 ? scope.extensions[0] : undefined;
+    record(extension === undefined
+      ? "package-lock.json changes only what a package.json change asks for, all from the npm registry"
+      : `package-lock.json changes only extensions/${extension}/'s libraries, all from the npm registry`,
+    lockfileProblems(baseLock, headLock, { extension, manifests }));
   }
 
   for (const id of scope.extensions) {
