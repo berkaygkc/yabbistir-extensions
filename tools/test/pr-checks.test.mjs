@@ -6,8 +6,8 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  MAX_INDEX_BYTES, MAX_PACKAGE_BYTES, authorToMention, changedFiles, checkScope, permissionChanges, readabilityProblems,
-  runChecks, sizeProblems,
+  MAX_INDEX_BYTES, MAX_PACKAGE_BYTES, authorToMention, changedFiles, checkScope, lockfileProblems, packageProblems, permissionChanges,
+  readabilityProblems, runChecks, sizeProblems,
 } from "../lib/pr-checks.mjs";
 import { repo } from "./helpers.mjs";
 
@@ -233,14 +233,101 @@ describe("the author mention", () => {
   });
 });
 
+describe("extension package.json", () => {
+  test("dependenciesArePlainData", () => {
+    assert.deepEqual(packageProblems(ID, JSON.stringify({ name: ID, private: true, type: "module", dependencies: { "left-pad": "1.3.0" } })), []);
+  });
+
+  test("scriptsProgramsAndNativeBuildsAreRefused", () => {
+    for (const field of ["bin", "scripts", "directories", "gypfile"]) {
+      const problems = packageProblems(ID, JSON.stringify({ name: ID, [field]: field === "gypfile" ? true : { x: "y" } }));
+      assert.equal(problems.length, 1, field);
+      assert.ok(problems[0].startsWith(`extensions/${ID}/package.json: `), problems[0]);
+      assert.match(problems[0], new RegExp(`"${field}"`));
+    }
+    assert.match(packageProblems(ID, "{ nope")[0], /not valid JSON/);
+  });
+});
+
+describe("the lockfile beside an extension", () => {
+  const real = JSON.parse(fs.readFileSync(path.join(repo, "package-lock.json"), "utf8"));
+  const base = JSON.stringify(real, null, 2);
+  /** The real lockfile, plus extensions/<ID> with left-pad (which needs tiny); `change` edits it further. */
+  const lockfile = (change = () => {}, start = real) => {
+    const lock = structuredClone(start);
+    lock.packages[`extensions/${ID}`] = { name: ID, version: "1.0.0", dependencies: { "left-pad": "1.3.0" } };
+    lock.packages[`node_modules/${ID}`] = { resolved: `extensions/${ID}`, link: true };
+    lock.packages["node_modules/left-pad"] = { version: "1.3.0", resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
+      integrity: "sha512-left", dependencies: { tiny: "^1.0.0" } };
+    lock.packages["node_modules/tiny"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/tiny/-/tiny-1.0.0.tgz", integrity: "sha512-tiny" };
+    change(lock);
+    return JSON.stringify(lock, null, 2);
+  };
+
+  test("theExtensionsOwnLibrariesMayChange", () => {
+    assert.deepEqual(lockfileProblems(base, lockfile(), ID), []);
+    assert.deepEqual(lockfileProblems(lockfile(), base, ID), [], "and go away");
+    const updated = lockfile((lock) => { lock.packages["node_modules/tiny"].version = "1.0.1"; });
+    assert.deepEqual(lockfileProblems(lockfile(), updated, ID), []);
+  });
+
+  test("theToolsPackagesMayNotChange", () => {
+    const swapped = lockfile((lock) => { lock.packages["node_modules/@esbuild/linux-x64"].integrity = "sha512-swapped"; });
+    const problems = lockfileProblems(base, swapped, ID);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0], /node_modules\/@esbuild\/linux-x64/);
+    assert.match(problems[0], /→ fix: /);
+  });
+
+  test("aLibrarySharedWithTheToolsMayNotChange", () => {
+    const sharing = (change) => lockfile((lock) => { lock.packages[`extensions/${ID}`].dependencies.fflate = "0.8.3"; change(lock); });
+    assert.deepEqual(lockfileProblems(base, sharing(() => {}), ID), [], "using it as it is is fine");
+    const changed = sharing((lock) => { lock.packages["node_modules/fflate"].resolved = "https://example.com/fflate.tgz"; });
+    assert.match(lockfileProblems(sharing(() => {}), changed, ID)[0], /node_modules\/fflate/, "even when the extension already used it");
+  });
+
+  test("theRootEntryAndTheFileItselfMayNotChange", () => {
+    assert.match(lockfileProblems(base, lockfile((lock) => { lock.packages[""].devDependencies.esbuild = "0.0.1"; }), ID)[0], /the root entry/);
+    assert.match(lockfileProblems(base, lockfile((lock) => { lock.lockfileVersion = 2; }), ID)[0], /lockfileVersion/);
+    assert.match(lockfileProblems(base, "{ nope", ID)[0], /not valid JSON/);
+  });
+
+  test("anEntryNothingNeedsMayNotBeAdded", () => {
+    const orphan = lockfile((lock) => { lock.packages["node_modules/stray"] = { version: "1.0.0", resolved: "https://example.com/stray.tgz" }; });
+    assert.match(lockfileProblems(base, orphan, ID)[0], /node_modules\/stray/);
+  });
+
+  test("anotherExtensionsLibrariesMayNotChange", () => {
+    const withOther = structuredClone(real);
+    withOther.packages[`extensions/${OTHER}`] = { name: OTHER, version: "1.0.0", dependencies: { other: "1.0.0" } };
+    withOther.packages["node_modules/other"] = { version: "1.0.0", resolved: "https://example.com/other.tgz", integrity: "sha512-o" };
+    // The extension uses the same library, so only "it is another workspace's too" keeps it out.
+    const uses = (lock) => { lock.packages[`extensions/${ID}`].dependencies.other = "1.0.0"; };
+    const changed = lockfile((lock) => { uses(lock); lock.packages["node_modules/other"].integrity = "sha512-changed"; }, withOther);
+    assert.match(lockfileProblems(lockfile(uses, withOther), changed, ID)[0], /node_modules\/other/);
+  });
+
+  test("aLibraryWithAnInstallScriptOrAProgramIsRefused", () => {
+    for (const field of [{ hasInstallScript: true }, { bin: { tiny: "cli.js" } }]) {
+      const problems = lockfileProblems(base, lockfile((lock) => { Object.assign(lock.packages["node_modules/tiny"], field); }), ID);
+      assert.equal(problems.length, 1, JSON.stringify(field));
+      assert.match(problems[0], /node_modules\/tiny.*install script or a command-line program/);
+    }
+  });
+});
+
 describe("the pull request run", () => {
   /** A repository with extensions/<ID>/src/index.ts; `exec` stands in for npm and records each command. */
-  function setUp({ source = "export const actions = {};\n", packageBytes = 4096, indexBytes = 2048, failing = [] } = {}) {
+  function setUp({ source = "export const actions = {};\n", packageBytes = 4096, indexBytes = 2048, failing = [], extra = {} } = {}) {
     const root = scratch();
     const folder = path.join(root, "extensions", ID);
     fs.mkdirSync(path.join(folder, "src"), { recursive: true });
     fs.writeFileSync(path.join(folder, "src", "index.ts"), source);
     fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify({ id: ID, version: "1.2.0" }));
+    for (const [file, text] of Object.entries(extra)) {
+      fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+      fs.writeFileSync(path.join(root, file), text);
+    }
     const calls = [];
     const exec = (args) => {
       const command = args.join(" ");
@@ -259,9 +346,9 @@ describe("the pull request run", () => {
   }
   const failed = (results) => results.filter((result) => !result.ok).map((result) => result.name);
 
-  test("anExtensionPullRequestRunsEveryCheck", () => {
+  test("anExtensionPullRequestRunsEveryCheck", async () => {
     const { root, calls, exec } = setUp();
-    const { ok, results } = runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
     assert.equal(ok, true, JSON.stringify(results, null, 2));
     assert.deepEqual(calls.map((call) => call.replace(/--out \S+$/, "--out <dir>")), [
       `run build -- ${ID}`,
@@ -278,48 +365,93 @@ describe("the pull request run", () => {
     }
   });
 
-  test("staleDocsFailTheRun", () => {
+  test("staleDocsFailTheRun", async () => {
     const { root, exec } = setUp({ failing: ["run docs"] });
-    const { ok, results } = runChecks({ root, files: ["docs/publishing.md"], exec });
+    const { ok, results } = await runChecks({ root, files: ["docs/publishing.md"], exec });
     assert.equal(ok, false);
     assert.deepEqual(failed(results), ["npm run docs -- --check"]);
     const docs = results.find((result) => result.name === "npm run docs -- --check");
     assert.match(docs.problems.join("\n"), /npm run docs.*commit/);
   });
 
-  test("aPullRequestWithoutAnExtensionRunsTheRepositoryChecks", () => {
+  test("aPullRequestWithoutAnExtensionRunsTheRepositoryChecks", async () => {
     const { root, calls, exec } = setUp();
-    assert.equal(runChecks({ root, files: ["tools/build.mjs"], exec }).ok, true);
+    assert.equal((await runChecks({ root, files: ["tools/build.mjs"], exec })).ok, true);
     assert.deepEqual(calls.map((call) => call.split(" -- ")[0]), ["run typecheck", "run docs", "run test:tools", "run catalog"]);
   });
 
-  test("anOversizedPackageFails", () => {
+  test("anOversizedPackageFails", async () => {
     const { root, exec } = setUp({ packageBytes: MAX_PACKAGE_BYTES + 1 });
-    const { ok, results } = runChecks({ root, files: [`extensions/${ID}/manifest.json`], exec });
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/manifest.json`], exec });
     assert.equal(ok, false);
     assert.equal(failed(results).length, 1);
     assert.match(failed(results)[0], /size/);
   });
 
-  test("minifiedSourceFailsAndTheOtherChecksStillRun", () => {
+  test("minifiedSourceFailsAndTheOtherChecksStillRun", async () => {
     const { root, calls, exec } = setUp({ source: `export const actions={${"a:1,".repeat(300)}};\n` });
-    const { ok, results } = runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
     assert.equal(ok, false);
     assert.equal(failed(results).length, 1);
     assert.match(failed(results)[0], /readable source/);
     assert.ok(calls.includes(`run build -- ${ID}`));
   });
 
-  test("aFailingCommandFailsItsCheck", () => {
+  test("aFailingCommandFailsItsCheck", async () => {
     const { root, exec } = setUp({ failing: [`test -- ${ID}`, "run test:tools"] });
-    const { ok, results } = runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
     assert.equal(ok, false);
     assert.deepEqual(failed(results), [`npm test -- ${ID}`, "npm run test:tools"]);
   });
 
-  test("twoFoldersFailAndARemovedFolderIsNotBuilt", () => {
+  test("obfuscatedCodeImportedFromOutsideSrcFails", async () => {
+    const dense = `export const y = "${"q".repeat(600)}";\n`;
+    const { root, exec } = setUp({
+      source: "import { x } from \"../vendor/x.ts\";\nimport { y } from \"lib\";\nexport const actions = { a: { run: () => ({ text: x + y }) } };\n",
+      extra: {
+        [`extensions/${ID}/vendor/x.ts`]: `export const x = "${"z".repeat(600)}";\n`,
+        // Libraries come from npm, and the review reads them; only the extension's own files are measured.
+        [`extensions/${ID}/node_modules/lib/package.json`]: JSON.stringify({ name: "lib", main: "index.js" }),
+        [`extensions/${ID}/node_modules/lib/index.js`]: dense,
+        // Not bundled, so not measured: test fixtures may be long.
+        [`extensions/${ID}/tests/fixture.ts`]: dense,
+      },
+    });
+    const { results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec });
+    const readable = results.find((result) => result.name.startsWith("readable source"));
+    assert.equal(readable.ok, false);
+    assert.equal(readable.problems.length, 1, readable.problems.join("\n"));
+    assert.ok(readable.problems[0].startsWith(`extensions/${ID}/vendor/x.ts:1: `), readable.problems[0]);
+  });
+
+  test("anExtensionPackageJsonWithScriptsFails", async () => {
+    const plain = setUp({ extra: { [`extensions/${ID}/package.json`]: JSON.stringify({ name: ID, private: true, dependencies: { a: "1.0.0" } }) } });
+    assert.equal((await runChecks({ root: plain.root, files: [`extensions/${ID}/package.json`], exec: plain.exec })).ok, true);
+    const scripted = setUp({ extra: { [`extensions/${OTHER}/package.json`]: JSON.stringify({ name: OTHER, scripts: { postinstall: "node x.js" } }) } });
+    const { ok, results } = await runChecks({ root: scripted.root, files: [`extensions/${ID}/src/index.ts`], exec: scripted.exec });
+    assert.equal(ok, false);
+    assert.deepEqual(failed(results), ["no install scripts or programs in extensions/*/package.json"], "every extension's, not only the changed one");
+    assert.match(results.find((result) => !result.ok).problems[0], new RegExp(`extensions/${OTHER.replaceAll(".", "\\.")}/package\\.json: .*scripts`));
+  });
+
+  test("theLockfileIsCheckedWhenItChangesBesideAnExtension", async () => {
+    const real = fs.readFileSync(path.join(repo, "package-lock.json"), "utf8");
+    const swapped = JSON.parse(real);
+    swapped.packages["node_modules/@esbuild/linux-x64"].integrity = "sha512-swapped";
+    const { root, calls, exec } = setUp({ extra: { "package-lock.json": JSON.stringify(swapped, null, 2) } });
+    const readBase = (file) => (file === "package-lock.json" ? real : null);
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`, "package-lock.json"], exec, readBase });
+    assert.equal(ok, false);
+    assert.equal(failed(results).length, 1);
+    assert.match(results.find((result) => !result.ok).problems[0], /node_modules\/@esbuild\/linux-x64/);
+    assert.ok(calls.includes(`run build -- ${ID}`), "the other checks still run");
+    // A tools pull request (no extension) may change the lockfile.
+    assert.equal((await runChecks({ root, files: ["package-lock.json", "package.json"], exec, readBase })).ok, true);
+  });
+
+  test("twoFoldersFailAndARemovedFolderIsNotBuilt", async () => {
     const { root, calls, exec } = setUp();
-    const { ok, results } = runChecks({ root, files: [`extensions/${ID}/src/index.ts`, `extensions/${OTHER}/manifest.json`], exec });
+    const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`, `extensions/${OTHER}/manifest.json`], exec });
     assert.equal(ok, false);
     assert.match(failed(results)[0], /one extension folder/);
     assert.ok(!calls.some((call) => call.includes(OTHER)), "the removed extension has nothing to build");

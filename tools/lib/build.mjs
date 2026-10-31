@@ -42,6 +42,48 @@ function describeFailure(error) {
   });
 }
 
+/** How every extension is bundled: one ES2022 file, nothing written by esbuild itself. */
+function bundleOptions(source, root) {
+  return {
+    absWorkingDir: root,
+    entryPoints: [source],
+    outfile: "index.js",
+    write: false,
+    bundle: true,
+    format: "cjs",
+    platform: "neutral",
+    target: "es2022",
+    minify: false,
+    legalComments: "none",
+    logLevel: "silent",
+    mainFields: ["module", "main"],
+    conditions: ["module"],
+    define: Object.fromEntries(NODE_GLOBALS.map((name) => [name, `${SENTINEL}${name}`])),
+    plugins: [noNodeBuiltins],
+  };
+}
+
+/**
+ * The files of extensions/<id>/ that the build bundles (src/index.ts and everything it imports, wherever in the
+ * folder it is), node_modules aside, as paths relative to `root`, sorted.
+ * @returns {Promise<{ ok: true, inputs: string[] } | { ok: false, messages: string[] }>}
+ */
+export async function bundledInputs(root, id) {
+  const source = path.join(root, "extensions", id, "src");
+  const entry = ["index.ts", "index.js"].map((name) => path.join(source, name)).find((file) => fs.existsSync(file));
+  if (!entry) return { ok: false, messages: [`extensions/${id}/src/index.ts: it is missing`] };
+  let result;
+  try {
+    result = await build({ ...bundleOptions(entry, root), metafile: true });
+  } catch (error) {
+    return { ok: false, messages: describeFailure(error) };
+  }
+  const own = `extensions/${id}/`;
+  const inputs = Object.keys(result.metafile.inputs).map((file) => file.split(path.sep).join("/"))
+    .filter((file) => file.startsWith(own) && !file.split("/").includes("node_modules"));
+  return { ok: true, inputs: inputs.sort() };
+}
+
 /**
  * Compiles `source` (src/index.ts) to `outfile`. Node's globals are replaced by a marker while compiling, and a marker
  * left in the output means the extension used one it did not define itself (a local named `process` is untouched).
@@ -50,23 +92,7 @@ function describeFailure(error) {
 export async function compile(source, outfile, root = path.dirname(source)) {
   let result;
   try {
-    result = await build({
-      absWorkingDir: root,
-      entryPoints: [source],
-      outfile: "index.js",
-      write: false,
-      bundle: true,
-      format: "cjs",
-      platform: "neutral",
-      target: "es2022",
-      minify: false,
-      legalComments: "none",
-      logLevel: "silent",
-      mainFields: ["module", "main"],
-      conditions: ["module"],
-      define: Object.fromEntries(NODE_GLOBALS.map((name) => [name, `${SENTINEL}${name}`])),
-      plugins: [noNodeBuiltins],
-    });
+    result = await build(bundleOptions(source, root));
   } catch (error) {
     return { ok: false, messages: describeFailure(error) };
   }

@@ -3927,7 +3927,8 @@ Each pull request runs, for the extension it changes:
 - `npm run build`: Node modules and globals are caught here ([why](errors.md#node-builtins)).
 - `npm test` for the extension, and the tools' own tests.
 - Size: the `.yabext` at most 5 MB (5,000,000 bytes, the most the app downloads), `index.js` at most 1 MB.
-- Readable source: a line in `src/` over 500 characters, or a file in `src/` whose lines average over 200 (blank lines aside), is taken for minified or obfuscated code and refused. Write the source by hand, and let the build bundle libraries.
+- Readable source: a line over 500 characters, or a file whose lines average over 200 (blank lines aside), is taken for minified or obfuscated code and refused. This covers every file in `src/` and every file of the extension's folder that the build bundles, wherever it sits (`node_modules` aside). Write the source by hand, and let the build bundle libraries.
+- Libraries only: an extension's `package.json` has no `bin`, `scripts`, `directories` or `gypfile`, and the folder has no `binding.gyp`, since npm would run or link them when it installs. A `package-lock.json` change may touch only the extension's own libraries: not the tools' packages or their platform builds, not another extension's, and not one shared with them. A library with an install script or a command-line program is refused.
 - The license, a complete English locale, and regular files only: no symbolic links anywhere in the folder (from the validator).
 - `npm run docs` leaves no difference: a pull request that touches the docs, or what they are made from, commits what `npm run docs` writes.
 - `npm run catalog` builds the store's catalog with the change, so a merge never stops publishing.
