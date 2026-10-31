@@ -378,6 +378,8 @@ describe("the lockfile beside an extension", () => {
 
   test("theRootEntryAndTheFileItselfMayNotChange", () => {
     assert.match(lockfileProblems(base, lockfile((lock) => { lock.packages[""].devDependencies.esbuild = "0.0.1"; }), { extension: ID })[0], /the root entry/);
+    const aliased = lockfileProblems(base, lockfile((lock) => { lock.packages[""].devDependencies.fflate = "npm:q@0.8.3"; }), { extension: ID });
+    assert.ok(aliased.some((problem) => problem.includes("not from the npm registry as npm writes it: the root entry (it asks for npm: aliases")), aliased.join("\n"));
     assert.match(lockfileProblems(base, lockfile((lock) => { lock.lockfileVersion = 2; }), { extension: ID })[0], /lockfileVersion/);
     assert.match(lockfileProblems(base, "{ nope", { extension: ID })[0], /not valid JSON/);
   });

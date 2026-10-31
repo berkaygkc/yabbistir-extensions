@@ -229,7 +229,7 @@ export function lockfileProblems(baseText, headText, { extension, manifests = { 
   const unfit = entryProblems(after);
   const elsewhere = changed.filter((location) => unfit.has(location));
   if (elsewhere.length > 0) {
-    problems.push(`package-lock.json: not from the npm registry as npm writes it: ${list(elsewhere.map((location) => `${location} (it ${unfit.get(location)})`))} → fix: Use libraries published on npm, by version: no git, file, link or URL dependencies, and never edit the lockfile by hand.`);
+    problems.push(`package-lock.json: not from the npm registry as npm writes it: ${list(elsewhere.map((location) => `${shown(location)} (it ${unfit.get(location)})`))} → fix: Use libraries published on npm, by version: no git, file, link or URL dependencies, and never edit the lockfile by hand.`);
   }
 
   if (extension !== undefined) {
