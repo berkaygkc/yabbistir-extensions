@@ -1,0 +1,131 @@
+# Labels and comments on pull requests. pull_request_target runs this file as it is on main, with a token that can
+# write labels and comments, so it never checks out or runs the pull request's code: it reads the changed files and
+# both sides' manifest.json through the API only.
+#   permissions-changed   added when a manifest's permissions, network domains or tools (with their install
+#                         commands) differ from main's, a new extension's included
+#   a comment             names the author (from main's manifest) of an extension that someone else changes
+name: Pull request labels
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    name: Label and mention
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            // permissionChanges and authorToMention are copies of the functions in tools/lib/pr-checks.mjs, and its test keeps
+            // them identical. The rest only reads through the API.
+            function permissionChanges(baseText, headText) {
+              const read = (text) => {
+                if (text === null || text === undefined) return {};
+                try {
+                  const value = JSON.parse(String(text).replace(/^\uFEFF/, ""));
+                  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+                } catch {
+                  return undefined;
+                }
+              };
+              const base = read(baseText);
+              const head = read(headText);
+              if (base === undefined || head === undefined) return ["manifest.json"];
+              const list = (value) => (Array.isArray(value) ? value : []);
+              const object = (value) => (value !== null && typeof value === "object" && !Array.isArray(value) ? value : {});
+              const text = (value) => (typeof value === "string" ? value : JSON.stringify(value) ?? "");
+              const set = (values) => JSON.stringify([...new Set(values)].sort());
+              const fields = {
+                permissions: (manifest) => set(list(manifest.permissions).map(text)),
+                network: (manifest) => set(list(object(manifest.network).domains).map((domain) => text(domain).toLowerCase())),
+                requires: (manifest) => set(list(object(manifest.requires).tools).map((tool) => JSON.stringify([text(object(tool).name), text(object(tool).install)]))),
+              };
+              return Object.keys(fields).filter((field) => fields[field](base) !== fields[field](head));
+            }
+
+            function authorToMention(baseText, login, name) {
+              let author;
+              try {
+                author = JSON.parse(String(baseText ?? "null").replace(/^\uFEFF/, ""))?.author;
+              } catch {
+                return null;
+              }
+              if (typeof author !== "string" || author.trim() === "") return null;
+              const same = (a, b) => typeof b === "string" && a.trim().replace(/^@/, "").localeCompare(b.trim(), "en", { sensitivity: "base" }) === 0;
+              return same(author, login) || same(author, name) ? null : author.trim();
+            }
+
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+
+            /** The text of extensions/<id>/manifest.json at commit ref, or null when there is none. */
+            async function manifestAt(id, ref) {
+              try {
+                const { data } = await github.rest.repos.getContent({ owner, repo, path: `extensions/${id}/manifest.json`, ref });
+                return Array.isArray(data) || data.type !== "file" ? null : Buffer.from(data.content, data.encoding).toString("utf8");
+              } catch (error) {
+                if (error.status === 404) return null;
+                throw error;
+              }
+            }
+
+            /** @login for an author who has committed to the extension under that login; the plain name otherwise. */
+            async function named(id, author) {
+              const login = author.replace(/^@/, "");
+              if (!/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(login)) return author;
+              try {
+                const { data } = await github.rest.repos.listCommits({ owner, repo, sha: pr.base.sha, path: `extensions/${id}`, author: login, per_page: 1 });
+                return data.length > 0 ? `@${login}` : author;
+              } catch {
+                return author;
+              }
+            }
+
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: pr.number, per_page: 100 });
+            const ids = new Set();
+            for (const file of files) {
+              for (const name of [file.filename, file.previous_filename]) {
+                const match = /^extensions\/([^/]+)\/./.exec(name ?? "");
+                if (match) ids.add(match[1]);
+              }
+            }
+
+            let profileName = null;
+            try {
+              profileName = (await github.rest.users.getByUsername({ username: pr.user.login })).data.name ?? null;
+            } catch {
+              profileName = null;
+            }
+
+            const changed = [];
+            const authors = [];
+            for (const id of [...ids].sort()) {
+              const base = await manifestAt(id, pr.base.sha);
+              const head = await manifestAt(id, pr.head.sha);
+              const fields = permissionChanges(base, head);
+              if (fields.length > 0) changed.push(`${id} (${fields.join(", ")})`);
+              const author = authorToMention(base, pr.user.login, profileName);
+              if (author !== null) authors.push(`- \`${id}\` by ${await named(id, author)}`);
+            }
+
+            if (changed.length > 0) {
+              core.info(`Reviewed fields change in ${changed.join(", ")}.`);
+              await github.rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ["permissions-changed"] });
+            }
+
+            if (authors.length > 0) {
+              const marker = "<!-- yabbistir: author mention -->";
+              const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 });
+              if (!comments.some((comment) => comment.body?.includes(marker))) {
+                const body = [marker, "This pull request changes an extension someone else wrote:", "", ...authors, "",
+                  "As its author, you are welcome to weigh in here. The maintainer decides."].join("\n");
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+              }
+            }

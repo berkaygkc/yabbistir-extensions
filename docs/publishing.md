@@ -15,9 +15,9 @@ Extensions reach people through the store: this repository, a signed catalog bui
 
 ## What a pull request may change
 
-- **One extension folder per pull request:** `extensions/<id>/` and nothing else. A pull request that changes two extension folders fails the checks.
+- **One extension folder per pull request:** `extensions/<id>/` and nothing else, apart from the root `package-lock.json` when the extension adds a library, and the files `npm run docs` regenerates (the manifest reference quotes a real extension's manifest). A pull request that changes two extension folders, or other files next to its folder, fails the checks.
 - Changes to the tools, templates, docs or `packages/api` go in a pull request of their own, without an extension.
-- **Someone else's extension:** fixes are welcome. The extension's `author` is mentioned on the pull request and can weigh in; the maintainer decides.
+- **Someone else's extension:** fixes are welcome. A comment on the pull request names the extension's `author`, and mentions them when `author` is the GitHub login they committed the extension with, so they can weigh in; the maintainer decides.
 - **Every change raises `version`** in manifest.json and adds a `## <version>` section to CHANGELOG.md, newest first.
 
 ## The checks
@@ -27,12 +27,15 @@ Each pull request runs, for the extension it changes:
 - `npm run validate` and `npm run typecheck`.
 - `npm run build`: Node modules and globals are caught here ([why](errors.md#node-builtins)).
 - `npm test` for the extension, and the tools' own tests.
-- Size: the `.yabext` at most 5 MB, `index.js` at most 1 MB.
-- Readable source: a line in `src/` over 500 characters, or an average line over 200, is taken for minified or obfuscated code and refused. Write the source by hand, and let the build bundle libraries.
+- Size: the `.yabext` at most 5 MB (5,000,000 bytes, the most the app downloads), `index.js` at most 1 MB.
+- Readable source: a line in `src/` over 500 characters, or a file in `src/` whose lines average over 200 (blank lines aside), is taken for minified or obfuscated code and refused. Write the source by hand, and let the build bundle libraries.
 - The license and a complete English locale (from the validator).
-- `npm run docs` leaves no difference, for pull requests that touch the docs or what they are made from.
+- `npm run docs` leaves no difference: a pull request that touches the docs, or what they are made from, commits what `npm run docs` writes.
+- `npm run catalog` builds the store's catalog with the change, so a merge never stops publishing.
 
-A pull request that changes `permissions`, `network` or `requires` gets the `permissions-changed` label, so the review looks at it closely. Workflows that run on pull requests never see the signing key.
+Every check runs even when one fails, and the log ends with a list of them all. `npm run pr-checks` runs the same checks on your machine, for the commits since `origin/main` (add `-- --base <ref>` for another starting point).
+
+A pull request that changes `permissions`, `network` or `requires` (a tool's install command included), or adds an extension that asks for any of them, gets the `permissions-changed` label, so the review looks at it closely. The workflow that labels reads the pull request through GitHub's API and never runs its code, and workflows that run on pull requests never see the signing key.
 
 ## Updates
 
@@ -48,8 +51,9 @@ The app reads only static files, with no account, token or tracking:
 | Its signature | `https://berkaygkc.github.io/yabbistir-extensions/v1/catalog.json.sig`: the base64 of a 64-byte Ed25519 signature over the catalog's exact bytes |
 | Packages | `https://berkaygkc.github.io/yabbistir-extensions/v1/packages/<id>-<version>.yabext` |
 | File icons | `https://berkaygkc.github.io/yabbistir-extensions/v1/icons/<id>.png`, for extensions with `icon.png` |
+| Schemas | `https://berkaygkc.github.io/yabbistir-extensions/v1/catalog.schema.json` ([source](../schema/catalog.schema.json)) and `…/v1/manifest.schema.json` |
 
-Each catalog entry has the extension's id, version, `apiVersion` and `minAppVersion`, its name and description in every language it ships, author, categories, icon, permissions, network hosts and tools, and the package's SHA-256, size and date. The app accepts a catalog only if its signature verifies with one of the keys built into the app, and installs a package only if its SHA-256 matches the catalog. An extension the app is too old for is listed but cannot be installed.
+Each catalog entry has the extension's id, version, `apiVersion` and `minAppVersion`, its name and description in every language it ships, author, categories, icon, permissions, network hosts and tools, the package's SHA-256 and size, and the time of the last commit that changed the extension's folder. The same commit always gives the same catalog, byte for byte; `npm run catalog -- --out site/v1` writes it locally, unsigned. The app accepts a catalog only if its signature verifies with one of the keys built into the app, and installs a package only if its SHA-256 matches the catalog. An extension the app is too old for is listed but cannot be installed.
 
 ## The .yabext package
 

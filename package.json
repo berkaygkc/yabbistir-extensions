@@ -19,7 +19,9 @@
     "test": "node tools/test.mjs",
     "test:tools": "node --test \"tools/test/*.test.mjs\" \"packages/api/test/*.test.mjs\"",
     "typecheck": "tsc --noEmit",
-    "docs": "node tools/docs.mjs"
+    "docs": "node tools/docs.mjs",
+    "catalog": "node tools/catalog.mjs",
+    "pr-checks": "node tools/pr-checks.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
