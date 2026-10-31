@@ -35,7 +35,7 @@ Each pull request runs, for the extension it changes:
 - `npm run docs` leaves no difference: a pull request that touches the docs, or what they are made from, commits what `npm run docs` writes.
 - `npm run catalog` builds the store's catalog with the change, so a merge never stops publishing.
 
-Every check runs even when one fails, and the log ends with a list of them all. `npm run pr-checks` runs the same checks on your machine, for the commits since `origin/main` (add `-- --base <ref>` for another starting point).
+The checks run on macOS with Node 24 (npm 11), like the publish build. Every check runs even when one fails, and the log ends with a list of them all. `npm run pr-checks` runs the same checks on your machine, for the commits since `origin/main` (add `-- --base <ref>` for another starting point).
 
 A pull request that changes `permissions`, `network` or `requires` (a tool's install command included), or adds an extension that asks for any of them, gets the `permissions-changed` label, so the review looks at it closely; so does one whose manifest the labelling cannot read. The workflow that labels reads the pull request through GitHub's API and never runs its code, and workflows that run on pull requests never see the signing key.
 
@@ -61,7 +61,7 @@ Each catalog entry has the extension's id, version, `apiVersion` and `minAppVers
 
 `.github/workflows/publish.yml` runs on every push to `main`, in three jobs:
 
-1. **Build**, with no secret: `npm ci --ignore-scripts`, then `node tools/catalog.mjs --out site/v1` writes the catalog, the packages and the icons, unsigned.
+1. **Build**, with no secret: `npm ci --ignore-scripts` on Node 24, then `node tools/catalog.mjs --out site/v1` writes the catalog, the packages and the icons, unsigned. Node 24 brings npm 11: npm 10 still runs a git dependency's `prepare` script under `--ignore-scripts`. esbuild needs no install script: its platform build comes as an optional dependency.
 2. **Sign**, in the `publish` environment, the only place the signing key exists. It checks out two paths, [`tools/sign.mjs`](../tools/sign.mjs) and `keys/catalog-public-keys.json`, and nothing else: no `package.json`, no `npm`, no `node_modules`. The signer uses Node's built-in modules only. Before it signs, it checks what it signs: format 1, every package under the `packages/` address above and next to the catalog with the size and SHA-256 the catalog states, every file icon under `icons/`, every readme on this repository. Once the repository holds the app's public keys in `keys/catalog-public-keys.json` (`{ "keys": ["<base64 of a raw 32-byte key>", …] }`), it also refuses a signature none of them verifies, so a wrong secret never publishes a catalog every app rejects.
 3. **Deploy** the signed `site/` to GitHub Pages, from the `github-pages` environment.
 

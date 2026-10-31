@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 24
       - run: npm ci --ignore-scripts
       # node itself, not npm run, which would put node_modules/.bin first on PATH.
       - run: node tools/catalog.mjs --out site/v1

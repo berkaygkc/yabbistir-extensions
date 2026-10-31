@@ -718,6 +718,7 @@ describe("the workflows", () => {
     assert.match(text, /^permissions:\n {2}contents: read\n(?! )/m);
     assert.match(text, /fetch-depth: 0/);
     assert.match(text, /node tools\/pr-checks\.mjs/);
+    assert.match(text, /node-version: 24\n/, "npm 11: npm 10 runs a git dependency's prepare even with --ignore-scripts");
   });
 
   /** A workflow's jobs, by name: the lines of each job's block, without comment lines. */
@@ -747,6 +748,7 @@ describe("the workflows", () => {
     assert.deepEqual([...sign.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]), ["node tools/sign.mjs site/v1/catalog.json"]);
     assert.doesNotMatch(build, /environment:|secrets|pages: write|id-token/);
     assert.match(build, /run: npm ci --ignore-scripts\n/);
+    assert.match(build, /node-version: 24\n/, "npm 11, which keeps --ignore-scripts for git dependencies too");
     assert.match(build, /run: node tools\/catalog\.mjs --out site\/v1\n/, "not npm run, which puts node_modules/.bin first on PATH");
     assert.doesNotMatch(build, /npm run|cache:/);
     assert.match(deploy, /needs: sign/);
