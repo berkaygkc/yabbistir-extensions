@@ -55,3 +55,4 @@ Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says; it also su
 ## License
 
 MIT, for the tools and the docs. Each extension states its own license in its manifest.
+
