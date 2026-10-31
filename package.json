@@ -18,7 +18,8 @@
     "dev": "node tools/dev.mjs",
     "test": "node tools/test.mjs",
     "test:tools": "node --test \"tools/test/*.test.mjs\" \"packages/api/test/*.test.mjs\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs": "node tools/docs.mjs"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
