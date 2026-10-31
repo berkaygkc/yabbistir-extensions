@@ -5,6 +5,10 @@
 // issue, `extensions/<id>/manifest.json: <field>: <message> (expected …) → fix: …`, and exits with 1 when there is an
 // error; warnings alone exit with 0.
 //
+// When dist/<id>/ holds a build newer than everything the build reads from extensions/<id>/ (all but tests/), that build
+// is checked instead, index.js included, and its issues are reported at the source files they come from. Otherwise the
+// source folder is checked, with a note that index.js needs a build to be checked too.
+//
 //   --app          only the app's rules (what the app itself would refuse), without the store's
 //   --root <dir>   the repository whose extensions/ to read (default: this repository)
 
@@ -13,6 +17,33 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { formatIssue, validateExtension } from "./lib/validate.mjs";
+
+/** The newest modification time among the files and folders the build reads from `folder`: everything but tests/. */
+function newestSource(folder) {
+  let newest = 0;
+  const walk = (directory, top) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || entry.name === "node_modules" || (top && entry.name === "tests")) continue;
+      const full = path.join(directory, entry.name);
+      newest = Math.max(newest, fs.statSync(full).mtimeMs);
+      if (entry.isDirectory()) walk(full, false);
+    }
+  };
+  walk(folder, true);
+  return newest;
+}
+
+/** dist/<id>/ when it holds a build of extensions/<id>/ that is newer than its sources; undefined otherwise. */
+function freshBuild(root, id, folder) {
+  const built = path.join(root, "dist", id);
+  let compiled;
+  try {
+    compiled = fs.statSync(path.join(built, "index.js")).mtimeMs;
+  } catch {
+    return undefined;
+  }
+  return compiled > newestSource(folder) ? built : undefined;
+}
 
 function main(argv) {
   let root = fileURLToPath(new URL("..", import.meta.url));
@@ -50,14 +81,20 @@ function main(argv) {
       errors++;
       continue;
     }
-    const { issues } = validateExtension(folder, { store, relativeTo: root });
-    for (const issue of issues) console.log(formatIssue(issue));
+    const built = freshBuild(root, id, folder);
+    const { issues } = validateExtension(built ?? folder, { store, relativeTo: root });
+    // The build's files are copies: an issue is fixed in the source, so it is named there.
+    const builtPrefix = `${path.relative(root, built ?? folder)}${path.sep}`;
+    for (const issue of issues) {
+      if (built && issue.path.startsWith(builtPrefix)) issue.path = path.join(shown, issue.path.slice(builtPrefix.length));
+      console.log(formatIssue(issue));
+    }
     const own = issues.filter((issue) => issue.level === "error").length;
     errors += own;
     warnings += issues.length - own;
-    if (issues.length === 0) console.log(`${shown}: ok`);
-    if (store && !fs.existsSync(path.join(folder, "index.js"))) {
-      console.log(`${shown}: note: it is not built yet, so index.js was not checked → fix: Run npm run build -- ${id}, which builds it and checks the result.`);
+    if (issues.length === 0) console.log(built ? `${shown}: ok, with its build in ${path.relative(root, built)}` : `${shown}: ok`);
+    if (store && !built && !fs.existsSync(path.join(folder, "index.js"))) {
+      console.log(`${shown}: note: not built yet (or out of date): run npm run build -- ${id} to check index.js too`);
     }
   }
   if (errors + warnings > 0) {

@@ -31,7 +31,7 @@ extensions/dev.yourname.slugify/
   CHANGELOG.md         a "## <version>" section per version
 ```
 
-The template is a working "Reverse text" action. Replace its files with the ones below. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
+The template is a working "Reverse text" action. Replace its files with the ones below. Its README.md and CHANGELOG.md describe the template's sample: they are placeholders until you rewrite them in step 8. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
 
 ## 2. The manifest
 
@@ -159,7 +159,7 @@ npm test -- dev.yourname.slugify
 npm run validate -- dev.yourname.slugify
 ```
 
-`npm run validate` prints one line per problem: the file, the field, what was wrong and how to fix it. It reads the source folder, so it always ends with a note that `index.js` was not checked: the build in the next step makes `index.js` and checks it. [Testing](testing.md) covers the fake host in full, and [Errors](errors.md) lists every message.
+`npm run validate` prints one line per problem: the file, the field, what was wrong and how to fix it. There is no build yet, so it also notes "not built yet (or out of date)": the build in the next step makes `index.js` and checks it. [Testing](testing.md) covers the fake host in full, and [Errors](errors.md) lists every message.
 
 ## 6. Build it
 
@@ -167,7 +167,7 @@ npm run validate -- dev.yourname.slugify
 npm run build -- dev.yourname.slugify
 ```
 
-The build bundles `src/index.ts` and everything it imports into one `dist/dev.yourname.slugify/index.js`, copies the manifest, the locales, the README and the CHANGELOG next to it, checks that folder with the store's rules, and packs it into `dist/dev.yourname.slugify-1.0.0.yabext`. If the code imports a Node module or uses a Node global, the build stops and says so ([why](errors.md#node-builtins)).
+The build bundles `src/index.ts` and everything it imports into one `dist/dev.yourname.slugify/index.js`, copies the manifest, the locales, the README and the CHANGELOG next to it, checks that folder with the store's rules, and packs it into `dist/dev.yourname.slugify-1.0.0.yabext`. If the code imports a Node module or uses a Node global, the build stops and says so ([why](errors.md#node-builtins)). From now on, `npm run validate` checks this build too, `index.js` included, as long as it is newer than your source; after a change it notes "not built yet (or out of date)" until you build again.
 
 ## 7. Run it in yabbistir
 

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { fixtureFiles, materialize, readExpected, readFixture } from "../lib/fixtures.mjs";
 import { ALLOWED_LICENSES, APP_CODES, STORE_CODES, formatIssue, validateExtension } from "../lib/validate.mjs";
+import { run as runTool, scratchRoot } from "./helpers.mjs";
 
 const cli = fileURLToPath(new URL("../validate.mjs", import.meta.url));
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "yab-validate-"));
@@ -327,5 +328,65 @@ describe("npm run validate", () => {
     const result = run(root, "dev.example.nothing");
     assert.equal(result.status, 1);
     assert.match(result.stdout + result.stderr, /extensions\/dev\.example\.nothing/);
+  });
+});
+
+describe("npm run validate and the build", () => {
+  const BUILT = "dev.example.built";
+  const roots = [];
+  after(() => roots.forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
+  /** A scratch repository with a new action extension, built when `build` says so. */
+  function extension({ build }) {
+    const root = scratchRoot("yab-validate-build-");
+    roots.push(root);
+    assert.equal(runTool("new", [BUILT, "--template", "action", "--author", "example"], { root }).status, 0);
+    if (build) assert.equal(runTool("build", [BUILT], { root }).status, 0);
+    return root;
+  }
+  const source = (root, file) => path.join(root, "extensions", BUILT, file);
+  const later = (file) => {
+    const future = new Date(Date.now() + 60_000);
+    fs.utimesSync(file, future, future);
+  };
+  /** A problem only the build has, to tell which folder was checked. */
+  function breakTheBuild(root) {
+    const manifest = path.join(root, "dist", BUILT, "manifest.json");
+    fs.writeFileSync(manifest, fs.readFileSync(manifest, "utf8").replace('"version": "1.0.0"', '"version": "1.0"'));
+  }
+  const NOTE = `extensions/${BUILT}: note: not built yet (or out of date): run npm run build -- ${BUILT} to check index.js too`;
+
+  test("aFreshBuildIsCheckedIndexJsIncluded", () => {
+    const root = extension({ build: true });
+    later(source(root, "tests/index.test.mjs")); // tests are not part of the build
+    const clean = runTool("validate", [BUILT], { root });
+    assert.equal(clean.status, 0, clean.out);
+    assert.ok(clean.out.split("\n").includes(`extensions/${BUILT}: ok, with its build in dist/${BUILT}`), clean.out);
+    assert.doesNotMatch(clean.out, /not built/);
+
+    breakTheBuild(root);
+    const broken = runTool("validate", [BUILT], { root });
+    assert.equal(broken.status, 1, broken.out);
+    // Named at the source file, where it is fixed.
+    assert.match(broken.out, new RegExp(`^extensions/${BUILT.replaceAll(".", "\\.")}/manifest\\.json: version: "1\\.0" is not semantic versioning`, "m"));
+    assert.doesNotMatch(broken.out, /dist\//);
+  });
+
+  test("aStaleBuildIsNotUsed", () => {
+    for (const changed of ["src/index.ts", "manifest.json", "locales/en.json"]) {
+      const root = extension({ build: true });
+      breakTheBuild(root);
+      later(source(root, changed));
+      const result = runTool("validate", [BUILT], { root });
+      assert.equal(result.status, 0, `${changed}: the source is checked, not the old build\n${result.out}`);
+      assert.ok(result.out.split("\n").includes(NOTE), `${changed}\n${result.out}`);
+    }
+  });
+
+  test("anExtensionNeverBuiltIsToldToBuild", () => {
+    const root = extension({ build: false });
+    const result = runTool("validate", [BUILT], { root });
+    assert.equal(result.status, 0, result.out);
+    assert.ok(result.out.split("\n").includes(`extensions/${BUILT}: ok`), result.out);
+    assert.ok(result.out.split("\n").includes(NOTE), result.out);
   });
 });

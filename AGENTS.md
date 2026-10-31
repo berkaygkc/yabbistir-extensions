@@ -35,7 +35,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 |---|---|
 | `npm run new -- <id> --template <action\|detector\|capture-rule\|job>` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
-| `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. It always notes that `index.js` was not checked: that is what the build does. |
+| `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
 | `npm run typecheck` | Before you finish: TypeScript over every extension's `src/`. |
 | `npm run dev -- <id>` | To try it in the app: links `dist/<id>` into `~/Library/Application Support/yabbistir/Extensions/` and rebuilds on change. Long-running; `--once` builds and links without watching. Only when a person asks you to, on their Mac. |
@@ -151,6 +151,6 @@ test("upperCases", async () => {
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |
-| `npm run validate` says "not built yet" after a build | It checks the source folder, which has no `index.js` | Expected; `npm run build` checks the built folder |
+| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked | Run `npm run build -- <id>`; `npm run validate` then checks the build too, until the source changes again |
 
 When something is unclear, the generated references are the truth: [docs/manifest.md](docs/manifest.md) for fields, [docs/api.md](docs/api.md) for every type and `yab` function, [docs/errors.md](docs/errors.md) for every message.

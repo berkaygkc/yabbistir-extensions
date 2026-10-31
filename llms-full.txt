@@ -44,7 +44,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 |---|---|
 | `npm run new -- <id> --template <action\|detector\|capture-rule\|job>` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
-| `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. It always notes that `index.js` was not checked: that is what the build does. |
+| `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
 | `npm run typecheck` | Before you finish: TypeScript over every extension's `src/`. |
 | `npm run dev -- <id>` | To try it in the app: links `dist/<id>` into `~/Library/Application Support/yabbistir/Extensions/` and rebuilds on change. Long-running; `--once` builds and links without watching. Only when a person asks you to, on their Mac. |
@@ -160,7 +160,7 @@ test("upperCases", async () => {
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |
-| `npm run validate` says "not built yet" after a build | It checks the source folder, which has no `index.js` | Expected; `npm run build` checks the built folder |
+| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked | Run `npm run build -- <id>`; `npm run validate` then checks the build too, until the source changes again |
 
 When something is unclear, the generated references are the truth: [docs/manifest.md](docs/manifest.md) for fields, [docs/api.md](docs/api.md) for every type and `yab` function, [docs/errors.md](docs/errors.md) for every message.
 
@@ -260,7 +260,7 @@ extensions/dev.yourname.slugify/
   CHANGELOG.md         a "## <version>" section per version
 ```
 
-The template is a working "Reverse text" action. Replace its files with the ones below. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
+The template is a working "Reverse text" action. Replace its files with the ones below. Its README.md and CHANGELOG.md describe the template's sample: they are placeholders until you rewrite them in step 8. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
 
 ## 2. The manifest
 
@@ -388,7 +388,7 @@ npm test -- dev.yourname.slugify
 npm run validate -- dev.yourname.slugify
 ```
 
-`npm run validate` prints one line per problem: the file, the field, what was wrong and how to fix it. It reads the source folder, so it always ends with a note that `index.js` was not checked: the build in the next step makes `index.js` and checks it. [Testing](testing.md) covers the fake host in full, and [Errors](errors.md) lists every message.
+`npm run validate` prints one line per problem: the file, the field, what was wrong and how to fix it. There is no build yet, so it also notes "not built yet (or out of date)": the build in the next step makes `index.js` and checks it. [Testing](testing.md) covers the fake host in full, and [Errors](errors.md) lists every message.
 
 ## 6. Build it
 
@@ -396,7 +396,7 @@ npm run validate -- dev.yourname.slugify
 npm run build -- dev.yourname.slugify
 ```
 
-The build bundles `src/index.ts` and everything it imports into one `dist/dev.yourname.slugify/index.js`, copies the manifest, the locales, the README and the CHANGELOG next to it, checks that folder with the store's rules, and packs it into `dist/dev.yourname.slugify-1.0.0.yabext`. If the code imports a Node module or uses a Node global, the build stops and says so ([why](errors.md#node-builtins)).
+The build bundles `src/index.ts` and everything it imports into one `dist/dev.yourname.slugify/index.js`, copies the manifest, the locales, the README and the CHANGELOG next to it, checks that folder with the store's rules, and packs it into `dist/dev.yourname.slugify-1.0.0.yabext`. If the code imports a Node module or uses a Node global, the build stops and says so ([why](errors.md#node-builtins)). From now on, `npm run validate` checks this build too, `index.js` included, as long as it is newer than your source; after a change it notes "not built yet (or out of date)" until you build again.
 
 ## 7. Run it in yabbistir
 
@@ -1710,7 +1710,7 @@ extensions/dev.yourname.tool/manifest.json: contributes.actions[0].output: "txt"
 
 That is the file, the field (as a path into the JSON), the message, what was expected, and a fix. A warning says `warning:` before its message. The command exits with 1 when there is any error, and with 0 for warnings alone. A clean extension prints `extensions/<id>: ok`.
 
-`npm run validate` reads the source folder, `extensions/<id>/`, which has `src/index.ts` but no `index.js`. So it always ends with a note that `index.js` was not checked yet, telling you to run `npm run build -- <id>`; that is expected. `npm run build` compiles `index.js` and checks the built folder, `dist/<id>/`, with the same rules, and packs nothing if there is an error.
+`npm run build -- <id>` compiles `index.js` into `dist/<id>/`, checks that folder with the same rules, and packs nothing if there is an error. When that build is newer than everything in `extensions/<id>/` except `tests/`, `npm run validate` checks the build, `index.js` included, and names each issue at its source file; a clean result reads `extensions/<id>: ok, with its build in dist/<id>`. Without a build, or once the source has changed since, it checks the source folder and ends with `note: not built yet (or out of date): run npm run build -- <id> to check index.js too`.
 
 ### The store is stricter than the app
 

@@ -16,7 +16,7 @@ extensions/dev.yourname.tool/manifest.json: contributes.actions[0].output: "txt"
 
 That is the file, the field (as a path into the JSON), the message, what was expected, and a fix. A warning says `warning:` before its message. The command exits with 1 when there is any error, and with 0 for warnings alone. A clean extension prints `extensions/<id>: ok`.
 
-`npm run validate` reads the source folder, `extensions/<id>/`, which has `src/index.ts` but no `index.js`. So it always ends with a note that `index.js` was not checked yet, telling you to run `npm run build -- <id>`; that is expected. `npm run build` compiles `index.js` and checks the built folder, `dist/<id>/`, with the same rules, and packs nothing if there is an error.
+`npm run build -- <id>` compiles `index.js` into `dist/<id>/`, checks that folder with the same rules, and packs nothing if there is an error. When that build is newer than everything in `extensions/<id>/` except `tests/`, `npm run validate` checks the build, `index.js` included, and names each issue at its source file; a clean result reads `extensions/<id>: ok, with its build in dist/<id>`. Without a build, or once the source has changed since, it checks the source folder and ends with `note: not built yet (or out of date): run npm run build -- <id> to check index.js too`.
 
 ### The store is stricter than the app
 

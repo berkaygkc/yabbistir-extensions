@@ -77,7 +77,7 @@ npm run build -- dev.yourname.tool
 npm run typecheck
 ```
 
-All four pass with no errors and no warnings. `npm run validate` always ends with a note that `index.js` was not checked; `npm run build` checks it. A Node module or global fails the build ([docs/errors.md#node-builtins](../../../docs/errors.md#node-builtins)). To try it in the app, the person runs `npm run dev -- <id>` on their Mac.
+All four pass with no errors and no warnings. After a build, `npm run validate` checks the build too, `index.js` included; while there is none, or the source changed since, it notes "not built yet (or out of date)". A Node module or global fails the build ([docs/errors.md#node-builtins](../../../docs/errors.md#node-builtins)). To try it in the app, the person runs `npm run dev -- <id>` on their Mac.
 
 ## 6. Prepare the pull request
 
