@@ -69,9 +69,12 @@ describe("one extension folder per pull request", () => {
   test("whatOnlyTheMaintainerChangesFails", () => {
     const reserved = [".github/workflows/pr.yml", ".github/workflows/static.yml", ".GitHub/workflows/x.yml", "tools/build.mjs", "tools/lib/static-rules.mjs",
       "packages/api/index.d.ts", "templates/action/src/index.ts", "schema/catalog.schema.json", "package.json", "package-lock.json", "tsconfig.json",
-      ".gitattributes", "docs/.gitattributes"];
+      "jsconfig.json", ".gitattributes", "docs/.gitattributes", "keys/catalog-public-keys.json",
+      // What editors and coding agents read and run, wherever it sits.
+      ".claude/settings.json", ".claude/skills/yabbistir-extension/SKILL.md", ".mcp.json", "CLAUDE.md", "AGENTS.md", ".vscode/settings.json",
+      ".idea/workspace.xml", "docs/CLAUDE.md", "docs/.vscode/tasks.json", `extensions/${ID}/AGENTS.md`, `extensions/${ID}/.claude/settings.json`];
     for (const file of reserved) {
-      const { problems } = checkScope(["docs/publishing.md", file]);
+      const { problems } = checkScope([file]);
       assert.equal(problems.length, 1, file);
       assert.ok(problems[0].includes(file) && /needs a maintainer-authored pull request/.test(problems[0]), problems[0]);
     }
@@ -85,6 +88,12 @@ describe("one extension folder per pull request", () => {
     const { extensions, problems } = checkScope([`extensions/${ID}/README.md`, "extensions/README.md"]);
     assert.deepEqual(extensions, [ID]);
     assert.match(problems[0], /extensions\/README\.md/);
+    // And only the maintainer puts a file there: esbuild and editors read a tsconfig.json or jsconfig.json above the source.
+    for (const file of ["extensions/tsconfig.json", "extensions/jsconfig.json", "extensions/package.json", "extensions/README.md"]) {
+      const alone = checkScope(["docs/recipes/number-check.js", file]).problems;
+      assert.equal(alone.length, 1, file);
+      assert.ok(alone[0].includes(file) && /maintainer-authored/.test(alone[0]), alone[0]);
+    }
   });
 
   test("aMoveBetweenFoldersCountsBothFolders", () => {
@@ -635,7 +644,7 @@ describe("the pull request run", () => {
     library(scripted.root, OTHER, { scripts: { postinstall: "node x.js" } });
     const { ok, results } = await runChecks({ root: scripted.root, files: [`extensions/${ID}/src/index.ts`], exec: scripted.exec });
     assert.equal(ok, false);
-    assert.deepEqual(failed(results), ["no install scripts or programs in extensions/*/package.json"], "every extension's, not only the changed one");
+    assert.deepEqual(failed(results), ["no install scripts, programs or project files in extension folders"], "every extension's, not only the changed one");
     assert.match(results.find((result) => !result.ok).problems[0], new RegExp(`extensions/${OTHER.replaceAll(".", "\\.")}/package\\.json: .*scripts`));
   });
 
@@ -782,7 +791,7 @@ describe("node tools/static-checks.mjs", () => {
       fs.symlinkSync("foo.json", path.join(pr, "package-lock.json"));
     }));
     assert.equal(status, 1, out);
-    assert.match(out, /package-lock\.json: a symbolic link or a submodule, not a regular file/);
+    assert.match(out, /symbolic links or submodules, not regular files: package-lock\.json →/);
     assert.match(out, /^ {8}package-lock\.json: it is a symbolic link/m);
   });
 
@@ -795,6 +804,39 @@ describe("node tools/static-checks.mjs", () => {
       assert.equal(status, 1, `${file}\n${out}`);
       assert.ok(out.includes(`the pull request changes ${file}, and a change there needs a maintainer-authored pull request`), out);
     }
+  });
+
+  test("aTsconfigOrJsconfigInAnExtensionFolderFails", () => {
+    for (const file of [`extensions/${ID}/tsconfig.json`, `extensions/${ID}/src/jsconfig.json`]) {
+      const { status, out } = runChecker(pullRequest((pr) => {
+        fs.mkdirSync(path.dirname(path.join(pr, file)), { recursive: true });
+        fs.writeFileSync(path.join(pr, file), JSON.stringify({ compilerOptions: { paths: { fflate: ["../../docs/n.js"] } } }));
+      }));
+      assert.equal(status, 1, `${file}\n${out}`);
+      assert.ok(out.includes(`${file}: a TypeScript or JavaScript project file`), out);
+    }
+  });
+
+  test("everyLineStartsWithFixedText", () => {
+    // Paths a pull request names, starting with "::": as a link, in node_modules, and as case twins.
+    const pr = pullRequest((root) => {
+      fs.symlinkSync("README.md", path.join(root, "::stop-commands::x"));
+      stage(root, "extensions/::warning::a/node_modules/x.js", "x\n");
+      stage(root, "::notice::b/x.md", "x\n");
+      stage(root, "extensions/dev.x.y/src/A.ts", "x\n");
+      stage(root, "extensions/dev.x.y/src/a.ts", "x\n");
+      git(root, "--literal-pathspecs", "add", "::stop-commands::x"); // a leading ":" is pathspec magic otherwise
+    }, { add: false });
+    const { status, out } = runChecker(pr, { GITHUB_ACTIONS: "true" });
+    assert.equal(status, 1, out);
+    const lines = out.split("\n").map((line) => line.trimStart()).filter((line) => line.startsWith("::"));
+    assert.ok(lines.length >= 3, out);
+    for (const line of lines) assert.match(line, /^::error title=[^:]*::/, line);
+    // The same names through tools/lockfile-state.mjs on the checkout, as publishing runs it.
+    git(pr, "checkout", "-q", "-f", "pr");
+    const state = spawnSync(process.execPath, [path.join(repo, "tools", "lockfile-state.mjs"), "--root", pr], { encoding: "utf8" });
+    assert.equal(state.status, 1, state.stdout);
+    for (const line of state.stdout.split("\n")) assert.doesNotMatch(line.trimStart(), /^::/, line);
   });
 
   test("pullRequestTextCannotWriteWorkflowCommands", () => {
@@ -955,12 +997,13 @@ describe("the workflows", () => {
 
   test("theStaticWorkflowRunsTheBaseBranchsCheckerOnThePullRequestAsData", () => {
     const text = workflow("static.yml");
+    const code = text.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
     // pull_request_target: the workflow file and the checker come from the base branch, whatever the pull request edits.
-    assert.match(text, /^on:\n {2}pull_request_target:\n {4}types: \[opened, reopened, synchronize, edited\]\n\n/m);
+    // Pull requests to main only: a status from a run against another base branch could otherwise mark a head commit.
+    assert.match(code, /^on:\n {2}pull_request_target:\n {4}branches: \[main\]\n {4}types: \[opened, reopened, synchronize, edited\]\n\n/m);
     assert.doesNotMatch(text, /^ {2}pull_request:/m);
     assert.match(text, /^permissions:\n {2}contents: read\n {2}statuses: write\n(?! )/m, "read the repository, set commit statuses, nothing more");
     assert.doesNotMatch(text, /^ {4}permissions:/m, "no job asks for more");
-    const code = text.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
     assert.doesNotMatch(code, /secrets\.|\bnpm\b|setup-node|node_modules|cache|\benvironment:/, "no secret, nothing installed, no cache");
     const jobs = jobsOf(text);
     assert.deepEqual(Object.keys(jobs), ["static"]);
@@ -984,7 +1027,7 @@ describe("the workflows", () => {
       "",
     ].join("\n"));
     // The status: always posted, from the checker's result alone, under the one context branch protection requires.
-    assert.match(steps[3], /^name: Post the commit status\n {8}if: always\(\)\n {8}uses: actions\/github-script@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}env:\n {10}OUTCOME: \$\{\{ steps\.checker\.outcome \}\}\n {10}EXIT_CODE: \$\{\{ steps\.checker\.outputs\.exit-code \}\}\n {8}with:\n {10}script: \|\n/);
+    assert.match(steps[3], /^name: Post the commit status\n {8}if: always\(\) && github\.event\.pull_request\.base\.ref == 'main'\n {8}uses: actions\/github-script@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}env:\n {10}OUTCOME: \$\{\{ steps\.checker\.outcome \}\}\n {10}EXIT_CODE: \$\{\{ steps\.checker\.outputs\.exit-code \}\}\n {8}with:\n {10}script: \|\n/);
     assert.equal(steps[3].match(/context: "([^"]+)"/)?.[1], "store/static-checks");
     assert.match(steps[3], /sha: context\.payload\.pull_request\.head\.sha,/);
     assert.doesNotMatch(steps[3], /require\(|import\(|\bexec|child_process|\bfs\b|readFile|\bpr\//, "it reads nothing of the pull request and runs nothing");

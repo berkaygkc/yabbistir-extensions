@@ -110,6 +110,7 @@ describe("node tools/lockfile-state.mjs", () => {
       const { status, out } = check(tree(alias(spec)));
       assert.equal(status, 1, out);
       assert.match(out, /node_modules\/zip: it installs fflate under the name zip: an alias/, spec);
+      assert.match(out, /an alias[^\n]*→ fix: [^\n]*string-width-cjs[^\n]*pick another library, or ask the maintainer/, "the fix names the case a library brings");
       assert.match(out, /^package\.json: devDependencies\.zip: an npm: alias/m, spec);
       assert.match(out, /the root entry: it asks for npm: aliases \(devDependencies\.zip\)/, spec);
     }
@@ -182,7 +183,7 @@ describe("node tools/lockfile-state.mjs", () => {
         fs.symlinkSync(file === "package.json" ? path.join(dir, "real.json") : "/nonexistent/file", path.join(dir, file));
       }));
       assert.equal(status, 1, `${file}\n${out}`);
-      assert.ok(out.includes(`${file}: a symbolic link or a submodule`), `${file}\n${out}`);
+      assert.ok(out.includes(`symbolic links or submodules, not regular files: ${file} →`), `${file}\n${out}`);
     }
     // Outside git, from the disk itself: a link to a lockfile that would pass is still refused.
     const plain = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "yab-state-")));
@@ -204,11 +205,14 @@ describe("node tools/lockfile-state.mjs", () => {
   });
 
   test("aBundledEntryIsRefused", () => {
-    const { status, out } = check(tree((dir) => editLock(dir, (packages) => {
-      packages["node_modules/esbuild/node_modules/inner"] = { version: "1.0.0", inBundle: true, license: "MIT" };
-    })));
-    assert.equal(status, 1, out);
-    assert.match(out, /node_modules\/esbuild\/node_modules\/inner/);
+    // Even one that names its own tarball and a hash: it comes inside another package's tarball, not from that address.
+    for (const extra of [{}, { resolved: "https://registry.npmjs.org/inner/-/inner-1.0.0.tgz", integrity: sri("inner") }]) {
+      const { status, out } = check(tree((dir) => editLock(dir, (packages) => {
+        packages["node_modules/esbuild/node_modules/inner"] = { version: "1.0.0", inBundle: true, license: "MIT", ...extra };
+      })));
+      assert.equal(status, 1, out);
+      assert.match(out, /node_modules\/esbuild\/node_modules\/inner: it comes bundled inside another package \(inBundle\)/);
+    }
   });
 
   test("aShrinkwrapOrAnNpmrcFails", () => {
@@ -232,7 +236,7 @@ describe("node tools/lockfile-state.mjs", () => {
       fs.writeFileSync(path.join(dir, "extensions", "node_modules", "lib", "index.js"), "module.exports = 1;\n");
     }));
     assert.equal(top.status, 1, top.out);
-    assert.match(top.out, /extensions\/node_modules\/lib\/index\.js: node_modules is committed/);
+    assert.match(top.out, /^node_modules committed under extensions\/: extensions\/node_modules\/lib\/index\.js →/m);
   });
 
   test("pathsThatDifferOnlyByCaseFail", () => {

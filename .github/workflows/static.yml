@@ -10,14 +10,17 @@
 #   - A pull request that touches .github/, tools/, packages/, templates/, schema/, the root package.json,
 #     package-lock.json (beyond one extension's own libraries) or tsconfig.json, or a .gitattributes, fails here: such
 #     a change is the maintainer's own, merged past this check on purpose.
-#   - The result is posted as the commit status store/static-checks on the pull request's head commit, success only
-#     when the checker exited 0. Branch protection requires that status: a workflow a pull request from a fork adds
+#   - It runs for pull requests to main only. The result is posted as the commit status store/static-checks on the
+#     pull request's head commit, success only when the checker exited 0. Branch protection requires that status: a workflow a pull request from a fork adds
 #     runs with a read-only token and cannot set a commit status, while it could name a job "Static checks".
 # Actions are pinned to full commit SHAs.
 name: Static checks
 
 on:
   pull_request_target:
+    # Pull requests to main only, the branch whose protection requires the status: a run against another base
+    # branch would judge the head commit by another diff.
+    branches: [main]
     types: [opened, reopened, synchronize, edited]
 
 permissions:
@@ -63,9 +66,10 @@ jobs:
           echo "exit-code=$code" >> "$GITHUB_OUTPUT"
           exit "$code"
       # Always, even when a step before failed or the run was cancelled: anything but a checker that ran and exited 0
-      # posts failure. It reads the checker's result only; nothing of the pull request.
+      # posts failure. It reads the checker's result only; nothing of the pull request. And for a pull request to main
+      # only, whatever the trigger above says.
       - name: Post the commit status
-        if: always()
+        if: always() && github.event.pull_request.base.ref == 'main'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           OUTCOME: ${{ steps.checker.outcome }}

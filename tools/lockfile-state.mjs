@@ -104,6 +104,10 @@ export function entryProblems(packages) {
       } else if (aliases.length > 0) problems.set(location, `asks for npm: aliases (${aliases.join(", ")}), which install another package under a library's name`);
       continue;
     }
+    if (record.inBundle === true) {
+      problems.set(location, "comes bundled inside another package (inBundle), so no address of its own can be checked");
+      continue;
+    }
     const folder = folderOf(location);
     if (record.name !== undefined && record.name !== folder) {
       problems.set(location, `installs ${record.name} under the name ${folder}: an alias, which the store refuses`);
@@ -241,6 +245,11 @@ export function caseCollisions(files) {
 
 const list = (items) => items.slice(0, 8).join(", ") + (items.length > 8 ? ` and ${items.length - 8} more` : "");
 const INSTALL_FIX = "Run npm install and commit the package.json and package-lock.json it leaves; never edit the lockfile by hand.";
+const ENTRY_FIX = "Install the library from the npm registry by its own name and version (npm install <library>@<version>), and never edit the lockfile by hand.";
+/** The fix for an alias: also the case of a library whose own dependencies npm installs under an alias. */
+export const ALIAS_FIX = "Depend on every library by its own name. Some libraries bring a dependency npm installs under an alias (glob@10 brings string-width-cjs, for example), and the store refuses those too: pick another library, or ask the maintainer.";
+/** Whether a reason entryProblems gives is about an alias. */
+export const isAlias = (reason) => /\balias/.test(reason);
 const LINK_FIX = "Commit the file itself; npm would read wherever the link points.";
 
 /** The root's and each workspace's package.json against their lockfile entries: the same dependencies, the same names, no npm: aliases. */
@@ -297,7 +306,9 @@ function manifestProblems(tree, packages) {
 }
 
 /**
- * Every problem with the install state of a repository, one line each. `tree` is diskTree(root) or commitTree(root,
+ * Every problem with the install state of a repository, one line each. Every line starts with fixed text (a file name
+ * of the repository's own, or words), never with a path a pull request chose: a log line that starts with "::" is a
+ * workflow command. `tree` is diskTree(root) or commitTree(root,
  * commit); a path stands for diskTree(path, options).
  */
 export function stateProblems(tree, options) {
@@ -305,7 +316,7 @@ export function stateProblems(tree, options) {
   const problems = [];
   const odd = tree.entries.filter((entry) => entry.kind !== "file").map((entry) => entry.path);
   if (odd.length > 0) {
-    problems.push(`${list(odd)}: a symbolic link or a submodule, not a regular file → fix: Commit regular files only; a link can show a check one file and npm or the build another.`);
+    problems.push(`symbolic links or submodules, not regular files: ${list(odd)} → fix: Commit regular files only; a link can show a check one file and npm or the build another.`);
   }
   for (const file of ["npm-shrinkwrap.json", ".npmrc"]) {
     if (tree.kind(file) !== null) {
@@ -330,17 +341,17 @@ export function stateProblems(tree, options) {
   }
   if (packages !== undefined) {
     for (const [location, reason] of entryProblems(packages)) {
-      problems.push(`package-lock.json: ${location === "" ? "the root entry" : location}: it ${reason} → fix: Install the library from the npm registry by its own name and version (npm install <library>@<version>), and never edit the lockfile by hand.`);
+      problems.push(`package-lock.json: ${location === "" ? "the root entry" : location}: it ${reason} → fix: ${isAlias(reason) ? ALIAS_FIX : ENTRY_FIX}`);
     }
     problems.push(...manifestProblems(tree, packages));
   }
   const files = tree.entries.map((entry) => entry.path);
   const vendored = files.filter((file) => /^extensions\/(?:.*\/)?node_modules(?:\/|$)/i.test(file));
   if (vendored.length > 0) {
-    problems.push(`${list(vendored)}: node_modules is committed under extensions/ → fix: Remove it (git rm -r --cached) and list the library in the extension's package.json.`);
+    problems.push(`node_modules committed under extensions/: ${list(vendored)} → fix: Remove it (git rm -r --cached) and list the library in the extension's package.json.`);
   }
   for (const spellings of caseCollisions(files)) {
-    problems.push(`${spellings.join(" and ")}: these differ only in letter case or Unicode normalization, and a Mac's disk keeps one of them → fix: Rename one, or remove one.`);
+    problems.push(`paths that differ only in letter case or Unicode normalization: ${spellings.join(" and ")} → fix: Rename one, or remove one; a Mac's disk keeps only one of them.`);
   }
   return problems;
 }

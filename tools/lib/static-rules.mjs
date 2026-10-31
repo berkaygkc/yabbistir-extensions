@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
-import { commitTree, diskTree, entryProblems, isWorkspace, printable, resolveIn, stateProblems } from "../lockfile-state.mjs";
+import { ALIAS_FIX, commitTree, diskTree, entryProblems, isAlias, isWorkspace, printable, resolveIn, stateProblems } from "../lockfile-state.mjs";
 
 export { commitTree, diskTree, printable };
 
@@ -43,15 +43,30 @@ export const commandData = (text) => String(text).replaceAll("%", "%25").replace
 export const commandProperty = (text) => commandData(text).replaceAll(":", "%3A").replaceAll(",", "%2C");
 
 /**
- * What only the maintainer changes: what the workflows run, what npm installs, and what shapes every build. A pull
- * request that touches any of it fails the static checks, so the maintainer merges such a change past them on purpose.
- * package-lock.json is the exception beside one extension, where only that extension's own libraries may change.
+ * What only the maintainer changes: what the workflows run, what npm installs, what shapes every build, the app's
+ * keys, and what editors and coding agents read and run. A pull request that touches any of it fails the static checks,
+ * so the maintainer merges such a change past them on purpose. package-lock.json is the exception beside one
+ * extension, where only that extension's own libraries may change.
+ *   folders     everything under these, at the root
+ *   files       these files at the root
+ *   anywhere    folders and files with these names at any depth (an editor or agent opened in a subfolder reads them)
+ * Every file directly in extensions/, outside an extension's folder, is the maintainer's too: esbuild and editors read
+ * a tsconfig.json, jsconfig.json or package.json there for every extension.
  */
-export const MAINTAINER_ONLY = [".github/", "tools/", "packages/", "templates/", "schema/", "package.json", "package-lock.json", "tsconfig.json", ".gitattributes"];
+export const MAINTAINER_ONLY = {
+  folders: [".github/", "tools/", "packages/", "templates/", "schema/", "keys/"],
+  files: ["package.json", "package-lock.json", "tsconfig.json", "jsconfig.json"],
+  anywhere: { folders: [".claude", ".vscode", ".idea"], files: [".gitattributes", ".mcp.json", "CLAUDE.md", "AGENTS.md"] },
+};
+const ANYWHERE_FOLDERS = MAINTAINER_ONLY.anywhere.folders.map((name) => name.toLowerCase());
+const ANYWHERE_FILES = MAINTAINER_ONLY.anywhere.files.map((name) => name.toLowerCase());
 
 const maintainerOnly = (file) => {
   const lower = file.toLowerCase();
-  return MAINTAINER_ONLY.some((entry) => (entry.endsWith("/") ? lower.startsWith(entry) : lower === entry)) || path.posix.basename(lower) === ".gitattributes";
+  const parts = lower.split("/");
+  return MAINTAINER_ONLY.folders.some((folder) => lower.startsWith(folder)) || MAINTAINER_ONLY.files.includes(lower)
+    || /^extensions\/[^/]+$/.test(lower)
+    || parts.slice(0, -1).some((part) => ANYWHERE_FOLDERS.includes(part)) || ANYWHERE_FILES.includes(parts.at(-1));
 };
 const shownFiles = (files) => files.slice(0, 5).join(", ") + (files.length > 5 ? ` and ${files.length - 5} more` : "");
 
@@ -79,7 +94,7 @@ export function checkScope(files) {
   }
   const reserved = files.filter((file) => maintainerOnly(file) && !(file === "package-lock.json" && ids.length === 1));
   if (reserved.length > 0) {
-    problems.push(`the pull request changes ${shownFiles(reserved)}, and a change there needs a maintainer-authored pull request: the workflows, tools/, packages/, templates/, schema/, the root package.json, package-lock.json and tsconfig.json, and .gitattributes files decide what runs, installs and builds → fix: Leave these files as they are, and say in the pull request what should change there; the maintainer makes such changes, and merges them past this check on purpose.`);
+    problems.push(`the pull request changes ${shownFiles(reserved)}, and a change there needs a maintainer-authored pull request: the workflows, tools/, packages/, templates/, schema/ and keys/, the root package.json, package-lock.json, tsconfig.json and jsconfig.json, files directly in extensions/, and what editors and coding agents read (.claude/, .vscode/, .idea/, .mcp.json, CLAUDE.md, AGENTS.md, .gitattributes) decide what runs, installs and builds → fix: Leave these files as they are, and say in the pull request what should change there; the maintainer makes such changes, and merges them past this check on purpose.`);
   }
   return { extensions: ids, problems };
 }
@@ -229,7 +244,9 @@ export function lockfileProblems(baseText, headText, { extension, manifests = { 
   const unfit = entryProblems(after);
   const elsewhere = changed.filter((location) => unfit.has(location));
   if (elsewhere.length > 0) {
-    problems.push(`package-lock.json: not from the npm registry as npm writes it: ${list(elsewhere.map((location) => `${shown(location)} (it ${unfit.get(location)})`))} → fix: Use libraries published on npm, by version: no git, file, link or URL dependencies, and never edit the lockfile by hand.`);
+    const fix = elsewhere.some((location) => isAlias(unfit.get(location))) ? ALIAS_FIX
+      : "Use libraries published on npm, by version: no git, file, link or URL dependencies, and never edit the lockfile by hand.";
+    problems.push(`package-lock.json: not from the npm registry as npm writes it: ${list(elsewhere.map((location) => `${shown(location)} (it ${unfit.get(location)})`))} → fix: ${fix}`);
   }
 
   if (extension !== undefined) {
@@ -323,6 +340,11 @@ export function runStaticChecks({ tree, files, readBase = () => null }) {
 
   const packages = [];
   for (const { path: file } of [...tree.entries].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    // The build names the repository's tsconfig.json, so esbuild ignores these; an editor or another tool would not.
+    if (/^extensions\/[^/]+\/(?:.*\/)?(?:tsconfig|jsconfig)\.json$/i.test(file)) {
+      packages.push(`${file}: a TypeScript or JavaScript project file, which could make an editor or a tool resolve an import to another file → fix: Remove it; the repository's tsconfig.json covers every extension.`);
+      continue;
+    }
     const match = /^extensions\/([^/]+)\/(package\.json|binding\.gyp)$/.exec(file);
     if (match === null) continue;
     if (match[2] === "binding.gyp") {
@@ -332,7 +354,7 @@ export function runStaticChecks({ tree, files, readBase = () => null }) {
     const text = tree.read(file);
     if (text !== null) packages.push(...packageProblems(match[1], text)); // a link is the install state's to report
   }
-  record("no install scripts or programs in extensions/*/package.json", packages);
+  record("no install scripts, programs or project files in extension folders", packages);
 
   record("the install state: registry lockfile entries that match package.json, no npm-shrinkwrap.json or .npmrc, no links, no node_modules or case twins under extensions/",
     stateProblems(tree));
