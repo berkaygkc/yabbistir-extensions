@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { unzipSync } from "fflate";
 
-import { run, scratchRoot, sha256 } from "./helpers.mjs";
+import { repo, run, scratchRoot, sha256 } from "./helpers.mjs";
 
 const roots = [];
 const fresh = (template = "action", id = "dev.example.sample") => {
@@ -195,5 +195,37 @@ describe("npm run dev", () => {
     assert.equal(linked.status, 0, linked.out);
     assert.match(linked.out, /license/);
     assert.ok(fs.lstatSync(path.join(extensions(HOME), ID)).isSymbolicLink());
+  });
+});
+
+describe("safety and cwd independence", () => {
+  test("buildRefusesAPathLikeId", () => {
+    const root = fresh();
+    for (const id of ["../templates/action", "..", "a/b", ".hidden"]) {
+      const failed = run("build", [id], { root });
+      assert.equal(failed.status, 1, id);
+      assert.match(failed.out, /not an extension id|no such extension/, id);
+    }
+    assert.ok(fs.existsSync(path.join(root, "extensions", ID, "src", "index.ts")));
+  });
+
+  test("pruneNeverTouchesAnythingOutsideDist", async () => {
+    const { pruneExcept } = await import("../lib/build.mjs");
+    const root = fresh();
+    const outside = path.join(root, "extensions", ID);
+    assert.throws(() => pruneExcept(outside, new Set(), "", root), /not inside dist/);
+    assert.throws(() => pruneExcept(path.join(root, "dist"), new Set(), "", root), /not inside dist/);
+    assert.ok(fs.existsSync(path.join(outside, "src", "index.ts")));
+  });
+
+  test("buildIsTheSameFromAnyWorkingDirectory", () => {
+    const root = fresh();
+    const archive = path.join(root, "dist", `${ID}-1.0.0.yabext`);
+    const build = (cwd) => spawnSync(process.execPath, [path.join(repo, "tools", "build.mjs"), "--root", root, ID], { cwd, encoding: "utf8" });
+    assert.equal(build(root).status, 0);
+    const first = sha256(archive);
+    fs.rmSync(path.join(root, "dist"), { recursive: true });
+    assert.equal(build(os.tmpdir()).status, 0);
+    assert.equal(sha256(archive), first);
   });
 });

@@ -9,5 +9,5 @@
     "skipLibCheck": false,
     "types": []
   },
-  "include": ["extensions/*/src/**/*.ts"]
+  "include": ["extensions/*/src/**/*.ts", "templates/*/src/**/*.ts"]
 }

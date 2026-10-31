@@ -47,10 +47,11 @@ function describeFailure(error) {
  * left in the output means the extension used one it did not define itself (a local named `process` is untouched).
  * @returns {Promise<{ ok: true } | { ok: false, messages: string[] }>}
  */
-export async function compile(source, outfile) {
+export async function compile(source, outfile, root = path.dirname(source)) {
   let result;
   try {
     result = await build({
+      absWorkingDir: root,
       entryPoints: [source],
       outfile: "index.js",
       write: false,
@@ -93,11 +94,16 @@ function writeIfChanged(from, to) {
   fs.writeFileSync(to, bytes);
 }
 
-function pruneExcept(directory, keep, prefix = "") {
+/** Deletes the files of `directory` not in `keep`; refuses unless `directory` is strictly inside `<root>/dist/`. */
+export function pruneExcept(directory, keep, prefix = "", root) {
+  if (root !== undefined) {
+    const inside = path.relative(path.resolve(root, "dist"), path.resolve(directory));
+    if (inside === "" || inside.startsWith("..") || path.isAbsolute(inside)) throw new Error(`refusing to prune ${directory}: it is not inside dist/`);
+  }
   for (const entry of fs.readdirSync(path.join(directory, prefix), { withFileTypes: true })) {
     const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
     if (entry.isDirectory()) {
-      pruneExcept(directory, keep, relative);
+      pruneExcept(directory, keep, relative, root);
       if (fs.readdirSync(path.join(directory, relative)).length === 0) fs.rmdirSync(path.join(directory, relative));
     } else if (!keep.has(relative)) fs.rmSync(path.join(directory, relative));
   }
@@ -113,6 +119,9 @@ export async function buildExtension(root, id, { package: pack = true } = {}) {
   const source = path.join(root, "extensions", id);
   const folder = path.join(root, "dist", id);
   const fail = (...messages) => ({ ok: false, messages, issues: [], folder });
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) || id.includes("..")) {
+    return fail(`"${id}" is not an extension id → fix: Use the folder name under extensions/, such as dev.yourname.tool.`);
+  }
   if (!fs.existsSync(source) || !fs.statSync(source).isDirectory()) {
     return fail(`extensions/${id}: there is no such extension folder → fix: Create it with npm run new -- ${id}, or check the id.`);
   }
@@ -128,7 +137,7 @@ export async function buildExtension(root, id, { package: pack = true } = {}) {
   if (!input) return fail(`extensions/${id}/src/index.ts: it is missing → fix: Add src/index.ts, which exports actions, detectors and/or captureRules.`);
 
   fs.mkdirSync(folder, { recursive: true });
-  const compiled = await compile(input, path.join(folder, "index.js"));
+  const compiled = await compile(input, path.join(folder, "index.js"), root);
   if (!compiled.ok) return fail(...compiled.messages.map((message) => `extensions/${id}: ${message}`));
 
   const keep = new Set(["index.js"]);
@@ -144,7 +153,7 @@ export async function buildExtension(root, id, { package: pack = true } = {}) {
       keep.add(`locales/${name}`);
     }
   }
-  pruneExcept(folder, keep);
+  pruneExcept(folder, keep, "", root);
 
   const { issues } = validateExtension(folder, { store: true, relativeTo: root });
   const messages = issues.map(formatIssue);
