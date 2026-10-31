@@ -27,7 +27,7 @@ export const APP_CODES = [
 /** Codes of the rules only the store has. */
 export const STORE_CODES = [
   "licenseNotAllowed", "readmeMissing", "changelogMissing", "enLocaleMissing", "enLocaleKeyMissing", "localeUnreadable",
-  "unknownField", "schemaMismatch",
+  "unknownField", "schemaMismatch", "notARegularFile",
 ];
 
 const CATEGORIES = ["text", "links", "images", "files", "developer", "media", "ai", "productivity"];
@@ -62,12 +62,44 @@ export function formatIssue(issue) {
 }
 
 /**
+ * Symbolic links and anything else that is not a plain file or folder in `folder`, `node_modules` aside. The build
+ * would copy what a link points at into a public package, so the store takes regular files only. Links are reported,
+ * never followed. Issue paths are relative to `relativeTo`.
+ */
+export function fileTypeIssues(folder, { relativeTo = process.cwd() } = {}) {
+  const issues = [];
+  const visit = (full, name) => {
+    const stat = fs.lstatSync(full);
+    if (stat.isDirectory()) {
+      if (name !== "node_modules") for (const child of fs.readdirSync(full).sort()) visit(path.join(full, child), child);
+      return;
+    }
+    if (stat.isFile()) return;
+    issues.push({
+      path: path.relative(relativeTo, full) || name, field: "", level: "error", code: "notARegularFile",
+      message: stat.isSymbolicLink()
+        ? "it is a symbolic link, and an extension holds only regular files and folders"
+        : "it is not a regular file (a pipe, socket or device), and an extension holds only regular files and folders",
+      fix: "Replace it with a copy of the file itself, or remove it.",
+    });
+  };
+  let exists = true;
+  try {
+    fs.lstatSync(folder);
+  } catch {
+    exists = false;
+  }
+  if (exists) visit(folder, path.basename(folder));
+  return issues;
+}
+
+/**
  * Checks the extension in `folder`. `store: false` leaves the store's own rules out and checks only what the app checks.
  * Issue paths are relative to `relativeTo`.
  * @returns {{ issues: Array<{ path: string, field: string, level: "error" | "warning", code: string, message: string, expected?: string, fix?: string }> }}
  */
 export function validateExtension(folder, { store = true, relativeTo = process.cwd() } = {}) {
-  const issues = [];
+  const issues = store ? fileTypeIssues(folder, { relativeTo }) : [];
   const display = (file) => path.relative(relativeTo, path.join(folder, file)) || file;
   const add = (file, field, code, message, { expected, fix, level = "error" } = {}) => {
     const issue = { path: display(file), field, level, code, message };

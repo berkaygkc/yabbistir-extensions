@@ -266,6 +266,26 @@ describe("the store's rules", () => {
     assert.equal(issues.find((issue) => issue.code === "schemaMismatch").field, "contributes.actions[0].hint");
   });
 
+  test("linksAndSpecialFilesAreRefused", () => {
+    const { root, folder } = writeExtension();
+    const outside = path.join(root, "outside.txt");
+    fs.writeFileSync(outside, "not part of the extension");
+    fs.symlinkSync(outside, path.join(folder, "icon.png"));
+    fs.symlinkSync(root, path.join(folder, "src", "linked"));
+    const pipe = spawnSync("mkfifo", [path.join(folder, "pipe")]).status === 0;
+    // node_modules belongs to npm, which links freely.
+    fs.mkdirSync(path.join(folder, "node_modules", ".bin"), { recursive: true });
+    fs.symlinkSync(outside, path.join(folder, "node_modules", ".bin", "tool"));
+
+    const issues = validateExtension(folder, { relativeTo: root }).issues.filter((issue) => issue.code === "notARegularFile");
+    const expected = [`extensions/${ID}/icon.png`, `extensions/${ID}/src/linked`, ...(pipe ? [`extensions/${ID}/pipe`] : [])];
+    assert.deepEqual(issues.map((issue) => issue.path).sort(), expected.sort());
+    assert.match(formatIssue(issues.find((issue) => issue.path.endsWith("icon.png"))), /symbolic link.*→ fix: /);
+    if (pipe) assert.match(formatIssue(issues.find((issue) => issue.path.endsWith("pipe"))), /not a regular file/);
+    assert.deepEqual(validateExtension(folder, { store: false }).issues.filter((issue) => issue.code === "notARegularFile"), [],
+      "a store rule: the app reads folders itself");
+  });
+
   test("app mode leaves the store's rules out", () => {
     const { folder } = writeExtension({ manifest: withManifest((m) => { m.license = "GPL-3.0"; m.homepage = "x"; }), files: { "index.js": "" } });
     assert.deepEqual(codes(validateExtension(folder, { store: false }).issues), []);
@@ -380,6 +400,18 @@ describe("npm run validate and the build", () => {
       assert.equal(result.status, 0, `${changed}: the source is checked, not the old build\n${result.out}`);
       assert.ok(result.out.split("\n").includes(NOTE), `${changed}\n${result.out}`);
     }
+  });
+
+  test("aLinkAddedAfterTheBuildIsStillFound", () => {
+    const root = extension({ build: true });
+    const outside = path.join(root, "outside.txt");
+    fs.writeFileSync(outside, "x");
+    const old = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(outside, old, old);
+    fs.symlinkSync(outside, source(root, "notes.txt"));
+    const result = runTool("validate", [BUILT], { root });
+    assert.equal(result.status, 1, result.out);
+    assert.match(result.out, new RegExp(`^extensions/${BUILT.replaceAll(".", "\\.")}/notes\\.txt: it is a symbolic link`, "m"));
   });
 
   test("anExtensionNeverBuiltIsToldToBuild", () => {

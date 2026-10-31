@@ -1722,6 +1722,7 @@ The validator runs the app's own checks, with the app's messages, and then the s
 - The schema's own limits are checked ([`schemaMismatch`](#schemamismatch)): option ids must be plain, `null` is not allowed in optional fields, `version` must use ASCII digits, and an action with `"input": "none"` still lists non-empty `kinds` if it has `accepts`.
 - `accepts.pattern` may use only what the store can verify ([`invalidPattern`](#invalidpattern)).
 - A license, README.md, CHANGELOG.md and a complete `locales/en.json` are required.
+- The folder holds regular files and folders only ([`notARegularFile`](#notaregularfile)).
 
 ## Validator messages
 
@@ -1908,6 +1909,10 @@ A warning: `capture rules never see tags; this rule would never run`. A rule's `
 ### `schemaMismatch`
 
 A schema rule the app's own checks do not cover, such as `"Not Plain" does not have the expected form` (an option id), `must not be empty`, or `must be a string, not null`. **Fix:** compare the field with the [manifest reference](manifest.md): leave optional fields out rather than setting them to `null`.
+
+### `notARegularFile`
+
+`it is a symbolic link, and an extension holds only regular files and folders`, or `it is not a regular file`. The build copies files into the package, and a link would bring whatever it points at, so the store refuses links, pipes and devices anywhere in the extension's folder; `node_modules` is left to npm. `npm run build` stops on it before it copies anything. **Fix:** put a copy of the file itself in the folder, or remove the link.
 
 ## Build errors
 
@@ -3923,7 +3928,7 @@ Each pull request runs, for the extension it changes:
 - `npm test` for the extension, and the tools' own tests.
 - Size: the `.yabext` at most 5 MB (5,000,000 bytes, the most the app downloads), `index.js` at most 1 MB.
 - Readable source: a line in `src/` over 500 characters, or a file in `src/` whose lines average over 200 (blank lines aside), is taken for minified or obfuscated code and refused. Write the source by hand, and let the build bundle libraries.
-- The license and a complete English locale (from the validator).
+- The license, a complete English locale, and regular files only: no symbolic links anywhere in the folder (from the validator).
 - `npm run docs` leaves no difference: a pull request that touches the docs, or what they are made from, commits what `npm run docs` writes.
 - `npm run catalog` builds the store's catalog with the change, so a merge never stops publishing.
 

@@ -29,7 +29,7 @@ Each pull request runs, for the extension it changes:
 - `npm test` for the extension, and the tools' own tests.
 - Size: the `.yabext` at most 5 MB (5,000,000 bytes, the most the app downloads), `index.js` at most 1 MB.
 - Readable source: a line in `src/` over 500 characters, or a file in `src/` whose lines average over 200 (blank lines aside), is taken for minified or obfuscated code and refused. Write the source by hand, and let the build bundle libraries.
-- The license and a complete English locale (from the validator).
+- The license, a complete English locale, and regular files only: no symbolic links anywhere in the folder (from the validator).
 - `npm run docs` leaves no difference: a pull request that touches the docs, or what they are made from, commits what `npm run docs` writes.
 - `npm run catalog` builds the store's catalog with the change, so a merge never stops publishing.
 

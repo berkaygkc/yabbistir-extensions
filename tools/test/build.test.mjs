@@ -36,6 +36,18 @@ describe("npm run build", () => {
     assert.equal(sha256(archive), first);
   });
 
+  test("aLinkIsRefusedBeforeAnythingIsCopied", () => {
+    const root = fresh();
+    const outside = path.join(root, "outside.png");
+    fs.writeFileSync(outside, "whatever the link points at");
+    fs.symlinkSync(outside, path.join(root, "extensions", ID, "icon.png"));
+    const result = run("build", [ID], { root });
+    assert.equal(result.status, 1, result.out);
+    assert.match(result.out, new RegExp(`extensions/${ID.replaceAll(".", "\\.")}/icon\\.png: it is a symbolic link`));
+    assert.ok(!fs.existsSync(path.join(root, "dist", ID, "icon.png")), "the link's target is never copied");
+    assert.ok(!fs.existsSync(path.join(root, "dist", `${ID}-1.0.0.yabext`)));
+  });
+
   test("theArchiveHoldsTheFolderWithFixedDates", () => {
     const root = fresh();
     assert.equal(run("build", [ID], { root }).status, 0);

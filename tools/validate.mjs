@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { formatIssue, validateExtension } from "./lib/validate.mjs";
+import { fileTypeIssues, formatIssue, validateExtension } from "./lib/validate.mjs";
 
 /** The newest modification time among the files and folders the build reads from `folder`: everything but tests/. */
 function newestSource(folder) {
@@ -83,6 +83,8 @@ function main(argv) {
     }
     const built = freshBuild(root, id, folder);
     const { issues } = validateExtension(built ?? folder, { store, relativeTo: root });
+    // The build's copy holds regular files whatever the source has, so links are looked for in the source too.
+    if (store && built) issues.unshift(...fileTypeIssues(folder, { relativeTo: root }));
     // The build's files are copies: an issue is fixed in the source, so it is named there.
     const builtPrefix = `${path.relative(root, built ?? folder)}${path.sep}`;
     for (const issue of issues) {

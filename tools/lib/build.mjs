@@ -5,7 +5,7 @@ import { builtinModules } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
-import { formatIssue, validateExtension } from "./validate.mjs";
+import { fileTypeIssues, formatIssue, validateExtension } from "./validate.mjs";
 import { zipFolder } from "./zip.mjs";
 
 export const NODE_DOCS = "docs/errors.md#node-builtins";
@@ -125,6 +125,10 @@ export async function buildExtension(root, id, { package: pack = true } = {}) {
   if (!fs.existsSync(source) || !fs.statSync(source).isDirectory()) {
     return fail(`extensions/${id}: there is no such extension folder → fix: Create it with npm run new -- ${id}, or check the id.`);
   }
+  // Before anything is read or copied: a link would put whatever it points at into the package.
+  const linked = fileTypeIssues(source, { relativeTo: root });
+  if (linked.length > 0) return { ok: false, messages: linked.map(formatIssue), issues: linked, folder };
+
   let manifest;
   try {
     manifest = JSON.parse(fs.readFileSync(path.join(source, "manifest.json"), "utf8").replace(/^﻿/, ""));

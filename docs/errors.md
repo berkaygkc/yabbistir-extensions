@@ -26,6 +26,7 @@ The validator runs the app's own checks, with the app's messages, and then the s
 - The schema's own limits are checked ([`schemaMismatch`](#schemamismatch)): option ids must be plain, `null` is not allowed in optional fields, `version` must use ASCII digits, and an action with `"input": "none"` still lists non-empty `kinds` if it has `accepts`.
 - `accepts.pattern` may use only what the store can verify ([`invalidPattern`](#invalidpattern)).
 - A license, README.md, CHANGELOG.md and a complete `locales/en.json` are required.
+- The folder holds regular files and folders only ([`notARegularFile`](#notaregularfile)).
 
 ## Validator messages
 
@@ -212,6 +213,10 @@ A warning: `capture rules never see tags; this rule would never run`. A rule's `
 ### `schemaMismatch`
 
 A schema rule the app's own checks do not cover, such as `"Not Plain" does not have the expected form` (an option id), `must not be empty`, or `must be a string, not null`. **Fix:** compare the field with the [manifest reference](manifest.md): leave optional fields out rather than setting them to `null`.
+
+### `notARegularFile`
+
+`it is a symbolic link, and an extension holds only regular files and folders`, or `it is not a regular file`. The build copies files into the package, and a link would bring whatever it points at, so the store refuses links, pipes and devices anywhere in the extension's folder; `node_modules` is left to npm. `npm run build` stops on it before it copies anything. **Fix:** put a copy of the file itself in the folder, or remove the link.
 
 ## Build errors
 
