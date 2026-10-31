@@ -2,7 +2,7 @@
 
 You are working in the store repository for yabbistir extensions. yabbistir is a clipboard history app for macOS. An extension is a folder with a `manifest.json`, TypeScript in `src/`, strings in `locales/`, and tests. The build bundles `src/index.ts` into one `index.js` that runs in **JavaScriptCore, not Node**, inside yabbistir's helper process. The extension only computes and returns data; **the app draws all UI**.
 
-Everything you need is in this file and in `docs/`. Read [docs/getting-started.md](docs/getting-started.md) once, then [docs/concepts.md](docs/concepts.md), and look things up in [docs/manifest.md](docs/manifest.md), [docs/api.md](docs/api.md) and [docs/errors.md](docs/errors.md). Do not guess an API or a manifest field: both references are generated from the code.
+Every coding agent works from this file; `CLAUDE.md` only imports it (`@AGENTS.md`). Everything you need is in this file and in `docs/`. Read [docs/getting-started.md](docs/getting-started.md) once, then [docs/concepts.md](docs/concepts.md), and look things up in [docs/manifest.md](docs/manifest.md), [docs/api.md](docs/api.md) and [docs/errors.md](docs/errors.md). Do not guess an API or a manifest field: both references are generated from the code.
 
 ## Repository map
 
@@ -33,7 +33,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 
 | Command | When |
 |---|---|
-| `npm run new -- <id> --template <action\|detector\|capture-rule\|job>` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. |
+| `npm run new -- <id> --template <action\|detector\|capture-rule\|job> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
 | `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
@@ -55,7 +55,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 
 ## Definition of done
 
-- `npm test -- <id>`, `npm run validate -- <id>` (no errors, no warnings) and `npm run build -- <id>` pass, and `npm run typecheck` is clean.
+- In this order: `npm test -- <id>` passes; `npm run build -- <id>` passes; then `npm run validate -- <id>` reports no errors and no warnings and ends with `extensions/<id>: ok, with its build in dist/<id>`; and `npm run typecheck` is clean. Validate's "not built yet (or out of date)" note is not a warning: it means validate could not check `index.js`, and building first, then validating, makes it go away.
 - Tests cover the main path, each message a person can see, and the expected failures (empty input, missing tool, failed request, cancel).
 - `README.md` says what the extension does, gives an example, and explains every permission and tool. `CHANGELOG.md` has a `## <version>` section for the manifest's `version`.
 - A change to an existing extension raises its `version` and adds a CHANGELOG section.
@@ -128,10 +128,10 @@ test("upperCases", async () => {
 - **Context:** `ctx.language`, `ctx.preferences`, `ctx.variant`, `ctx.target` (`kind`: `finder`, `terminal`, `browser`, `editor`, `other`), `ctx.signal`.
 - **Results:** `{ text }`, `{ html, text }`, `{ image }`, `{ link: { url, title? } }`, `{ file }`, `{ files }` (paths in `yab.files.workDir`), `{ none: true, message? }`. Declare it in `output`.
 - **Capture rule results:** `{ keep: true }` (or nothing), `{ replace: { text } }`, `{ replace: { url } }`, `{ addToCategory: name }`, `{ ignore: true }`.
-- **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text), `tags`.
+- **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text, `(?i)` at the start to ignore case; the syntax the store accepts is in [docs/concepts.md#patterns](docs/concepts.md#patterns)), `tags`.
 - **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, job none.
 - **No effects** (no network, `exec`, notify, open, AI, translate, history) in hints, detectors, previews and capture rules.
-- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
+- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
 
 ## Common mistakes
 
@@ -141,7 +141,7 @@ test("upperCases", async () => {
 | `"…" is not a manifest field here` (`unknownField`) | A misspelled or invented field | Check [docs/manifest.md](docs/manifest.md); the store rejects unknown fields |
 | `must be a string, not null` (`schemaMismatch`) | `null` in an optional field | Leave the field out |
 | `the store validator cannot verify … ` (`invalidPattern`) | `\N{…}` or a `\p{Name=Value}` in `accepts.pattern` | Use plain classes such as `[A-Za-z0-9]`, `\d`, `\p{L}` |
-| A pattern that never matches | JavaScript regex syntax, or no anchors | Patterns are ICU: escape a literal `{`, use `(?i)` for case; write `^…$` |
+| A pattern that never matches | JavaScript regex syntax, or no anchors | Patterns are ICU ([the syntax](docs/concepts.md#patterns)): escape a literal `{`, use `(?i)` for case, write `^…$`; check it with `host.offers` in a test |
 | `"fs" is a Node.js module` / `` `process` is a Node.js global`` | Node code in `src/`, or a library that needs Node | See [docs/errors.md#node-builtins](docs/errors.md#node-builtins) |
 | `Cannot find module` / `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` in tests | A plain `import { … } from "@yabbistir/api"`, a local import without `.ts`, an `enum`, or Node older than 22.18 | `import type`, `./file.ts`, no `enum` or `namespace`, Node 22.18+ |
 | `no fake response for GET https://…` | The test did not answer that exact URL | Add it to the fake host's `http`, query string included |
@@ -152,6 +152,8 @@ test("upperCases", async () => {
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |
-| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked | Run `npm run build -- <id>`; `npm run validate` then checks the build too, until the source changes again |
+| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked. It is a note, not a warning | Run `npm run build -- <id>`, then `npm run validate -- <id>`: it checks the build too, until the source changes again |
+| `author` is your full name from git, not what you wanted | `npm run new` without `--author` takes `git config user.name` | Change `author` in manifest.json: your name or your GitHub user name, as you want to be credited |
+| `locales/tr.json` describes "Reverse text" or another sample | It is the template's Turkish, for its sample | Translate your keys into it, or delete it: Turkish is optional |
 
 When something is unclear, the generated references are the truth: [docs/manifest.md](docs/manifest.md) for fields, [docs/api.md](docs/api.md) for every type and `yab` function, [docs/errors.md](docs/errors.md) for every message.

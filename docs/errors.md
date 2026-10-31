@@ -172,7 +172,7 @@ Either `"<pattern>" is not a valid regular expression`, or `the store validator 
 
 The second message means the pattern uses something the store cannot check against the app, so it refuses it rather than risk a pattern the app rejects. That covers `\N{…}` character names and most `\p{Name=Value}` properties.
 
-**Fix:** use plain constructs: character classes such as `[A-Za-z0-9_-]`, `\d`, `\s`, `\w`, anchors, groups, alternation, `{m,n}`, and `\p{L}` or a script such as `\p{Latin}`. Escape a literal `{` as `\{`, and write `^…$` to match the whole text.
+**Fix:** use the constructs listed in [Patterns](concepts.md#patterns): character classes such as `[A-Za-z0-9_-]`, `\d`, `\s`, `\w`, anchors, groups, alternation, `{m,n}`, look-around, and `\p{L}`, `\p{Lu}` or a script such as `\p{Latin}`. Escape a literal `{` as `\{`, and write `^…$` to match the whole text.
 
 ### `captureRuleTags`
 

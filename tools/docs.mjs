@@ -45,7 +45,7 @@ const NOTES = {
   "name": "The extension's name in Settings, in the Store and on its notices.",
   "description": "One sentence for the Store and Settings.",
   "icon": "A file icon must be `icon.png` next to manifest.json: the build copies only that name. See [Design guidelines](design-guidelines.md#icons).",
-  "author": "The store names this author when someone else's pull request changes the extension.",
+  "author": "When someone else's pull request changes the extension, a comment names the author, and mentions them if it is the GitHub user name they committed the extension with. `npm run new` takes it from `--author <name>`, or else from `git config user.name` and then prints the name it used.",
   "license": `An SPDX license id. The store accepts ${ALLOWED_LICENSES.map((id) => `\`${id}\``).join(", ")}; MIT is the usual choice.`,
   "categories": "Where the Store files the extension. Pick one or two.",
   "permissions": "Leave it out when the extension needs none. Each one is shown to the person before install; see [Permissions](permissions.md).",
@@ -76,7 +76,7 @@ const NOTES = {
   "contributes.actions[].targets": "Paste targets where the action leads the list.",
   "contributes.actions[].job": "See [Jobs](jobs.md). Without it, `run` must finish in 10 seconds.",
   "contributes.actions[].variants": "Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id.",
-  "contributes.actions[].hint": "The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. Never for jobs or `file`/`files` output.",
+  "contributes.actions[].hint": "The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. A hint that returns `{ none: true }` leaves the action offered, with no preview on its row. Never for jobs or `file`/`files` output.",
   "contributes.actions[].priority": "Orders the extension's own actions on an item, highest first. Defaults to 0.",
   "contributes.actions[].variants[].id": "What `ctx.variant` holds when this variant is chosen.",
   "contributes.actions[].variants[].title": "The variant's row title.",
@@ -93,12 +93,16 @@ const NOTES = {
   "contributes.captureRules[].description": "One sentence under the title in Settings.",
   "contributes.captureRules[].accepts": "The copies the rule runs on. Never use `tags` here: rules run before any tag exists.",
   "accepts.kinds": "`image` also takes a file item that is an image.",
-  "accepts.pattern": "Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. The store accepts plain ICU syntax only; see [errors](errors.md#invalidpattern).",
+  "accepts.pattern": "Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. [Patterns](concepts.md#patterns) lists the ICU syntax the store accepts.",
   "accepts.tags": "Only items that carry one of these tags.",
 };
 
-/** Schema descriptions that quote the Turkish interface, in English. */
+/**
+ * Schema descriptions the docs say differently: two quote the Turkish interface, and the schema asks for a GitHub user
+ * name where the store takes any name the author wants to be credited by.
+ */
 const REWORDED = {
+  "author": "How you want to be credited: your name or your GitHub user name.",
   "contributes.actions[].verb": "A job's label in the ⇧ panel: \"↵ <verb> · ⌘C <verb> and copy\", such as \"Download\". Without it a job says \"Start\".",
   "contributes.actions[].failTitle": "A failed job's title, such as \"Couldn't download the video\"; a variant's own wins.",
 };

@@ -4,7 +4,9 @@
 // Creates extensions/<id>/ from templates/<template>/: a manifest, src/index.ts, English and Turkish strings, a test
 // that uses the fake host, a README and a CHANGELOG. It passes `npm run validate` and `npm test` right away.
 //
-//   --author <name>   the manifest's author (default: the git user name, then "your-name")
+//   --author <name>   the manifest's author: how you want to be credited, your name or your GitHub user name.
+//                     Without it, the git user name (then "your-name") is used, and the output says which, so it can
+//                     be changed in manifest.json.
 //   --root <dir>      the repository to create it in (default: this repository)
 
 import { spawnSync } from "node:child_process";
@@ -22,10 +24,11 @@ function titleOf(id) {
   return last.split("-").filter(Boolean).map((word) => word[0].toUpperCase() + word.slice(1)).join(" ");
 }
 
-function defaultAuthor() {
-  const named = spawnSync("git", ["config", "user.name"], { encoding: "utf8" });
+/** The git user name of the repository at `root`, or "your-name"; with where it came from. */
+function defaultAuthor(root) {
+  const named = spawnSync("git", ["config", "user.name"], { encoding: "utf8", cwd: root });
   const name = named.status === 0 ? named.stdout.trim() : "";
-  return name || "your-name";
+  return name ? { name, from: "git" } : { name: "your-name", from: "placeholder" };
 }
 
 function copyTemplate(from, to, values) {
@@ -75,9 +78,17 @@ function main(argv) {
     console.log(`extensions/${id} already exists → fix: Choose another id, or remove that folder first.`);
     return 1;
   }
-  copyTemplate(path.join(here, "templates", template), target, { id, name: titleOf(id), author: author || defaultAuthor() });
-  console.log(`Created extensions/${id} from the ${template} template.
-
+  const credited = author ? { name: author, from: "flag" } : defaultAuthor(root);
+  // The author lands inside a JSON string in manifest.json, so it is escaped the way JSON escapes it.
+  copyTemplate(path.join(here, "templates", template), target, { id, name: titleOf(id), author: JSON.stringify(credited.name).slice(1, -1) });
+  console.log(`Created extensions/${id} from the ${template} template.`);
+  // The author is how the store credits you: say where an unasked-for one came from, so it can be changed.
+  if (credited.from === "git") {
+    console.log(`author: "${credited.name}", from git config user.name. It is how the store credits you, your name or your GitHub user name: change "author" in manifest.json, or pass --author <name>.`);
+  } else if (credited.from === "placeholder") {
+    console.log(`author: "your-name", a placeholder. Set "author" in manifest.json to your name or your GitHub user name, or pass --author <name>.`);
+  }
+  console.log(`
   npm test -- ${id}        run its tests
   npm run validate -- ${id}
   npm run dev -- ${id}     build, link into yabbistir and rebuild on every change

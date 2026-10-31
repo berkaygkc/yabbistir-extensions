@@ -20,9 +20,9 @@ Until then, build an extension here (`npm run build -- <id>`) and install `dist/
 You need macOS 26 or later on Apple silicon with yabbistir, and Node 22.18 or later.
 
 1. Clone this repository and run `npm install`.
-2. `npm run new -- dev.yourname.tool --template action` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`).
-3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`.
-4. `npm test -- dev.yourname.tool`, `npm run validate -- dev.yourname.tool` and `npm run build -- dev.yourname.tool` check it.
+2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
+3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`. Only English is required: the template's `locales/tr.json` holds Turkish for its sample, so translate it or delete it.
+4. `npm test -- dev.yourname.tool`, then `npm run build -- dev.yourname.tool`, then `npm run validate -- dev.yourname.tool` check it.
 5. `npm run dev -- dev.yourname.tool` links it into yabbistir and rebuilds on every change. When it is ready, open a pull request.
 
 Read next:

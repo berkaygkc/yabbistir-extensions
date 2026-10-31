@@ -118,3 +118,5 @@ export const actions: Actions = {
 ```
 
 A transform with `"hint": true` runs early on the selected item. Hints never run for jobs, `file` or `files` output, images, or text over 256 KB; those rows show their `subtitle` instead.
+
+A hint that returns `{ none: true }` does not hide the action: it stays offered, and its row shows no preview. With a `message`, that message is the row's preview line, and picking the row shows it as a notice. So a hint can say "There is nothing to turn into a slug." before the person picks it.

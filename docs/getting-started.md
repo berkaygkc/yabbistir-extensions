@@ -15,8 +15,10 @@ Every command below runs from the repository's root folder.
 Pick an id: a reverse-domain name you control, lowercase, such as `dev.yourname.slugify`. It becomes the folder name and never changes once published.
 
 ```sh
-npm run new -- dev.yourname.slugify --template action
+npm run new -- dev.yourname.slugify --template action --author your-github-name
 ```
+
+`--author` sets the manifest's `author`: how you want to be credited in the store, your name or your GitHub user name. Leave it out and `npm run new` uses your `git config user.name`, and prints it so you can change it in manifest.json.
 
 This creates `extensions/dev.yourname.slugify/` from the action template:
 
@@ -25,13 +27,16 @@ extensions/dev.yourname.slugify/
   manifest.json        what the extension is and what it adds
   src/index.ts         the code
   locales/en.json      English strings (required)
-  locales/tr.json      Turkish strings (optional)
+  locales/tr.json      Turkish strings (optional: translate them or delete the file)
   tests/index.test.mjs tests that run against a fake host, without the app
   README.md            what it does, an example, and why it needs each permission
   CHANGELOG.md         a "## <version>" section per version
 ```
 
-The template is a working "Reverse text" action. Replace its files with the ones below. Its README.md and CHANGELOG.md describe the template's sample: they are placeholders until you rewrite them in step 8. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
+The template is a working "Reverse text" action, and its files describe that sample. Replace them with the ones below:
+
+- **Only English is required; Turkish is optional.** The template's `locales/tr.json` holds Turkish strings for its sample, so delete it, or translate your new keys into it ([Localization](localization.md)). This page deletes it.
+- Its README.md and CHANGELOG.md are placeholders until you rewrite them in step 8.
 
 ## 2. The manifest
 
@@ -64,7 +69,7 @@ What the fields mean:
 - `"input": "item"` makes it a transform: it works on the item the person picked. A generator, which makes something from nothing, says `"input": "none"`.
 - `accepts` decides where the action is offered, from the manifest alone; no JavaScript runs while the person types. Here it is offered on text of one line, up to 200 characters. The pattern is searched for, so `^…$` makes it match the whole text.
 - `"hint": true` runs the action early and shows its result on the row, so the person sees `release-notes-2-0` before choosing it. A hint runs without effects (no network, no programs) and must finish in 500 ms. Its result is what gets pasted.
-- `author` is your GitHub user name.
+- `author` is how you want to be credited: your name or your GitHub user name. When it is the GitHub user name you commit with, a pull request by someone else that changes your extension mentions you.
 
 Every field is in the [manifest reference](manifest.md).
 

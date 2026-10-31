@@ -334,7 +334,7 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
   localeKey("name", root, "name");
   localeKey("description", root, "description");
   string("icon", root, "icon", "Add \"icon\": \"sf:<SF Symbol name>\" or \"icon.png\".");
-  string("author", root, "author", "Add \"author\" with your GitHub user name.");
+  string("author", root, "author", "Add \"author\": your name or your GitHub user name, as you want to be credited.");
   string("license", root, "license", "Add \"license\", e.g. \"MIT\".");
   list(root.categories).forEach((category, index) => {
     if (!CATEGORIES.includes(typeof category === "string" ? category : "")) {

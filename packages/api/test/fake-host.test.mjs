@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { createFakeHost, yabError } from "../fake-host.mjs";
+import { acceptsMatch, createFakeHost, yabError } from "../fake-host.mjs";
 
 const manifest = {
   id: "dev.example.fetcher",
@@ -251,5 +251,61 @@ describe("calls", () => {
     assert.equal(at.text, `2001-02-03T04:05:06.000Z ${Date.UTC(2001, 1, 3, 4, 5, 6)}`);
     assert.notEqual(new Date().getUTCFullYear(), 2001);
     assert.equal((await host.run({ run: (item) => ({ text: item.copiedAt }) })).text, "2001-02-03T04:05:06.000Z");
+  });
+});
+
+describe("accepts", () => {
+  const text = (value) => ({ kind: "text", text: value });
+
+  test("acceptsMatchAppliesTheKindsAndThePattern", () => {
+    const accepts = { kinds: ["text", "code"], pattern: "^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$" };
+    assert.equal(acceptsMatch(accepts, text("  ada@example.com\n")), true, "the text is trimmed first");
+    assert.equal(acceptsMatch(accepts, { kind: "code", text: "ada@example.com" }), true);
+    assert.equal(acceptsMatch(accepts, text("Ada@Example.com")), false, "case counts without (?i)");
+    assert.equal(acceptsMatch(accepts, { kind: "link", url: "mailto:ada@example.com" }), false, "the kind must be listed");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "@" }, text("write to ada@example.com")), true, "searched for, not matched whole");
+    assert.equal(acceptsMatch({ kinds: ["link"] }, { kind: "link", url: "https://example.com" }), true, "no pattern: the kind decides");
+  });
+
+  test("aLeadingFlagGroupBecomesJavaScriptFlags", () => {
+    assert.equal(acceptsMatch({ kinds: ["link"], pattern: "(?i)^https://example\\.com/" }, { kind: "link", url: "HTTPS://EXAMPLE.COM/a" }), true);
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "(?s)^a.b$" }, text("a\nb")), true);
+  });
+
+  test("unicodeConstructsMatchAsInICU", () => {
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "^\\p{Lu}\\p{Ll}+$" }, text("Çiçek")), true, "general categories");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "^\\p{Greek}+$" }, text("λόγος")), true, "a bare script name");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "^[\\p{Latin}\\s]+$" }, text("Hello world")), true, "a script inside a set");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "^\\d+$" }, text("١٢٣")), true, "\\d is any decimal digit, as in ICU");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "(?<=@)example\\.com$" }, text("ada@example.com")), true, "look-behind");
+    assert.equal(acceptsMatch({ kinds: ["text"], pattern: "^(?!test@)\\S+@\\S+$" }, text("test@example.com")), false, "look-ahead");
+  });
+
+  test("tagsAndImageFiles", () => {
+    const tagged = { kind: "text", text: "x", tags: ["dev.example.jwt:jwt"] };
+    assert.equal(acceptsMatch({ kinds: ["text"], tags: ["jwt"] }, tagged, { extensionID: "dev.example.jwt" }), true, "an own detector by its id");
+    assert.equal(acceptsMatch({ kinds: ["text"], tags: ["dev.example.jwt:jwt"] }, tagged), true);
+    assert.equal(acceptsMatch({ kinds: ["text"], tags: ["other"] }, tagged, { extensionID: "dev.example.jwt" }), false);
+    const png = { kind: "file", files: [{ path: "/tmp/a.png", name: "a.png", size: 1, uti: "public.png" }] };
+    assert.equal(acceptsMatch({ kinds: ["image"] }, png), true, "an image file counts as an image");
+    assert.equal(acceptsMatch({ kinds: ["image"] }, { ...png, files: [{ ...png.files[0], uti: "public.plain-text" }] }), false);
+  });
+
+  test("icuOnlySyntaxSaysSo", () => {
+    assert.throws(() => acceptsMatch({ kinds: ["text"], pattern: "a++" }, text("aa")), /ICU/);
+    assert.throws(() => acceptsMatch({ kinds: ["text"], pattern: "(?x) a b" }, text("ab")), /ICU/);
+  });
+
+  test("hostOffersTheActionsThatTakeAnItem", () => {
+    const host = createFakeHost({ manifest: { id: "dev.example.offers", contributes: { actions: [
+      { id: "lower", input: "item", accepts: { kinds: ["text"], pattern: "@" } },
+      { id: "uuid", input: "none" },
+      { id: "first", input: "item", accepts: { kinds: ["text"], pattern: "@" }, priority: 5 },
+      { id: "save", input: "item", accepts: { kinds: ["text"] }, targets: ["finder"], targetsOnly: true },
+    ] } } });
+    assert.deepEqual(host.offers({ text: "ada@example.com" }), ["first", "lower"], "highest priority first; generators are not transforms");
+    assert.deepEqual(host.offers({ text: "no address" }), []);
+    const finder = { target: { bundleID: "com.apple.finder", name: "Finder", kind: "finder" } };
+    assert.deepEqual(host.offers({ text: "ada@example.com" }, finder), ["save", "first", "lower"], "the target's actions lead");
   });
 });

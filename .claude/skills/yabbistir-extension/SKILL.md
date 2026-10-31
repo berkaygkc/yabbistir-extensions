@@ -35,13 +35,13 @@ On-device AI (`yab.ai.generate`), translation (`yab.translate`), images, prefere
 ## 3. Create it
 
 ```sh
-npm run new -- dev.yourname.tool --template action
+npm run new -- dev.yourname.tool --template action --author <name>
 ```
 
-The id is a lowercase reverse-domain name and equals the folder name. Then:
+The id is a lowercase reverse-domain name and equals the folder name. `author` is how the person wants to be credited, their name or their GitHub user name: ask them, or check the `author:` line `npm run new` prints when it took the git user name. Then:
 
 1. Edit `manifest.json`. Every field a person reads holds a key into `locales/en.json`. Look fields up in [docs/manifest.md](../../../docs/manifest.md); never invent one.
-2. Add the keys to `locales/en.json`; a `keywords` key's value is a list. Delete `locales/tr.json`, or translate every key into it.
+2. Add the keys to `locales/en.json`; a `keywords` key's value is a list. Only English is required: the template's `locales/tr.json` describes its sample, so delete it, or translate every key into it.
 3. Write `src/index.ts`: `export const actions: Actions = { <id>: { run(item, ctx) { … } } }` (or `detectors`, `captureRules`), with `import type { … } from "@yabbistir/api"`. Look `yab` up in [docs/api.md](../../../docs/api.md). Import your own files as `./file.ts`.
 4. Return `{ none: true, message: yab.t("…") }` for expected situations; throw only for real failures.
 5. Run `npm run validate -- <id>` and fix each line it prints; the fix is in the line, and [docs/errors.md](../../../docs/errors.md) explains every code.
@@ -72,12 +72,12 @@ test("doesTheThing", async () => {
 
 ```sh
 npm test -- dev.yourname.tool
-npm run validate -- dev.yourname.tool
 npm run build -- dev.yourname.tool
+npm run validate -- dev.yourname.tool
 npm run typecheck
 ```
 
-All four pass with no errors and no warnings. After a build, `npm run validate` checks the build too, `index.js` included; while there is none, or the source changed since, it notes "not built yet (or out of date)". A Node module or global fails the build ([docs/errors.md#node-builtins](../../../docs/errors.md#node-builtins)). To try it in the app, the person runs `npm run dev -- <id>` on their Mac.
+All four pass with no errors and no warnings, in this order. After the build, `npm run validate` checks the build too, `index.js` included, and ends with `ok, with its build in dist/<id>`. Its "not built yet (or out of date)" note is not a warning: it appears when there is no build or the source changed since, and building, then validating, clears it. A Node module or global fails the build ([docs/errors.md#node-builtins](../../../docs/errors.md#node-builtins)). To try it in the app, the person runs `npm run dev -- <id>` on their Mac.
 
 ## 6. Prepare the pull request
 

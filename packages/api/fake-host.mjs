@@ -40,6 +40,9 @@
 //   validate(detector, item?)               a detector's validate
 //   preview(detector, item?, context?)      a detector's preview
 //   capture(rule, item?, context?)          a capture rule
+//   offers(item?, context?)                 the ids of the actions the app would offer on the item: `input: "item"` actions
+//                                           whose `accepts` takes it (see acceptsMatch), highest priority first, the
+//                                           target's own first, a `targetsOnly` one only for its targets
 //   cancel()             cancels the calls in progress, as the person's ✕ does
 //   install()            makes them the globals outside calls too; returns a function that puts the old ones back
 //   calls                the yab calls in order, as { api, args } with callbacks and signals left out; t and plain
@@ -47,6 +50,15 @@
 //   notifications, opened, progress, results     what yab.notify, yab.open and yab.job.progress got, and what the
 //                                                calls above returned
 //   files, storage       the fake disk (a Map of path → bytes) and the store
+//
+// acceptsMatch(accepts, item, { extensionID }?) → boolean
+//   Whether a manifest `accepts` block takes the item, the way the app decides, for testing a pattern: the item's kind
+//   is listed (a single image file counts for "image"); it carries one of `tags`, if any ("tag" alone means the
+//   extension's own detector when `extensionID` is given); and `pattern` is found in its text or URL, trimmed. The app
+//   matches ICU regular expressions; this uses JavaScript's RegExp with the u flag, after turning a leading (?i), (?s)
+//   or (?m) into flags, \d into any decimal digit and a bare script name (\p{Greek}) into \p{Script=Greek}. Close to
+//   the app, not identical: ICU's \w and \s differ a little, and ICU-only syntax (a++, (?>…), (?x), sets with && or
+//   --, [[:alpha:]], \Q…\E) throws with a message saying so.
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -148,6 +160,92 @@ function cleanName(name) {
   if (clean === "" || clean === "." || clean === "..") throw yabError("badResult", "a file name cannot be empty, \".\" or \"..\"");
   if ([...clean].length > 200) throw yabError("badResult", "a file name is at most 200 characters");
   return clean;
+}
+
+// ---- Matching `accepts` ----
+
+/** The image types a file item may have to count as an image; the app asks the system whether the type is an image. */
+const IMAGE_TYPES = new Set(["public.image", "public.png", "public.jpeg", "public.heic", "public.heif", "public.tiff", "public.avif",
+  "com.compuserve.gif", "org.webmproject.webp", "com.microsoft.bmp", "public.svg-image", "public.camera-raw-image", "com.apple.icns"]);
+const isImageFile = (item) => item?.kind === "file" && Array.isArray(item.files) && item.files.length === 1 && IMAGE_TYPES.has(item.files[0]?.uti);
+
+const icuOnly = (pattern, why) =>
+  new Error(`accepts.pattern "${pattern}" uses ICU syntax that JavaScript cannot run here (${why}). npm run validate checks it as ICU; try it in the app with npm run dev.`);
+
+/** A property name as JavaScript's u flag spells it: ICU takes a bare script name, JavaScript wants Script=. */
+function jsProperty(name) {
+  if (name.includes("=")) return name;
+  for (const candidate of [name, `Script=${name}`]) {
+    try {
+      new RegExp(`\\p{${candidate}}`, "u");
+      return candidate;
+    } catch {
+      // Not this spelling.
+    }
+  }
+  return name;
+}
+
+const compiled = new Map();
+/** An ICU pattern as a JavaScript RegExp, as close as JavaScript allows; throws for ICU-only syntax. */
+function icuToRegExp(pattern) {
+  if (compiled.has(pattern)) return compiled.get(pattern);
+  let source = pattern;
+  let flags = "u";
+  const leading = /^\(\?([A-Za-z]+)\)/.exec(source);
+  if (leading) {
+    for (const flag of leading[1]) {
+      if (!"ism".includes(flag)) throw icuOnly(pattern, `the (?${leading[1]}) flags`);
+      if (!flags.includes(flag)) flags += flag;
+    }
+    source = source.slice(leading[0].length);
+  }
+  let out = "";
+  for (let index = 0; index < source.length; index++) {
+    const c = source[index];
+    const after = source[index + 1];
+    if (c !== "\\" || after === undefined) {
+      out += c;
+      continue;
+    }
+    if (after === "d" || after === "D") out += after === "d" ? "\\p{Nd}" : "\\P{Nd}"; // ICU: any decimal digit
+    else if ((after === "p" || after === "P") && source[index + 2] === "{" && source.indexOf("}", index + 3) > 0) {
+      const end = source.indexOf("}", index + 3);
+      out += `\\${after}{${jsProperty(source.slice(index + 3, end))}}`;
+      index = end;
+      continue;
+    } else if (after === "x" && source[index + 2] === "{") out += "\\u"; // \x{hhhh} is \u{hhhh}
+    else out += c + after;
+    index++;
+  }
+  let regExp;
+  try {
+    regExp = new RegExp(out, flags);
+  } catch (error) {
+    throw icuOnly(pattern, error.message);
+  }
+  compiled.set(pattern, regExp);
+  return regExp;
+}
+
+/**
+ * Whether a manifest `accepts` block takes `item`, close to the way the app decides (see the header). `extensionID`
+ * lets "tag" stand for the extension's own detector, as in the app.
+ */
+export function acceptsMatch(accepts, item, { extensionID } = {}) {
+  if (!isObject(accepts) || !isObject(item)) return false;
+  const kinds = Array.isArray(accepts.kinds) ? accepts.kinds : [];
+  if (!(kinds.includes(item.kind) || (kinds.includes("image") && isImageFile(item)))) return false;
+  const tags = Array.isArray(accepts.tags) ? accepts.tags.map(String) : [];
+  if (tags.length > 0) {
+    const wanted = tags.map((tag) => (tag.includes(":") || !extensionID ? tag : `${extensionID}:${tag}`));
+    if (!wanted.some((tag) => (Array.isArray(item.tags) ? item.tags : []).includes(tag))) return false;
+  }
+  if (typeof accepts.pattern === "string") {
+    const text = String(item.text ?? item.url ?? "").slice(0, 1_000_000).trim();
+    if (!icuToRegExp(accepts.pattern).test(text)) return false;
+  }
+  return true;
 }
 
 const RESULT_SHAPES = "expected {text}, {html, text}, {image}, {link: {url, title}}, {file}, {files} or {none: true}";
@@ -815,6 +913,19 @@ export function createFakeHost(options = {}) {
         results.push(value ?? undefined);
         return value ?? undefined;
       });
+    },
+    offers(item, overrides = {}) {
+      const subject = itemFor(item);
+      const target = overrides?.target ?? options.context?.target ?? null;
+      const actions = Array.isArray(manifest.contributes?.actions) ? manifest.contributes.actions : [];
+      const isFor = (action) => target !== null && Array.isArray(action.targets) && action.targets.includes(target.kind);
+      const offered = actions
+        .map((action, index) => ({ action, index }))
+        .filter(({ action }) => isObject(action) && action.input === "item" && acceptsMatch(action.accepts, subject, { extensionID }))
+        .sort((a, b) => (b.action.priority ?? 0) - (a.action.priority ?? 0) || a.index - b.index)
+        .map(({ action }) => action)
+        .filter((action) => action.targetsOnly !== true || isFor(action));
+      return [...offered.filter(isFor), ...offered.filter((action) => !isFor(action))].map((action) => action.id);
     },
     cancel() {
       for (const own of [...active]) {

@@ -23,6 +23,13 @@ describe("reverse", () => {
     assert.deepEqual(result, { none: true, message: "There is no text to reverse." });
   });
 
+  test("isOfferedOnTextAndCode", () => {
+    // host.offers applies the manifest's `accepts` the way the app does, to check where the action shows up.
+    assert.deepEqual(host.offers({ kind: "text", text: "hello" }), ["reverse"]);
+    assert.deepEqual(host.offers({ kind: "code", text: "let x = 1" }), ["reverse"]);
+    assert.deepEqual(host.offers({ kind: "link", url: "https://example.com" }), []);
+  });
+
   test("answersInTheAppsLanguage", async () => {
     const turkish = createFakeHost({ folder: new URL("..", import.meta.url), context: { language: "tr" } });
     const result = await turkish.run(actions.reverse, item(""));

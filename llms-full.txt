@@ -11,7 +11,7 @@ File: AGENTS.md
 
 You are working in the store repository for yabbistir extensions. yabbistir is a clipboard history app for macOS. An extension is a folder with a `manifest.json`, TypeScript in `src/`, strings in `locales/`, and tests. The build bundles `src/index.ts` into one `index.js` that runs in **JavaScriptCore, not Node**, inside yabbistir's helper process. The extension only computes and returns data; **the app draws all UI**.
 
-Everything you need is in this file and in `docs/`. Read [docs/getting-started.md](docs/getting-started.md) once, then [docs/concepts.md](docs/concepts.md), and look things up in [docs/manifest.md](docs/manifest.md), [docs/api.md](docs/api.md) and [docs/errors.md](docs/errors.md). Do not guess an API or a manifest field: both references are generated from the code.
+Every coding agent works from this file; `CLAUDE.md` only imports it (`@AGENTS.md`). Everything you need is in this file and in `docs/`. Read [docs/getting-started.md](docs/getting-started.md) once, then [docs/concepts.md](docs/concepts.md), and look things up in [docs/manifest.md](docs/manifest.md), [docs/api.md](docs/api.md) and [docs/errors.md](docs/errors.md). Do not guess an API or a manifest field: both references are generated from the code.
 
 ## Repository map
 
@@ -42,7 +42,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 
 | Command | When |
 |---|---|
-| `npm run new -- <id> --template <action\|detector\|capture-rule\|job>` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. |
+| `npm run new -- <id> --template <action\|detector\|capture-rule\|job> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
 | `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
@@ -64,7 +64,7 @@ Run every command from the repository's root. Node 22.18 or later; run `npm inst
 
 ## Definition of done
 
-- `npm test -- <id>`, `npm run validate -- <id>` (no errors, no warnings) and `npm run build -- <id>` pass, and `npm run typecheck` is clean.
+- In this order: `npm test -- <id>` passes; `npm run build -- <id>` passes; then `npm run validate -- <id>` reports no errors and no warnings and ends with `extensions/<id>: ok, with its build in dist/<id>`; and `npm run typecheck` is clean. Validate's "not built yet (or out of date)" note is not a warning: it means validate could not check `index.js`, and building first, then validating, makes it go away.
 - Tests cover the main path, each message a person can see, and the expected failures (empty input, missing tool, failed request, cancel).
 - `README.md` says what the extension does, gives an example, and explains every permission and tool. `CHANGELOG.md` has a `## <version>` section for the manifest's `version`.
 - A change to an existing extension raises its `version` and adds a CHANGELOG section.
@@ -137,10 +137,10 @@ test("upperCases", async () => {
 - **Context:** `ctx.language`, `ctx.preferences`, `ctx.variant`, `ctx.target` (`kind`: `finder`, `terminal`, `browser`, `editor`, `other`), `ctx.signal`.
 - **Results:** `{ text }`, `{ html, text }`, `{ image }`, `{ link: { url, title? } }`, `{ file }`, `{ files }` (paths in `yab.files.workDir`), `{ none: true, message? }`. Declare it in `output`.
 - **Capture rule results:** `{ keep: true }` (or nothing), `{ replace: { text } }`, `{ replace: { url } }`, `{ addToCategory: name }`, `{ ignore: true }`.
-- **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text), `tags`.
+- **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text, `(?i)` at the start to ignore case; the syntax the store accepts is in [docs/concepts.md#patterns](docs/concepts.md#patterns)), `tags`.
 - **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, job none.
 - **No effects** (no network, `exec`, notify, open, AI, translate, history) in hints, detectors, previews and capture rules.
-- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
+- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
 
 ## Common mistakes
 
@@ -150,7 +150,7 @@ test("upperCases", async () => {
 | `"…" is not a manifest field here` (`unknownField`) | A misspelled or invented field | Check [docs/manifest.md](docs/manifest.md); the store rejects unknown fields |
 | `must be a string, not null` (`schemaMismatch`) | `null` in an optional field | Leave the field out |
 | `the store validator cannot verify … ` (`invalidPattern`) | `\N{…}` or a `\p{Name=Value}` in `accepts.pattern` | Use plain classes such as `[A-Za-z0-9]`, `\d`, `\p{L}` |
-| A pattern that never matches | JavaScript regex syntax, or no anchors | Patterns are ICU: escape a literal `{`, use `(?i)` for case; write `^…$` |
+| A pattern that never matches | JavaScript regex syntax, or no anchors | Patterns are ICU ([the syntax](docs/concepts.md#patterns)): escape a literal `{`, use `(?i)` for case, write `^…$`; check it with `host.offers` in a test |
 | `"fs" is a Node.js module` / `` `process` is a Node.js global`` | Node code in `src/`, or a library that needs Node | See [docs/errors.md#node-builtins](docs/errors.md#node-builtins) |
 | `Cannot find module` / `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` in tests | A plain `import { … } from "@yabbistir/api"`, a local import without `.ts`, an `enum`, or Node older than 22.18 | `import type`, `./file.ts`, no `enum` or `namespace`, Node 22.18+ |
 | `no fake response for GET https://…` | The test did not answer that exact URL | Add it to the fake host's `http`, query string included |
@@ -161,7 +161,9 @@ test("upperCases", async () => {
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |
-| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked | Run `npm run build -- <id>`; `npm run validate` then checks the build too, until the source changes again |
+| `npm run validate` says "not built yet (or out of date)" | There is no build, or the source changed after it, so `index.js` was not checked. It is a note, not a warning | Run `npm run build -- <id>`, then `npm run validate -- <id>`: it checks the build too, until the source changes again |
+| `author` is your full name from git, not what you wanted | `npm run new` without `--author` takes `git config user.name` | Change `author` in manifest.json: your name or your GitHub user name, as you want to be credited |
+| `locales/tr.json` describes "Reverse text" or another sample | It is the template's Turkish, for its sample | Translate your keys into it, or delete it: Turkish is optional |
 
 When something is unclear, the generated references are the truth: [docs/manifest.md](docs/manifest.md) for fields, [docs/api.md](docs/api.md) for every type and `yab` function, [docs/errors.md](docs/errors.md) for every message.
 
@@ -192,9 +194,9 @@ Until then, build an extension here (`npm run build -- <id>`) and install `dist/
 You need macOS 26 or later on Apple silicon with yabbistir, and Node 22.18 or later.
 
 1. Clone this repository and run `npm install`.
-2. `npm run new -- dev.yourname.tool --template action` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`).
-3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`.
-4. `npm test -- dev.yourname.tool`, `npm run validate -- dev.yourname.tool` and `npm run build -- dev.yourname.tool` check it.
+2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
+3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`. Only English is required: the template's `locales/tr.json` holds Turkish for its sample, so translate it or delete it.
+4. `npm test -- dev.yourname.tool`, then `npm run build -- dev.yourname.tool`, then `npm run validate -- dev.yourname.tool` check it.
 5. `npm run dev -- dev.yourname.tool` links it into yabbistir and rebuilds on every change. When it is ready, open a pull request.
 
 Read next:
@@ -246,8 +248,10 @@ Every command below runs from the repository's root folder.
 Pick an id: a reverse-domain name you control, lowercase, such as `dev.yourname.slugify`. It becomes the folder name and never changes once published.
 
 ```sh
-npm run new -- dev.yourname.slugify --template action
+npm run new -- dev.yourname.slugify --template action --author your-github-name
 ```
+
+`--author` sets the manifest's `author`: how you want to be credited in the store, your name or your GitHub user name. Leave it out and `npm run new` uses your `git config user.name`, and prints it so you can change it in manifest.json.
 
 This creates `extensions/dev.yourname.slugify/` from the action template:
 
@@ -256,13 +260,16 @@ extensions/dev.yourname.slugify/
   manifest.json        what the extension is and what it adds
   src/index.ts         the code
   locales/en.json      English strings (required)
-  locales/tr.json      Turkish strings (optional)
+  locales/tr.json      Turkish strings (optional: translate them or delete the file)
   tests/index.test.mjs tests that run against a fake host, without the app
   README.md            what it does, an example, and why it needs each permission
   CHANGELOG.md         a "## <version>" section per version
 ```
 
-The template is a working "Reverse text" action. Replace its files with the ones below. Its README.md and CHANGELOG.md describe the template's sample: they are placeholders until you rewrite them in step 8. Delete `locales/tr.json`, which holds the template's Turkish strings, or translate the new keys into it ([Localization](localization.md)).
+The template is a working "Reverse text" action, and its files describe that sample. Replace them with the ones below:
+
+- **Only English is required; Turkish is optional.** The template's `locales/tr.json` holds Turkish strings for its sample, so delete it, or translate your new keys into it ([Localization](localization.md)). This page deletes it.
+- Its README.md and CHANGELOG.md are placeholders until you rewrite them in step 8.
 
 ## 2. The manifest
 
@@ -295,7 +302,7 @@ What the fields mean:
 - `"input": "item"` makes it a transform: it works on the item the person picked. A generator, which makes something from nothing, says `"input": "none"`.
 - `accepts` decides where the action is offered, from the manifest alone; no JavaScript runs while the person types. Here it is offered on text of one line, up to 200 characters. The pattern is searched for, so `^…$` makes it match the whole text.
 - `"hint": true` runs the action early and shows its result on the row, so the person sees `release-notes-2-0` before choosing it. A hint runs without effects (no network, no programs) and must finish in 500 ms. Its result is what gets pasted.
-- `author` is your GitHub user name.
+- `author` is how you want to be credited: your name or your GitHub user name. When it is the GitHub user name you commit with, a pull request by someone else that changes your extension mentions you.
 
 Every field is in the [manifest reference](manifest.md).
 
@@ -471,7 +478,7 @@ An **action** is a command in the panel. Its manifest entry says what it is call
 - **Transforms** (`"input": "item"`) work on an item: Base64-encode it, download the video a link points to. `accepts` says which items: `kinds`, an optional regular expression `pattern` over the text or URL, and optional detector `tags`.
 - **Generators** (`"input": "none"`) make something from nothing, such as a UUID. `run` gets `null` for the item.
 - **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen.
-- **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted.
+- **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted. A hint that returns `{ none: true }` leaves the action offered, and its row shows no preview.
 - **Jobs** (`"job": true`) are long actions: a card under the menu bar icon shows their progress and lets the person cancel. See [Jobs](jobs.md).
 
 Where actions appear:
@@ -483,6 +490,31 @@ Where actions appear:
 Actions whose `targets` include the paste target's kind come first, and `targetsOnly` keeps an action to those targets alone. ↵ pastes the result into the app the panel opened for; ⌘C copies it instead.
 
 **Which actions appear is decided from manifests alone.** No extension code runs on a keystroke. A hint runs once its row is shown.
+
+## Patterns
+
+`accepts.pattern` (on actions, detectors and capture rules) is a regular expression in **ICU** syntax, the kind macOS uses, not JavaScript's. It is *searched for* in the item's text, or its URL for a link, after surrounding whitespace is trimmed: write `^…$` to match the whole text. Matching is case-sensitive unless the pattern starts with `(?i)`.
+
+The store accepts only what it can check against the app, so `npm run validate` refuses anything else with [`invalidPattern`](errors.md#invalidpattern). What it accepts:
+
+- **Plain syntax:** literals, `.`, `^`, `$`, `|`, groups `( )`, `(?: )`, named groups `(?<name> )` with `\k<name>`, back references `\1`.
+- **Quantifiers:** `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`, lazy (`*?`) and possessive (`*+`) forms, atomic groups `(?> )`.
+- **Look-around:** `(?= )`, `(?! )`, and look-behind `(?<= )`, `(?<! )` of bounded length (no `*`, `+` or `{n,}` inside).
+- **Flags:** `(?i)` (ignore case), `(?m)`, `(?s)`, `(?x)`, `(?w)`, at the start or scoped as `(?i: )`.
+- **Escapes:** `\d`, `\w`, `\s` and their capitals (`\d` is any decimal digit, not only 0–9), `\b`, `\B`, `\A`, `\z`, `\Z`, `\t`, `\n`, `\r`, `\xhh`, `\x{h…}`, `\uhhhh`, `\Q…\E`, `\X`. Escape a literal `{` as `\{`.
+- **Sets:** `[abc]`, `[^a-z]`, nested sets `[[a-z][0-9]]`, intersection `[\p{L}&&[a-z]]`, difference `[a-z--[aeiou]]`, and POSIX classes in lowercase (`[[:alpha:]]`, `[[:digit:]]`).
+- **Unicode properties**, with `\p{…}`, or `\P{…}` for the opposite, spelled exactly as ICU spells them:
+  - general categories: `\p{L}`, `\p{Lu}`, `\p{Ll}`, `\p{N}`, `\p{Nd}`, `\p{P}`, `\p{S}`, `\p{Z}`, or long names such as `\p{Letter}` and `\p{Uppercase_Letter}`;
+  - scripts: `\p{Latin}`, `\p{Greek}`, `\p{Cyrillic}`, `\p{Arabic}`, `\p{Han}`, `\p{Hiragana}`, …;
+  - binary properties: `\p{Alphabetic}`, `\p{White_Space}`, `\p{Emoji}`, `\p{ASCII}`, `\p{Any}`, …;
+  - blocks with `In`: `\p{InBasic_Latin}`;
+  - and the `=` forms of those four only: `\p{gc=Lu}`, `\p{Script=Latin}`, `\p{scx=Latin}`, `\p{Block=Basic_Latin}`.
+
+  [`tools/lib/icu-properties.json`](../tools/lib/icu-properties.json) lists every spelling the store accepts.
+
+Refused, because the store cannot verify them: character names (`\N{…}`), any other `\p{Name=Value}` (`Name=`, `Age=`, `Line_Break=`, `East_Asian_Width=`, `Numeric_Value=`, `Bidi_Class=` …), spellings off the list (`\p{IsL}`, `\p{L&}`, `\p{all}`, `[[:ALPHA:]]`, extra spaces), and an unbounded look-behind. Refused because ICU rejects them: JavaScript-only syntax such as a bare `{`, `[^]` or an empty pattern.
+
+In tests, [`host.offers(item)` and `acceptsMatch(accepts, item)`](testing.md#where-an-action-is-offered) apply a manifest's `accepts` to a sample item, close to the app's matching.
 
 ## Detectors
 
@@ -526,7 +558,9 @@ An extension starts with no permissions, and most need none: text transforms, de
 
 | Idea | Use | Start from |
 |---|---|---|
-| Change the item and paste the result (encode, reformat, convert) | An action, `"input": "item"` | `--template action`, [Getting started](getting-started.md) |
+| Change a copy when the person asks (encode, reformat, convert), and paste the result | An action, `"input": "item"`; no permission | `--template action`, [Getting started](getting-started.md) |
+| Change every copy automatically, as it is copied (clean, rewrite, drop) | A capture rule; needs `capture`, which the person reads as "Can see everything you copy" | `--template capture-rule`, [A link-cleaning rule](recipes/link-cleaning-rule.md) |
+| Mark copies for the person, without changing them | A detector: its tag shows as a chip on the item; no permission | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Make something new (UUID, timestamp, lorem ipsum) | An action, `"input": "none"` | `--template action` |
 | A few fixed flavors of one action (to Turkish / to English) | `variants` on one action | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Show the result before it is chosen | `"hint": true` | [Getting started](getting-started.md) |
@@ -534,13 +568,24 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Hand a file to Finder | An action with `"output": "file"` and `"targets": ["finder"]` | [Drop a file into Finder](recipes/drop-a-file-in-finder.md) |
 | Recognize a kind of text (token, key, ID) and explain it | A detector with `validate` and `preview` | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Offer an action only on items a detector tagged | `accepts.tags` on the action | [Tag and preview](recipes/tag-and-preview.md) |
-| Clean or drop copies before they are stored | A capture rule | `--template capture-rule`, [A link-cleaning rule](recipes/link-cleaning-rule.md) |
 | Call a web service | An action with the `network` permission | [Call an API with a key](recipes/call-an-api-with-a-key.md) |
 | Run a command-line program | An action or job with the `exec` permission | `--template job` |
 | Summarize, rewrite or translate on the Mac | `yab.ai.generate`, `yab.translate` (no permission) | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Work with earlier copies | `yab.history` (the `history` permission) | [Permissions](permissions.md#history) |
 
+**A capture rule cannot show a tag or a chip.** Only detectors tag items, and they run after the copy is stored, so a rule never sees tags or adds them. To change copies and mark them too, put a rule and a detector in one extension.
+
 Not possible: drawing your own interface, running in the background on a timer, reading the clipboard directly, writing outside the call's work folder, reaching the network from a detector or a rule.
+
+## Several contributions in one extension
+
+One extension can add any mix of actions, detectors and capture rules. Scaffold with the template nearest to the main thing it does, then add the others by hand:
+
+1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
+2. In `src/index.ts`, export the matching objects, keyed by those ids: `export const detectors: Detectors = { … }` next to `export const actions: Actions = { … }`.
+3. Add every new string key to `locales/en.json`, and tests for each part.
+
+Permissions belong to the whole extension: a capture rule needs `capture` even when the rest of the extension needs nothing, and the person sees it for the whole extension. [Tag and preview](recipes/tag-and-preview.md) is a detector and an action in one extension, the action offered only on the detector's tag.
 
 ## Recipes
 
@@ -580,7 +625,7 @@ Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requ
 | `name` | [locale key](localization.md) | yes | The extension's name in Settings, in the Store and on its notices. |
 | `description` | [locale key](localization.md) | yes | One sentence for the Store and Settings. |
 | `icon` | string | yes | "sf:<SF Symbol name>" or a file name in the extension folder. A file icon must be `icon.png` next to manifest.json: the build copies only that name. See [Design guidelines](design-guidelines.md#icons). |
-| `author` | string | yes | GitHub user name. The store names this author when someone else's pull request changes the extension. |
+| `author` | string | yes | How you want to be credited: your name or your GitHub user name. When someone else's pull request changes the extension, a comment names the author, and mentions them if it is the GitHub user name they committed the extension with. `npm run new` takes it from `--author <name>`, or else from `git config user.name` and then prints the name it used. |
 | `license` | string | yes | An SPDX license id. The store accepts `MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `MPL-2.0`; MIT is the usual choice. |
 | `categories` | list of one of `"text"`, `"links"`, `"images"`, `"files"`, `"developer"`, `"media"`, `"ai"`, `"productivity"` |  | Where the Store files the extension. Pick one or two. |
 | `permissions` | list of one of `"network"`, `"exec"`, `"capture"`, `"history"` |  | "capture" is required by captureRules. Leave it out when the extension needs none. Each one is shown to the person before install; see [Permissions](permissions.md). |
@@ -663,7 +708,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `verb` | [locale key](localization.md) |  | A job's label in the ⇧ panel: "↵ <verb> · ⌘C <verb> and copy", such as "Download". Without it a job says "Start". |
 | `failTitle` | [locale key](localization.md) |  | A failed job's title, such as "Couldn't download the video"; a variant's own wins. |
 | `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. |
-| `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. Never for jobs or `file`/`files` output. |
+| `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. A hint that returns `{ none: true }` leaves the action offered, with no preview on its row. Never for jobs or `file`/`files` output. |
 | `priority` | integer |  | Orders the extension's own actions on an item, highest first. Defaults to 0. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
@@ -675,7 +720,7 @@ Used by actions, detectors and capture rules.
 | Field | Type | Required | What it does |
 |---|---|---|---|
 | `kinds` | list (at least 1) of one of `"text"`, `"code"`, `"link"`, `"color"`, `"image"`, `"file"` | yes | `image` also takes a file item that is an image. |
-| `pattern` | string |  | ICU regular expression matched against the item's text or URL. Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. The store accepts plain ICU syntax only; see [errors](errors.md#invalidpattern). |
+| `pattern` | string |  | ICU regular expression matched against the item's text or URL. Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. [Patterns](concepts.md#patterns) lists the ICU syntax the store accepts. |
 | `tags` | list of string |  | "tag" (own detector) or "extension.id:tag". Only items that carry one of these tags. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
@@ -1868,7 +1913,7 @@ Either `"<pattern>" is not a valid regular expression`, or `the store validator 
 
 The second message means the pattern uses something the store cannot check against the app, so it refuses it rather than risk a pattern the app rejects. That covers `\N{…}` character names and most `\p{Name=Value}` properties.
 
-**Fix:** use plain constructs: character classes such as `[A-Za-z0-9_-]`, `\d`, `\s`, `\w`, anchors, groups, alternation, `{m,n}`, and `\p{L}` or a script such as `\p{Latin}`. Escape a literal `{` as `\{`, and write `^…$` to match the whole text.
+**Fix:** use the constructs listed in [Patterns](concepts.md#patterns): character classes such as `[A-Za-z0-9_-]`, `\d`, `\s`, `\w`, anchors, groups, alternation, `{m,n}`, look-around, and `\p{L}`, `\p{Lu}` or a script such as `\p{Latin}`. Escape a literal `{` as `\{`, and write `^…$` to match the whole text.
 
 ### `captureRuleTags`
 
@@ -2259,6 +2304,8 @@ export const actions: Actions = {
 ```
 
 A transform with `"hint": true` runs early on the selected item. Hints never run for jobs, `file` or `files` output, images, or text over 256 KB; those rows show their `subtitle` instead.
+
+A hint that returns `{ none: true }` does not hide the action: it stays offered, and its row shows no preview. With a `message`, that message is the row's preview line, and picking the row shows it as a notice. So a hint can say "There is nothing to turn into a slug." before the person picks it.
 
 
 ================================================================================
@@ -2690,6 +2737,27 @@ setTimeout(() => host.cancel(), 10);
 await assert.rejects(running, { code: "cancelled" });
 ```
 
+## Where an action is offered
+
+The app offers an action, and runs a detector or a rule, only on items its manifest's `accepts` takes. Two helpers apply `accepts` in a test:
+
+- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`).
+- `acceptsMatch(accepts, item, { extensionID }?)`, exported next to `createFakeHost`, applies any one `accepts` block, such as a detector's or a rule's. `extensionID` lets a tag written as `"tag"` stand for the extension's own detector, as in the app.
+
+```js
+import fs from "node:fs";
+import { acceptsMatch, createFakeHost } from "@yabbistir/api/fake-host";
+
+const host = createFakeHost({ folder });
+assert.deepEqual(host.offers({ kind: "text", text: "Ada@Example.com" }), ["lower"]);
+assert.deepEqual(host.offers({ kind: "text", text: "no address here" }), []);
+
+const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
+assert.equal(acceptsMatch(manifest.contributes.detectors[0].accepts, { kind: "text", text: "ABC-123" }), true);
+```
+
+Both check the kind (a single image file counts for `image`), the tags, and the [pattern](concepts.md#patterns), searched for in the trimmed text or URL. The app matches patterns with ICU; the helpers use JavaScript's `RegExp` with the `u` flag, after turning a leading `(?i)`, `(?s)` or `(?m)` into flags, `\d` into any decimal digit, and a bare script name such as `\p{Greek}` into `\p{Script=Greek}`. That is close to the app, not identical: `\w` and `\s` differ slightly, and ICU-only syntax (`a++`, `(?>…)`, `(?x)`, a flag group after the start, sets with `&&` or `--`, `[[:alpha:]]`, `\Q…\E`, block properties) throws an error that says so. `npm run validate` remains the judge of whether a pattern is valid ICU, and `npm run dev` shows the app's real matching.
+
 ## Everything else
 
 - **Preferences:** `preferences: { format: "short" }`; the rest come from the manifest's defaults. A `folder` preference's `~` becomes `/Users/test`, and `yab.files.read` may read inside a folder only when the test set it in `preferences`, as when the person chose it.
@@ -2702,7 +2770,7 @@ await assert.rejects(running, { code: "cancelled" });
 
 ## What the fake host does not do
 
-- It does not match `accepts`: `host.run` runs the action on whatever item you pass. `npm run validate` checks that the pattern compiles as ICU, and `run` should still cope with an item it did not expect.
+- `host.run` runs an action on whatever item you pass, whether its `accepts` takes it or not; check that with `host.offers` ([above](#where-an-action-is-offered)), and let `run` cope with an item it did not expect.
 - It enforces no time limits: keep hints, validators and rules fast yourself.
 - It does not limit notices to one every 3 seconds, as the app does.
 - It runs no real program, request, model, translation or image operation. Test the code around them, and try the real thing with `npm run dev`.

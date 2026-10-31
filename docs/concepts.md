@@ -36,7 +36,7 @@ An **action** is a command in the panel. Its manifest entry says what it is call
 - **Transforms** (`"input": "item"`) work on an item: Base64-encode it, download the video a link points to. `accepts` says which items: `kinds`, an optional regular expression `pattern` over the text or URL, and optional detector `tags`.
 - **Generators** (`"input": "none"`) make something from nothing, such as a UUID. `run` gets `null` for the item.
 - **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen.
-- **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted.
+- **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted. A hint that returns `{ none: true }` leaves the action offered, and its row shows no preview.
 - **Jobs** (`"job": true`) are long actions: a card under the menu bar icon shows their progress and lets the person cancel. See [Jobs](jobs.md).
 
 Where actions appear:
@@ -48,6 +48,31 @@ Where actions appear:
 Actions whose `targets` include the paste target's kind come first, and `targetsOnly` keeps an action to those targets alone. ↵ pastes the result into the app the panel opened for; ⌘C copies it instead.
 
 **Which actions appear is decided from manifests alone.** No extension code runs on a keystroke. A hint runs once its row is shown.
+
+## Patterns
+
+`accepts.pattern` (on actions, detectors and capture rules) is a regular expression in **ICU** syntax, the kind macOS uses, not JavaScript's. It is *searched for* in the item's text, or its URL for a link, after surrounding whitespace is trimmed: write `^…$` to match the whole text. Matching is case-sensitive unless the pattern starts with `(?i)`.
+
+The store accepts only what it can check against the app, so `npm run validate` refuses anything else with [`invalidPattern`](errors.md#invalidpattern). What it accepts:
+
+- **Plain syntax:** literals, `.`, `^`, `$`, `|`, groups `( )`, `(?: )`, named groups `(?<name> )` with `\k<name>`, back references `\1`.
+- **Quantifiers:** `*`, `+`, `?`, `{n}`, `{n,}`, `{n,m}`, lazy (`*?`) and possessive (`*+`) forms, atomic groups `(?> )`.
+- **Look-around:** `(?= )`, `(?! )`, and look-behind `(?<= )`, `(?<! )` of bounded length (no `*`, `+` or `{n,}` inside).
+- **Flags:** `(?i)` (ignore case), `(?m)`, `(?s)`, `(?x)`, `(?w)`, at the start or scoped as `(?i: )`.
+- **Escapes:** `\d`, `\w`, `\s` and their capitals (`\d` is any decimal digit, not only 0–9), `\b`, `\B`, `\A`, `\z`, `\Z`, `\t`, `\n`, `\r`, `\xhh`, `\x{h…}`, `\uhhhh`, `\Q…\E`, `\X`. Escape a literal `{` as `\{`.
+- **Sets:** `[abc]`, `[^a-z]`, nested sets `[[a-z][0-9]]`, intersection `[\p{L}&&[a-z]]`, difference `[a-z--[aeiou]]`, and POSIX classes in lowercase (`[[:alpha:]]`, `[[:digit:]]`).
+- **Unicode properties**, with `\p{…}`, or `\P{…}` for the opposite, spelled exactly as ICU spells them:
+  - general categories: `\p{L}`, `\p{Lu}`, `\p{Ll}`, `\p{N}`, `\p{Nd}`, `\p{P}`, `\p{S}`, `\p{Z}`, or long names such as `\p{Letter}` and `\p{Uppercase_Letter}`;
+  - scripts: `\p{Latin}`, `\p{Greek}`, `\p{Cyrillic}`, `\p{Arabic}`, `\p{Han}`, `\p{Hiragana}`, …;
+  - binary properties: `\p{Alphabetic}`, `\p{White_Space}`, `\p{Emoji}`, `\p{ASCII}`, `\p{Any}`, …;
+  - blocks with `In`: `\p{InBasic_Latin}`;
+  - and the `=` forms of those four only: `\p{gc=Lu}`, `\p{Script=Latin}`, `\p{scx=Latin}`, `\p{Block=Basic_Latin}`.
+
+  [`tools/lib/icu-properties.json`](../tools/lib/icu-properties.json) lists every spelling the store accepts.
+
+Refused, because the store cannot verify them: character names (`\N{…}`), any other `\p{Name=Value}` (`Name=`, `Age=`, `Line_Break=`, `East_Asian_Width=`, `Numeric_Value=`, `Bidi_Class=` …), spellings off the list (`\p{IsL}`, `\p{L&}`, `\p{all}`, `[[:ALPHA:]]`, extra spaces), and an unbounded look-behind. Refused because ICU rejects them: JavaScript-only syntax such as a bare `{`, `[^]` or an empty pattern.
+
+In tests, [`host.offers(item)` and `acceptsMatch(accepts, item)`](testing.md#where-an-action-is-offered) apply a manifest's `accepts` to a sample item, close to the app's matching.
 
 ## Detectors
 
@@ -91,7 +116,9 @@ An extension starts with no permissions, and most need none: text transforms, de
 
 | Idea | Use | Start from |
 |---|---|---|
-| Change the item and paste the result (encode, reformat, convert) | An action, `"input": "item"` | `--template action`, [Getting started](getting-started.md) |
+| Change a copy when the person asks (encode, reformat, convert), and paste the result | An action, `"input": "item"`; no permission | `--template action`, [Getting started](getting-started.md) |
+| Change every copy automatically, as it is copied (clean, rewrite, drop) | A capture rule; needs `capture`, which the person reads as "Can see everything you copy" | `--template capture-rule`, [A link-cleaning rule](recipes/link-cleaning-rule.md) |
+| Mark copies for the person, without changing them | A detector: its tag shows as a chip on the item; no permission | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Make something new (UUID, timestamp, lorem ipsum) | An action, `"input": "none"` | `--template action` |
 | A few fixed flavors of one action (to Turkish / to English) | `variants` on one action | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Show the result before it is chosen | `"hint": true` | [Getting started](getting-started.md) |
@@ -99,13 +126,24 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Hand a file to Finder | An action with `"output": "file"` and `"targets": ["finder"]` | [Drop a file into Finder](recipes/drop-a-file-in-finder.md) |
 | Recognize a kind of text (token, key, ID) and explain it | A detector with `validate` and `preview` | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Offer an action only on items a detector tagged | `accepts.tags` on the action | [Tag and preview](recipes/tag-and-preview.md) |
-| Clean or drop copies before they are stored | A capture rule | `--template capture-rule`, [A link-cleaning rule](recipes/link-cleaning-rule.md) |
 | Call a web service | An action with the `network` permission | [Call an API with a key](recipes/call-an-api-with-a-key.md) |
 | Run a command-line program | An action or job with the `exec` permission | `--template job` |
 | Summarize, rewrite or translate on the Mac | `yab.ai.generate`, `yab.translate` (no permission) | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Work with earlier copies | `yab.history` (the `history` permission) | [Permissions](permissions.md#history) |
 
+**A capture rule cannot show a tag or a chip.** Only detectors tag items, and they run after the copy is stored, so a rule never sees tags or adds them. To change copies and mark them too, put a rule and a detector in one extension.
+
 Not possible: drawing your own interface, running in the background on a timer, reading the clipboard directly, writing outside the call's work folder, reaching the network from a detector or a rule.
+
+## Several contributions in one extension
+
+One extension can add any mix of actions, detectors and capture rules. Scaffold with the template nearest to the main thing it does, then add the others by hand:
+
+1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
+2. In `src/index.ts`, export the matching objects, keyed by those ids: `export const detectors: Detectors = { … }` next to `export const actions: Actions = { … }`.
+3. Add every new string key to `locales/en.json`, and tests for each part.
+
+Permissions belong to the whole extension: a capture rule needs `capture` even when the rest of the extension needs nothing, and the person sees it for the whole extension. [Tag and preview](recipes/tag-and-preview.md) is a detector and an action in one extension, the action offered only on the detector's tag.
 
 ## Recipes
 

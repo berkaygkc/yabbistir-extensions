@@ -142,6 +142,27 @@ setTimeout(() => host.cancel(), 10);
 await assert.rejects(running, { code: "cancelled" });
 ```
 
+## Where an action is offered
+
+The app offers an action, and runs a detector or a rule, only on items its manifest's `accepts` takes. Two helpers apply `accepts` in a test:
+
+- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`).
+- `acceptsMatch(accepts, item, { extensionID }?)`, exported next to `createFakeHost`, applies any one `accepts` block, such as a detector's or a rule's. `extensionID` lets a tag written as `"tag"` stand for the extension's own detector, as in the app.
+
+```js
+import fs from "node:fs";
+import { acceptsMatch, createFakeHost } from "@yabbistir/api/fake-host";
+
+const host = createFakeHost({ folder });
+assert.deepEqual(host.offers({ kind: "text", text: "Ada@Example.com" }), ["lower"]);
+assert.deepEqual(host.offers({ kind: "text", text: "no address here" }), []);
+
+const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
+assert.equal(acceptsMatch(manifest.contributes.detectors[0].accepts, { kind: "text", text: "ABC-123" }), true);
+```
+
+Both check the kind (a single image file counts for `image`), the tags, and the [pattern](concepts.md#patterns), searched for in the trimmed text or URL. The app matches patterns with ICU; the helpers use JavaScript's `RegExp` with the `u` flag, after turning a leading `(?i)`, `(?s)` or `(?m)` into flags, `\d` into any decimal digit, and a bare script name such as `\p{Greek}` into `\p{Script=Greek}`. That is close to the app, not identical: `\w` and `\s` differ slightly, and ICU-only syntax (`a++`, `(?>…)`, `(?x)`, a flag group after the start, sets with `&&` or `--`, `[[:alpha:]]`, `\Q…\E`, block properties) throws an error that says so. `npm run validate` remains the judge of whether a pattern is valid ICU, and `npm run dev` shows the app's real matching.
+
 ## Everything else
 
 - **Preferences:** `preferences: { format: "short" }`; the rest come from the manifest's defaults. A `folder` preference's `~` becomes `/Users/test`, and `yab.files.read` may read inside a folder only when the test set it in `preferences`, as when the person chose it.
@@ -154,7 +175,7 @@ await assert.rejects(running, { code: "cancelled" });
 
 ## What the fake host does not do
 
-- It does not match `accepts`: `host.run` runs the action on whatever item you pass. `npm run validate` checks that the pattern compiles as ICU, and `run` should still cope with an item it did not expect.
+- `host.run` runs an action on whatever item you pass, whether its `accepts` takes it or not; check that with `host.offers` ([above](#where-an-action-is-offered)), and let `run` cope with an item it did not expect.
 - It enforces no time limits: keep hints, validators and rules fast yourself.
 - It does not limit notices to one every 3 seconds, as the app does.
 - It runs no real program, request, model, translation or image operation. Test the code around them, and try the real thing with `npm run dev`.

@@ -44,6 +44,39 @@ describe("npm run new", () => {
     });
   }
 
+  test("newTakesTheAuthorFromTheFlag", () => {
+    const root = fresh();
+    const made = run("new", ["dev.example.sample", "--template", "action", "--author", "ada"], { root });
+    assert.equal(made.status, 0, made.out);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "extensions", "dev.example.sample", "manifest.json"), "utf8"));
+    assert.equal(manifest.author, "ada");
+    assert.doesNotMatch(made.out, /^author:/m, "a name given on purpose needs no remark");
+  });
+
+  test("newSaysWhichAuthorItTookFromGit", () => {
+    const root = fresh();
+    const config = path.join(root, "gitconfig");
+    fs.writeFileSync(config, "[user]\n\tname = Ada Lovelace\n");
+    const made = run("new", ["dev.example.sample", "--template", "action"], { root, env: { GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: "1" } });
+    assert.equal(made.status, 0, made.out);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "extensions", "dev.example.sample", "manifest.json"), "utf8"));
+    assert.equal(manifest.author, "Ada Lovelace");
+    assert.match(made.out, /^author: "Ada Lovelace", from git config user\.name\./m);
+    assert.match(made.out, /--author <name>/);
+  });
+
+  test("newSaysToSetAnAuthorWhenItHasNone", () => {
+    const root = fresh();
+    const config = path.join(root, "gitconfig");
+    fs.writeFileSync(config, "");
+    const made = run("new", ["dev.example.sample", "--template", "action"], { root, env: { GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: "1" } });
+    assert.equal(made.status, 0, made.out);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "extensions", "dev.example.sample", "manifest.json"), "utf8"));
+    assert.equal(manifest.author, "your-name");
+    assert.match(made.out, /^author: "your-name"/m);
+    assert.match(made.out, /--author <name>/);
+  });
+
   test("newRefusesAnExistingId", () => {
     const root = fresh();
     const id = "dev.example.sample";

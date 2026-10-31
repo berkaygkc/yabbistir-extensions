@@ -20,7 +20,7 @@ Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requ
 | `name` | [locale key](localization.md) | yes | The extension's name in Settings, in the Store and on its notices. |
 | `description` | [locale key](localization.md) | yes | One sentence for the Store and Settings. |
 | `icon` | string | yes | "sf:<SF Symbol name>" or a file name in the extension folder. A file icon must be `icon.png` next to manifest.json: the build copies only that name. See [Design guidelines](design-guidelines.md#icons). |
-| `author` | string | yes | GitHub user name. The store names this author when someone else's pull request changes the extension. |
+| `author` | string | yes | How you want to be credited: your name or your GitHub user name. When someone else's pull request changes the extension, a comment names the author, and mentions them if it is the GitHub user name they committed the extension with. `npm run new` takes it from `--author <name>`, or else from `git config user.name` and then prints the name it used. |
 | `license` | string | yes | An SPDX license id. The store accepts `MIT`, `Apache-2.0`, `BSD-2-Clause`, `BSD-3-Clause`, `ISC`, `MPL-2.0`; MIT is the usual choice. |
 | `categories` | list of one of `"text"`, `"links"`, `"images"`, `"files"`, `"developer"`, `"media"`, `"ai"`, `"productivity"` |  | Where the Store files the extension. Pick one or two. |
 | `permissions` | list of one of `"network"`, `"exec"`, `"capture"`, `"history"` |  | "capture" is required by captureRules. Leave it out when the extension needs none. Each one is shown to the person before install; see [Permissions](permissions.md). |
@@ -103,7 +103,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `verb` | [locale key](localization.md) |  | A job's label in the ⇧ panel: "↵ <verb> · ⌘C <verb> and copy", such as "Download". Without it a job says "Start". |
 | `failTitle` | [locale key](localization.md) |  | A failed job's title, such as "Couldn't download the video"; a variant's own wins. |
 | `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. |
-| `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. Never for jobs or `file`/`files` output. |
+| `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. A hint that returns `{ none: true }` leaves the action offered, with no preview on its row. Never for jobs or `file`/`files` output. |
 | `priority` | integer |  | Orders the extension's own actions on an item, highest first. Defaults to 0. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
@@ -115,7 +115,7 @@ Used by actions, detectors and capture rules.
 | Field | Type | Required | What it does |
 |---|---|---|---|
 | `kinds` | list (at least 1) of one of `"text"`, `"code"`, `"link"`, `"color"`, `"image"`, `"file"` | yes | `image` also takes a file item that is an image. |
-| `pattern` | string |  | ICU regular expression matched against the item's text or URL. Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. The store accepts plain ICU syntax only; see [errors](errors.md#invalidpattern). |
+| `pattern` | string |  | ICU regular expression matched against the item's text or URL. Searched for, not matched whole: write `^…$` to match the whole text. Surrounding whitespace is trimmed first. [Patterns](concepts.md#patterns) lists the ICU syntax the store accepts. |
 | `tags` | list of string |  | "tag" (own detector) or "extension.id:tag". Only items that carry one of these tags. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
