@@ -470,25 +470,33 @@ describe("the workflows", () => {
     }
   });
 
-  test("theLabelScriptLabelsAndMentionsThroughTheApi", async () => {
+  describe("the label script, against a fake API", () => {
     const text = workflow("pr-label.yml");
     const script = text.slice(text.indexOf("script: |\n") + "script: |\n".length).split("\n").map((line) => line.slice(12)).join("\n");
     const AsyncFunction = (async () => {}).constructor;
     const manifest = (fields) => JSON.stringify({ id: ID, author: "octo-dev", ...fields });
+    const BOT = "github-actions[bot]";
+    let warnings;
 
-    /** Runs the script for a pull request by `login` that turns `base` into `head`; returns the label and comment calls. */
-    async function label({ login, base, head, comments = [] }) {
+    /**
+     * Runs the script for a pull request by `login`. `contents` maps "<ref>:<id>" (ref base or head) to manifest
+     * text, to { encoding, content }, or to an Error; anything else is a 404. Returns the label and comment calls.
+     */
+    async function label({ login, contents, files = [{ filename: `extensions/${ID}/src/index.ts` }, { filename: "README.md" }], comments = [] }) {
       const calls = [];
+      warnings = [];
       const notFound = () => Object.assign(new Error("Not Found"), { status: 404 });
       const github = {
         paginate: async (method, params) => (await method(params)).data,
         rest: {
-          pulls: { listFiles: async () => ({ data: [{ filename: `extensions/${ID}/src/index.ts` }, { filename: "README.md" }] }) },
+          pulls: { listFiles: async () => ({ data: files }) },
           repos: {
             getContent: async ({ path: file, ref }) => {
-              const content = file === `extensions/${ID}/manifest.json` ? { base, head }[ref] : undefined;
-              if (content == null) throw notFound();
-              return { data: { type: "file", encoding: "base64", content: Buffer.from(content).toString("base64") } };
+              const value = contents[`${ref}:${/^extensions\/([^/]+)\/manifest\.json$/.exec(file)?.[1]}`];
+              if (value instanceof Error) throw value;
+              if (value == null) throw notFound();
+              if (typeof value === "object") return { data: { type: "file", ...value } };
+              return { data: { type: "file", encoding: "base64", content: Buffer.from(value).toString("base64") } };
             },
             listCommits: async ({ author }) => ({ data: author === "octo-dev" ? [{ sha: "c0ffee" }] : [] }),
           },
@@ -502,21 +510,51 @@ describe("the workflows", () => {
       };
       const context = { repo: { owner: "owner", repo: "store" },
         payload: { pull_request: { number: 7, user: { login }, base: { sha: "base" }, head: { sha: "head" } } } };
-      await new AsyncFunction("github", "context", "core", script)(github, context, { info() {} });
+      await new AsyncFunction("github", "context", "core", script)(github, context, { info() {}, warning: (message) => warnings.push(message) });
       return calls;
     }
 
-    const others = await label({ login: "another-dev", base: manifest(), head: manifest({ permissions: ["network"] }) });
-    assert.deepEqual(others[0], ["label", "permissions-changed"]);
-    assert.equal(others[1][0], "comment");
-    assert.match(others[1][1], /`dev\.example\.tool` by @octo-dev/);
-    assert.deepEqual(await label({ login: "octo-dev", base: manifest(), head: manifest({ version: "1.0.1" }) }), [], "the author's own fix");
-    assert.deepEqual(await label({ login: "another-dev", base: manifest(), head: manifest(), comments: [{ body: others[1][1] }] }), [],
-      "one comment per pull request");
-    assert.deepEqual(await label({ login: "another-dev", base: null, head: manifest({ permissions: ["exec"], requires: { tools: [{ name: "x" }] } }) }),
-      [["label", "permissions-changed"]], "a new extension: no one else to name");
-    const named = await label({ login: "another-dev", base: manifest({ author: "Octo" }), head: manifest({ author: "Octo" }) });
-    assert.match(named[0][1], /by Octo$/m, "a name that has no commits here is written, not mentioned");
+    test("aPermissionChangeIsLabelledAndTheAuthorNamed", async () => {
+      const calls = await label({ login: "another-dev", contents: { [`base:${ID}`]: manifest(), [`head:${ID}`]: manifest({ permissions: ["network"] }) } });
+      assert.deepEqual(calls[0], ["label", "permissions-changed"]);
+      assert.equal(calls[1][0], "comment");
+      assert.match(calls[1][1], /`dev\.example\.tool` by @octo-dev/);
+      assert.deepEqual(await label({ login: "octo-dev", contents: { [`base:${ID}`]: manifest(), [`head:${ID}`]: manifest({ version: "1.0.1" }) } }), [],
+        "the author's own fix");
+      assert.deepEqual(await label({ login: "another-dev", contents: { [`head:${ID}`]: manifest({ permissions: ["exec"], requires: { tools: [{ name: "x" }] } }) } }),
+        [["label", "permissions-changed"]], "a new extension: no one else to name");
+      const named = await label({ login: "another-dev", contents: { [`base:${ID}`]: manifest({ author: "Octo" }), [`head:${ID}`]: manifest({ author: "Octo" }) } });
+      assert.match(named[0][1], /by Octo$/m, "a name that has no commits here is written, not mentioned");
+    });
+
+    test("onlyTheWorkflowsOwnCommentCountsAsAlreadyPosted", async () => {
+      const contents = { [`base:${ID}`]: manifest(), [`head:${ID}`]: manifest() };
+      const posted = (await label({ login: "another-dev", contents }))[0][1];
+      assert.deepEqual(await label({ login: "another-dev", contents, comments: [{ body: posted, user: { login: BOT } }] }), []);
+      const copied = await label({ login: "another-dev", contents, comments: [{ body: posted, user: { login: "another-dev" } }] });
+      assert.equal(copied.length, 1, "a pasted marker does not silence the mention");
+      assert.equal(copied[0][0], "comment");
+    });
+
+    test("aManifestItCannotReadIsLabelled", async () => {
+      const big = await label({ login: "octo-dev", contents: { [`base:${ID}`]: manifest(), [`head:${ID}`]: { encoding: "none", content: "" } } });
+      assert.deepEqual(big, [["label", "permissions-changed"]], "over 1 MB the API sends no content");
+      assert.equal(warnings.length, 1);
+      const failing = await label({ login: "octo-dev",
+        contents: { [`base:${ID}`]: manifest(), [`head:${ID}`]: Object.assign(new Error("Server Error"), { status: 502 }) } });
+      assert.deepEqual(failing, [["label", "permissions-changed"]]);
+      assert.match(warnings[0], /502|Server Error/);
+    });
+
+    test("aMovedFolderIsReadOnBothSides", async () => {
+      const calls = await label({
+        login: "another-dev",
+        files: [{ filename: `extensions/${OTHER}/manifest.json`, previous_filename: `extensions/${ID}/manifest.json` }],
+        contents: { [`base:${ID}`]: manifest({ permissions: ["network"] }), [`head:${OTHER}`]: manifest({ id: OTHER, author: "another-dev" }) },
+      });
+      assert.deepEqual(calls[0], ["label", "permissions-changed"]);
+      assert.match(calls[1][1], /`dev\.example\.tool` by @octo-dev/, "the folder it left is someone else's");
+    });
   });
 
   test("theLabelWorkflowNeverRunsPullRequestCode", () => {
@@ -525,7 +563,11 @@ describe("the workflows", () => {
     assert.doesNotMatch(text, /actions\/checkout/);
     assert.doesNotMatch(text, /^\s*(- )?run:/m, "no shell steps, only the API");
     assert.doesNotMatch(text, /\bnpm\b|\bnode\s/);
-    assert.match(text, /^permissions:\n {2}contents: read\n {2}pull-requests: write\n(?! )/m);
+    assert.match(text, /^permissions: \{\}$/m);
+    assert.match(text, /^ {4}permissions:\n {6}contents: read\n {6}pull-requests: write\n(?! {6})/m, "granted to the job, and no more");
+    // No expression anywhere but the concurrency group, which is a number: nothing a pull request writes reaches the script.
+    assert.deepEqual(text.match(/\$\{\{.*?\}\}/g), ["${{ github.event.pull_request.number }}"]);
+    assert.match(text, /^concurrency:\n {2}group: pr-label-\$\{\{ github\.event\.pull_request\.number \}\}\n/m);
   });
 
   test("pullRequestChecksRunWithAReadOnlyToken", () => {
@@ -573,12 +615,14 @@ describe("the workflows", () => {
     assert.doesNotMatch(sign, /pages: write|id-token/);
   });
 
-  test("publishingActionsArePinnedToCommits", () => {
-    const uses = [...workflow("publish.yml").matchAll(/uses: (\S+)(.*)$/gm)];
-    assert.ok(uses.length >= 7);
-    for (const [, action, comment] of uses) {
-      assert.match(action, /^actions\/[a-z-]+@[0-9a-f]{40}$/, action);
-      assert.match(comment, /^ # v\d+\.\d+\.\d+$/, `${action} names its version`);
+  test("actionsThatSeeTheKeyOrAWriteTokenArePinnedToCommits", () => {
+    for (const name of ["publish.yml", "pr-label.yml"]) {
+      const uses = [...workflow(name).matchAll(/uses: (\S+)(.*)$/gm)];
+      assert.ok(uses.length > 0, name);
+      for (const [, action, comment] of uses) {
+        assert.match(action, /^actions\/[a-z-]+@[0-9a-f]{40}$/, `${name}: ${action}`);
+        assert.match(comment, /^ # v\d+\.\d+\.\d+$/, `${name}: ${action} names its version`);
+      }
     }
   });
 });

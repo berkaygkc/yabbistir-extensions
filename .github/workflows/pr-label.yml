@@ -1,26 +1,32 @@
 # Labels and comments on pull requests. pull_request_target runs this file as it is on main, with a token that can
 # write labels and comments, so it never checks out or runs the pull request's code: it reads the changed files and
-# both sides' manifest.json through the API only.
+# both sides' manifest.json through the API only, and no expression puts text from the pull request into the script.
 #   permissions-changed   added when a manifest's permissions, network domains or tools (with their install
-#                         commands) differ from main's, a new extension's included
+#                         commands) differ from main's, a new extension's included, and when a manifest cannot be read
 #   a comment             names the author (from main's manifest) of an extension that someone else changes
+# Actions are pinned to full commit SHAs.
 name: Pull request labels
 
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
 
-permissions:
-  contents: read
-  pull-requests: write
+permissions: {}
+
+concurrency:
+  group: pr-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   label:
     name: Label and mention
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/github-script@v8
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             // permissionChanges and authorToMention are copies of the functions in tools/lib/pr-checks.mjs, and its test keeps
@@ -65,14 +71,22 @@ jobs:
             const pr = context.payload.pull_request;
             const { owner, repo } = context.repo;
 
-            /** The text of extensions/<id>/manifest.json at commit ref, or null when there is none. */
+            /**
+             * The text of extensions/<id>/manifest.json at commit ref; null when there is none. One it cannot read (over
+             * 1 MB the API sends no content; or the request fails) is "", which permissionChanges counts as a change:
+             * when in doubt, the pull request is labelled.
+             */
             async function manifestAt(id, ref) {
               try {
                 const { data } = await github.rest.repos.getContent({ owner, repo, path: `extensions/${id}/manifest.json`, ref });
-                return Array.isArray(data) || data.type !== "file" ? null : Buffer.from(data.content, data.encoding).toString("utf8");
+                if (Array.isArray(data) || data.type !== "file") return null;
+                if (data.encoding === "base64" && typeof data.content === "string") return Buffer.from(data.content, "base64").toString("utf8");
+                core.warning(`extensions/${id}/manifest.json at ${ref}: the API sent no content (encoding ${data.encoding}).`);
+                return "";
               } catch (error) {
                 if (error.status === 404) return null;
-                throw error;
+                core.warning(`extensions/${id}/manifest.json at ${ref}: ${error.status ?? ""} ${error.message}`.trim());
+                return "";
               }
             }
 
@@ -123,7 +137,8 @@ jobs:
             if (authors.length > 0) {
               const marker = "<!-- yabbistir: author mention -->";
               const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 });
-              if (!comments.some((comment) => comment.body?.includes(marker))) {
+              // Only the workflow's own comment counts: anyone can paste the marker into one of theirs.
+              if (!comments.some((comment) => comment.user?.login === "github-actions[bot]" && comment.body?.includes(marker))) {
                 const body = [marker, "This pull request changes an extension someone else wrote:", "", ...authors, "",
                   "As its author, you are welcome to weigh in here. The maintainer decides."].join("\n");
                 await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
