@@ -958,23 +958,69 @@ describe("the workflows", () => {
     // pull_request_target: the workflow file and the checker come from the base branch, whatever the pull request edits.
     assert.match(text, /^on:\n {2}pull_request_target:\n {4}types: \[opened, reopened, synchronize, edited\]\n\n/m);
     assert.doesNotMatch(text, /^ {2}pull_request:/m);
-    assert.match(text, /^permissions:\n {2}contents: read\n(?! )/m, "a token that can only read");
+    assert.match(text, /^permissions:\n {2}contents: read\n {2}statuses: write\n(?! )/m, "read the repository, set commit statuses, nothing more");
     assert.doesNotMatch(text, /^ {4}permissions:/m, "no job asks for more");
     const code = text.split("\n").filter((line) => !line.trim().startsWith("#")).join("\n");
-    assert.doesNotMatch(code, /secrets\.|\bnpm\b|setup-node|node_modules|cache|github-script|\benvironment:/, "no secret, nothing installed, no cache");
+    assert.doesNotMatch(code, /secrets\.|\bnpm\b|setup-node|node_modules|cache|\benvironment:/, "no secret, nothing installed, no cache");
     const jobs = jobsOf(text);
     assert.deepEqual(Object.keys(jobs), ["static"]);
-    assert.match(jobs.static, /^ {4}name: Static checks$/m, "the check branch protection requires");
-    const checkouts = jobs.static.split("- uses: ").slice(1);
-    assert.equal(checkouts.length, 2, jobs.static);
-    assert.match(checkouts[0], /^actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.sha \}\}\n {10}path: checker\n {10}sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n {10}persist-credentials: false\n/);
-    assert.match(checkouts[1], /^actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n {10}path: pr\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/);
-    assert.deepEqual([...jobs.static.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]),
-      ["node checker/tools/static-checks.mjs --root pr --base \"$BASE_SHA\" --head \"$HEAD_SHA\""], "the base branch's checker, and only it, runs");
-    assert.match(jobs.static, /BASE_SHA: \$\{\{ github\.sha \}\}\n {10}HEAD_SHA: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n/);
-    // Commit SHAs and the pull request's number only: no text the pull request writes reaches an expression.
+    assert.match(jobs.static, /^ {4}name: Static checks$/m);
+    const steps = jobs.static.split(/(?<=\n) {6}- /).slice(1);
+    assert.equal(steps.length, 4, jobs.static);
+    assert.match(steps[0], /^uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.sha \}\}\n {10}path: checker\n {10}sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n {10}persist-credentials: false\n/);
+    assert.match(steps[1], /^uses: actions\/checkout@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}with:\n {10}ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}\n {10}path: pr\n {10}fetch-depth: 0\n {10}persist-credentials: false\n/);
+    // The base branch's checker, and only it, runs; its exit code is what the status reports.
+    assert.equal(steps[2], [
+      "name: Static checks",
+      "        id: checker",
+      "        env:",
+      "          BASE_SHA: ${{ github.sha }}",
+      "          HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+      "        run: |",
+      "          code=0",
+      "          node checker/tools/static-checks.mjs --root pr --base \"$BASE_SHA\" --head \"$HEAD_SHA\" || code=$?",
+      "          echo \"exit-code=$code\" >> \"$GITHUB_OUTPUT\"",
+      "          exit \"$code\"",
+      "",
+    ].join("\n"));
+    // The status: always posted, from the checker's result alone, under the one context branch protection requires.
+    assert.match(steps[3], /^name: Post the commit status\n {8}if: always\(\)\n {8}uses: actions\/github-script@[0-9a-f]{40} # v\d+\.\d+\.\d+\n {8}env:\n {10}OUTCOME: \$\{\{ steps\.checker\.outcome \}\}\n {10}EXIT_CODE: \$\{\{ steps\.checker\.outputs\.exit-code \}\}\n {8}with:\n {10}script: \|\n/);
+    assert.equal(steps[3].match(/context: "([^"]+)"/)?.[1], "store/static-checks");
+    assert.match(steps[3], /sha: context\.payload\.pull_request\.head\.sha,/);
+    assert.doesNotMatch(steps[3], /require\(|import\(|\bexec|child_process|\bfs\b|readFile|\bpr\//, "it reads nothing of the pull request and runs nothing");
+    assert.equal(code.match(/^\s*(?:- )?run:/gm)?.length, 1, "one shell step: the checker");
+    // Commit SHAs, the pull request's number and the checker's result only: no text the pull request writes.
     const expressions = [...new Set(text.match(/\$\{\{.*?\}\}/g))].sort();
-    assert.deepEqual(expressions, ["${{ github.event.pull_request.head.sha }}", "${{ github.event.pull_request.number }}", "${{ github.sha }}"]);
+    assert.deepEqual(expressions, ["${{ github.event.pull_request.head.sha }}", "${{ github.event.pull_request.number }}", "${{ github.sha }}",
+      "${{ steps.checker.outcome }}", "${{ steps.checker.outputs.exit-code }}"]);
+  });
+
+  test("theStaticWorkflowPostsSuccessOnlyWhenTheCheckerPassed", async () => {
+    const text = workflow("static.yml");
+    const script = text.slice(text.indexOf("script: |\n") + "script: |\n".length).split("\n").map((line) => line.slice(12)).join("\n");
+    const AsyncFunction = (async () => {}).constructor;
+    const post = async (outcome, exitCode) => {
+      const posted = [];
+      const github = { rest: { repos: { createCommitStatus: async (status) => posted.push(status) } } };
+      const context = { repo: { owner: "owner", repo: "store" }, serverUrl: "https://github.com", runId: 42,
+        payload: { pull_request: { head: { sha: "c0ffee" }, base: { sha: "base" } } } };
+      const saved = { OUTCOME: process.env.OUTCOME, EXIT_CODE: process.env.EXIT_CODE };
+      Object.assign(process.env, { OUTCOME: outcome, EXIT_CODE: exitCode });
+      try {
+        await new AsyncFunction("github", "context", "core", script)(github, context, {});
+      } finally {
+        for (const [key, value] of Object.entries(saved)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      assert.equal(posted.length, 1);
+      assert.equal(posted[0].context, "store/static-checks");
+      assert.equal(posted[0].sha, "c0ffee", "on the pull request's head commit");
+      assert.equal(posted[0].target_url, "https://github.com/owner/store/actions/runs/42");
+      return posted[0].state;
+    };
+    assert.equal(await post("success", "0"), "success");
+    for (const [outcome, exitCode] of [["failure", "1"], ["failure", "2"], ["success", ""], ["success", "1"], ["failure", "0"], ["cancelled", ""], ["skipped", ""], ["", ""]]) {
+      assert.equal(await post(outcome, exitCode), "failure", `${outcome} / ${exitCode}`);
+    }
   });
 
   test("publishingStopsOnALockfileStateProblemBeforeInstalling", () => {
@@ -1021,7 +1067,7 @@ describe("the workflows", () => {
     const names = fs.readdirSync(path.join(repo, ".github", "workflows")).filter((name) => name.endsWith(".yml")).sort();
     assert.deepEqual(names, ["pr-label.yml", "pr.yml", "publish.yml", "static.yml"]);
     for (const name of names) {
-      const uses = [...workflow(name).matchAll(/uses: (\S+)(.*)$/gm)];
+      const uses = [...workflow(name).matchAll(/^\s*(?:- )?uses: (\S+)(.*)$/gm)];
       assert.ok(uses.length > 0, name);
       for (const [, action, comment] of uses) {
         assert.match(action, /^actions\/[a-z-]+@[0-9a-f]{40}$/, `${name}: ${action}`);
