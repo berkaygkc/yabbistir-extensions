@@ -557,6 +557,20 @@
     ["\\N{U+0041}", false],
     ["\\N{LATIN CAPITAL LETTER A WITH DIAERESIS}", true],
     ["\\N{EMOJI}", false],
-    ["\\N{GRINNING FACE}", true]
+    ["\\N{GRINNING FACE}", true],
+    ["\\p{Block=Bogus}", false],
+    ["\\p{ccc=zzz}", false],
+    ["\\N{NOT A REAL NAME}", false],
+    ["[\\N{BOGUS NAME}]", false],
+    ["\\p{InHan}", false],
+    ["\\p{InLatin}", false],
+    ["\\p{InBasic_Latin}", true],
+    ["\\p{blk=Greek}", true],
+    ["\\p{Block=Cyrillic}", true],
+    ["\\p{Script_Extensions=Greek}", true],
+    ["\\p{inbasiclatin}", false],
+    ["\\p{isl}", false],
+    ["\\p{ALL}", false],
+    ["\\p{javadefined}", false]
   ]
 }

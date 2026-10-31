@@ -4,25 +4,49 @@
 //
 // It follows ICU's rules for groups, flags, quantifiers (and what they may follow), intervals, escapes, back
 // references, look-behind (bounded length), sets with ranges, nested sets, POSIX classes, && and --, and the x flag.
-// Unicode names are not looked up: \N{…} and Name=… accept any name made of letters, digits, spaces and dashes.
+//
+// It fails closed: what it cannot verify, it rejects. A Unicode property is accepted only when it is spelled as in
+// icu-properties.json, every spelling of which NSRegularExpression compiled; a character name (\N{…}) never is, as
+// there is no list of names to check it against. Such a pattern may compile in the app, but the store does not guess.
+
+import fs from "node:fs";
 
 class PatternError extends Error {}
+class Unverifiable extends Error {
+  constructor(construct) {
+    super(construct);
+    this.construct = construct;
+  }
+}
 const fail = () => {
   throw new PatternError();
 };
 
-export function isValidICUPattern(pattern) {
-  if (typeof pattern !== "string" || pattern.length === 0) return false;
+const properties = JSON.parse(fs.readFileSync(new URL("./icu-properties.json", import.meta.url), "utf8"));
+const NAMES = new Set(properties.names);
+const VALUED = ["gc", "sc", "scx", "blk"].map((kind) => ({ properties: new Set(properties[kind].properties), values: new Set(properties[kind].values) }));
+
+/**
+ * { valid: true }, or { valid: false, reason: "invalid" } for a pattern ICU refuses, or
+ * { valid: false, reason: "unverifiable", construct } for one using a construct this check cannot verify.
+ */
+export function checkICUPattern(pattern) {
+  if (typeof pattern !== "string" || pattern.length === 0) return { valid: false, reason: "invalid" };
   try {
     const state = { chars: [...pattern], i: 0, x: false, groups: 0, names: new Set(), backrefs: [], lookbehind: 0 };
     alternation(state);
     if (state.i < state.chars.length) fail(); // a ")" with no "("
     if (state.backrefs.some((group) => group > state.groups)) fail();
-    return true;
+    return { valid: true };
   } catch (error) {
-    if (error instanceof PatternError) return false;
+    if (error instanceof PatternError) return { valid: false, reason: "invalid" };
+    if (error instanceof Unverifiable) return { valid: false, reason: "unverifiable", construct: error.construct };
     throw error;
   }
+}
+
+export function isValidICUPattern(pattern) {
+  return checkICUPattern(pattern).valid;
 }
 
 const peek = (state, ahead = 0) => state.chars[state.i + ahead];
@@ -277,10 +301,10 @@ function escape(state) {
       return true;
     }
     case "p": case "P":
-      if (!isPropertyName(braced(state))) fail();
+      property(braced(state), `\\${c}`);
       return true;
     case "N":
-      if (!isCharacterName(braced(state))) fail();
+      characterName(braced(state));
       return true;
     case "x":
       hexEscape(state);
@@ -355,10 +379,9 @@ function posix(state) {
   const rest = state.chars.slice(state.i + 1).join("");
   const end = rest.indexOf(":]");
   if (end < 0) return false;
-  let name = rest.slice(0, end);
-  if (name.startsWith("^")) name = name.slice(1);
-  if (!isPropertyName(name)) fail();
-  state.i += 1 + [...rest.slice(0, end)].length + 2;
+  const body = rest.slice(0, end);
+  property(body.startsWith("^") ? body.slice(1) : body, "[:", ":]");
+  state.i += 1 + [...body].length + 2;
   return true;
 }
 
@@ -369,12 +392,12 @@ function setEscape(state) {
   if (c === "E") return [];
   if (c === "0") return [{ kind: "char", code: octalEscape(state) }];
   if (c === "p" || c === "P") {
-    if (!isPropertyName(braced(state))) fail();
+    property(braced(state), `\\${c}`);
     return [{ kind: "set", bracket: false }];
   }
   if (SET_ESCAPES.has(c)) return [{ kind: "set", bracket: false }];
   if (c === "N") {
-    if (!isCharacterName(braced(state))) fail();
+    characterName(braced(state));
     return [{ kind: "char", code: null }];
   }
   if (c === "x") return [{ kind: "char", code: hexEscape(state) }];
@@ -418,91 +441,24 @@ function checkSet(tokens) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Unicode property names, matched loosely as ICU does: case, spaces, "_" and "-" do not count.
+// Unicode properties and character names.
 
-const loose = (name) => name.toLowerCase().replace(/[\s_-]/g, "");
-
-const ICU_ONLY = new Set([
-  "all", "alnum", "blank", "cntrl", "digit", "graph", "print", "punct", "word", "xdigit",
-  ...["defined", "digit", "identifierignorable", "isocontrol", "javaidentifierpart", "javaidentifierstart", "letter", "letterordigit",
-    "lowercase", "mirrored", "spacechar", "supplementarycodepoint", "titlecase", "unicodeidentifierpart", "unicodeidentifierstart",
-    "uppercase", "validcodepoint", "whitespace"].map((name) => `java${name}`),
-]);
-
-const BLOCKS = new Set([
-  "basiclatin", "latin1supplement", "latinextendeda", "latinextendedb", "latinextendedadditional", "ipaextensions",
-  "spacingmodifierletters", "combiningdiacriticalmarks", "greekandcoptic", "greek", "cyrillic", "armenian", "hebrew", "arabic",
-  "devanagari", "bengali", "thai", "georgian", "hanguljamo", "generalpunctuation", "superscriptsandsubscripts", "currencysymbols",
-  "letterlikesymbols", "numberforms", "arrows", "mathematicaloperators", "miscellaneoustechnical", "boxdrawing", "blockelements",
-  "geometricshapes", "miscellaneoussymbols", "dingbats", "cjksymbolsandpunctuation", "hiragana", "katakana", "cjkunifiedideographs",
-  "hangulsyllables", "privateusearea", "alphabeticpresentationforms", "halfwidthandfullwidthforms", "specials", "emoticons",
-  "miscellaneoussymbolsandpictographs", "transportandmapsymbols", "supplementalsymbolsandpictographs", "ascii",
-]);
-
-const VALUED = new Map([
-  ["generalcategory", "gc"], ["gc", "gc"], ["script", "sc"], ["sc", "sc"], ["scriptextensions", "sc"], ["scx", "sc"],
-  ...["block", "blk", "bidiclass", "bc", "eastasianwidth", "ea", "linebreak", "lb", "numericvalue", "nv", "age", "hangulsyllabletype",
-    "hst", "joiningtype", "jt", "joininggroup", "jg", "decompositiontype", "dt", "wordbreak", "wb", "sentencebreak", "sb",
-    "graphemeclusterbreak", "gcb", "canonicalcombiningclass", "ccc", "numerictype", "nt", "indicpositionalcategory", "inpc",
-    "indicsyllabiccategory", "insc", "verticalorientation", "vo", "bidipairedbrackettype", "bpt"].map((name) => [name, "any"]),
-  ["name", "name"], ["na", "name"],
-]);
-
-const known = new Map();
-
-/** Whether JavaScript knows the name in one of its spellings: as written, Title_Case, ALL CAPS or FIRSTword_Title. */
-function javascriptKnows(name, as) {
-  const key = `${as}:${name}`;
-  if (known.has(key)) return known.get(key);
-  const words = name.trim().split(/[\s_-]+/).filter(Boolean);
-  const title = (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-  const spellings = new Set([
-    name.trim().replace(/\s+/g, "_"),
-    words.map(title).join("_"),
-    words.join("_").toUpperCase(),
-    words.map((word, index) => (index === 0 ? word.toUpperCase() : title(word))).join("_"),
-  ]);
-  const compiles = (source, flags) => {
-    try {
-      new RegExp(source, flags);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  let result = false;
-  for (const spelling of spellings) {
-    if (!/^[A-Za-z0-9_]+$/.test(spelling)) continue;
-    const sources = as === "gc" ? [`\\p{General_Category=${spelling}}`] : as === "sc" ? [`\\p{Script=${spelling}}`]
-      : [`\\p{${spelling}}`, `\\p{Script=${spelling}}`];
-    if (sources.some((source) => compiles(source, "u") || compiles(source, "v"))) {
-      result = true;
-      break;
-    }
+/** A property as written inside \p{…}, \P{…} or [:…:]: one of the verified spellings, or the pattern is rejected. */
+function property(raw, open, close = "}") {
+  const construct = `${open}${open === "[:" ? "" : "{"}${raw}${close}`;
+  if (raw.trim() === "" || raw.trim().startsWith("^")) fail(); // ICU refuses these outright
+  if (NAMES.has(raw)) return;
+  const equals = raw.indexOf("=");
+  if (equals > 0) {
+    const name = raw.slice(0, equals);
+    const value = raw.slice(equals + 1);
+    if (VALUED.some((kind) => kind.properties.has(name) && kind.values.has(value))) return;
   }
-  known.set(key, result);
-  return result;
+  throw new Unverifiable(construct);
 }
 
-function isCharacterName(name) {
-  return /^[A-Za-z0-9][A-Za-z0-9 -]*$/.test(name.trim());
-}
-
-export function isPropertyName(raw) {
-  const name = raw.trim();
-  if (name === "" || name.startsWith("^")) return false;
-  const equals = name.indexOf("=");
-  if (equals >= 0) {
-    const kind = VALUED.get(loose(name.slice(0, equals)));
-    const value = name.slice(equals + 1).trim();
-    if (!kind || value === "") return false;
-    if (kind === "any") return true;
-    if (kind === "name") return isCharacterName(value);
-    return javascriptKnows(value, kind);
-  }
-  const flat = loose(name);
-  if (ICU_ONLY.has(flat) || javascriptKnows(name, "any")) return true;
-  if (flat.startsWith("in")) return BLOCKS.has(flat.slice(2)) || javascriptKnows(name.trim().slice(2), "sc");
-  if (flat.startsWith("is")) return javascriptKnows(name.trim().slice(2), "any");
-  return false;
+/** \N{…}: a Unicode character name, which cannot be checked here. */
+function characterName(raw) {
+  if (raw.trim() === "") fail();
+  throw new Unverifiable(`\\N{${raw}}`);
 }

@@ -152,6 +152,18 @@ describe("the app's rules", () => {
     assert.ok(codes(validateExtension(folder).issues).includes("indexMissing"));
   });
 
+  test("a pattern the store cannot verify is refused, and says why", () => {
+    const manifest = withManifest((m) => { m.contributes.actions[0].accepts.pattern = "^\\p{Block=Bogus}+$"; });
+    const { folder } = writeExtension({ manifest });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["invalidPattern"]);
+    assert.equal(issues[0].field, "contributes.actions[0].accepts.pattern");
+    assert.equal(issues[0].message, "the store validator cannot verify \\p{Block=Bogus} in \"^\\p{Block=Bogus}+$\"");
+    assert.match(issues[0].fix, /simpler pattern, e\.g\. a character class/);
+    const plain = withManifest((m) => { m.contributes.actions[0].accepts.pattern = "^\\p{Latin}+$"; });
+    assert.deepEqual(codes(validateExtension(writeExtension({ manifest: plain }).folder).issues), []);
+  });
+
   test("the folder name must equal the id", () => {
     const { folder } = writeExtension({ folderName: "dev.example.other" });
     assert.deepEqual(codes(validateExtension(folder).issues), ["idFolderMismatch"]);

@@ -45,6 +45,8 @@
   "invalid/pattern-empty.json": ["invalidPattern"],
   "invalid/pattern-invalid.json": ["invalidPattern"],
   "invalid/pattern-unescaped-brace.json": ["invalidPattern"],
+  "invalid/pattern-unknown-character-name.json": ["invalidPattern"],
+  "invalid/pattern-unknown-property.json": ["invalidPattern"],
   "invalid/permission-unknown.json": ["unknownPermission"],
   "invalid/preference-id-duplicate.json": ["duplicateID"],
   "invalid/preference-id-unusable.json": ["invalidMemberID"],

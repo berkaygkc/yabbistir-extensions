@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { isValidICUPattern } from "./icu-regex.mjs";
+import { checkICUPattern } from "./icu-regex.mjs";
 import { checkSchema } from "./json-schema.mjs";
 
 const manifestSchema = JSON.parse(fs.readFileSync(new URL("../../schema/manifest.schema.json", import.meta.url), "utf8"));
@@ -259,9 +259,14 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
         issue(`${field}.kinds[${index}]`, "unknownKind", `${quoted(kind)} is not a kind`, `Use one of: ${KINDS.join(", ")}.`, KINDS.join(", "));
       }
     });
-    if (typeof value.pattern === "string" && !isValidICUPattern(value.pattern)) {
+    const pattern = typeof value.pattern === "string" ? checkICUPattern(value.pattern) : { valid: true };
+    if (pattern.reason === "invalid") {
       issue(`${field}.pattern`, "invalidPattern", `"${value.pattern}" is not a valid regular expression`,
         "Fix the pattern so it compiles as an ICU regular expression.");
+    } else if (pattern.reason === "unverifiable") {
+      // The app may or may not compile it; the store does not pass what it cannot check.
+      issue(`${field}.pattern`, "invalidPattern", `the store validator cannot verify ${pattern.construct} in "${value.pattern}"`,
+        "Use a simpler pattern, e.g. a character class such as [A-Za-z], or a category or script such as \\p{L} or \\p{Latin}.");
     }
   };
 
