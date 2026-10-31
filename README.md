@@ -42,7 +42,7 @@ Coding agents: start with [AGENTS.md](AGENTS.md). [llms.txt](llms.txt) indexes t
 extensions/<id>/    the extensions, one folder each
 templates/          what npm run new copies
 packages/api/       the API's types (@yabbistir/api) and the fake host for tests
-tools/              new, dev, validate, test, build, docs, catalog, pr-checks
+tools/              new, dev, validate, test, build, docs, catalog, sign, pr-checks
 schema/             the manifest's and the catalog's JSON Schemas
 docs/               guides and references
 .github/            the pull request template, and the workflows that check, label and publish

@@ -1,6 +1,9 @@
-# Publishes the store on every push to main: builds every extension, writes the catalog, signs it with the key only
-# the publish environment holds, and deploys site/ to GitHub Pages. The job that holds the key installs without
-# install scripts and cannot deploy; the job that deploys never sees the key.
+# Publishes the store on every push to main, in three jobs:
+#   build    builds every extension and writes the catalog, unsigned; it has no secret and no environment
+#   sign     the only job with the signing key (the publish environment): it checks out tools/sign.mjs and the app's
+#            public keys and nothing else, never runs npm, and signs the catalog the build job made
+#   deploy   publishes the signed site/ to GitHub Pages from the github-pages environment
+# Actions are pinned to full commit SHAs.
 name: Publish
 
 on:
@@ -16,40 +19,65 @@ concurrency:
 
 jobs:
   build:
-    name: Build and sign the catalog
+    name: Build the catalog
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The catalog dates each extension by main's commits.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      # node itself, not npm run, which would put node_modules/.bin first on PATH.
+      - run: node tools/catalog.mjs --out site/v1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: site
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    name: Sign the catalog
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: publish
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      # These two paths and nothing else: no package.json, no node_modules, no other code of the repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Each extension's updatedAt is the time of the last commit that changed its folder.
-          fetch-depth: 0
+          sparse-checkout: |
+            /tools/sign.mjs
+            /keys/catalog-public-keys.json
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - uses: actions/setup-node@v5
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
-      - name: Build and sign the catalog
+          name: site
+          path: site
+      # The runner's own Node: sign.mjs uses Node's built-in modules only.
+      - name: Sign
         env:
           CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
-        run: npm run catalog -- --out site/v1 --sign-key-env CATALOG_SIGNING_KEY
-      - name: Require the signature
-        run: |
-          if [ ! -s site/v1/catalog.json.sig ]; then
-            echo "::error::site/v1/catalog.json.sig is missing: the publish environment has no CATALOG_SIGNING_KEY secret, and the app accepts only a signed catalog."
-            exit 1
-          fi
-      - uses: actions/upload-pages-artifact@v4
+        run: node tools/sign.mjs site/v1/catalog.json
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: build
+    needs: sign
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -60,4 +88,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

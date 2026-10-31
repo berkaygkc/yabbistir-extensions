@@ -10,7 +10,7 @@ Extensions reach people through the store: this repository, a signed catalog bui
 4. **Open a pull request.** The template asks what the extension does, for an example or a screenshot, for a reason for each permission, and for the tools it needs ([the template](../.github/PULL_REQUEST_TEMPLATE.md)).
 5. **Checks** run on the pull request (below). Fix what they report and push again.
 6. **Review:** the maintainer reads the code against the [review checklist](review-checklist.md), and may ask for changes.
-7. **Merge.** Publishing then runs on `main`: every extension is built into a `.yabext` package, the catalog is generated with each package's SHA-256, signed with an Ed25519 key, and published to GitHub Pages.
+7. **Merge.** The maintainer squash-merges the pull request. Publishing then runs on `main`: every extension is built into a `.yabext` package, the catalog is generated with each package's SHA-256, signed with an Ed25519 key, and published to GitHub Pages ([how](#how-publishing-runs)).
 8. **In the app,** the Store lists the new version the next time someone opens it or presses Refresh. Nothing is fetched in the background.
 
 ## What a pull request may change
@@ -54,7 +54,17 @@ The app reads only static files, with no account, token or tracking:
 | File icons | `https://berkaygkc.github.io/yabbistir-extensions/v1/icons/<id>.png`, for extensions with `icon.png` |
 | Schemas | `https://berkaygkc.github.io/yabbistir-extensions/v1/catalog.schema.json` ([source](../schema/catalog.schema.json)) and `…/v1/manifest.schema.json` |
 
-Each catalog entry has the extension's id, version, `apiVersion` and `minAppVersion`, its name and description in every language it ships, author, categories, icon, permissions, network hosts and tools, the package's SHA-256 and size, and the time of the last commit that changed the extension's folder. The same commit always gives the same catalog, byte for byte; `npm run catalog -- --out site/v1` writes it locally, unsigned. The app accepts a catalog only if its signature verifies with one of the keys built into the app, and installs a package only if its SHA-256 matches the catalog. An extension the app is too old for is listed but cannot be installed.
+Each catalog entry has the extension's id, version, `apiVersion` and `minAppVersion`, its name and description in every language it ships, author, categories, icon, permissions, network hosts and tools, the package's SHA-256 and size, and the time of the last commit on `main` that changed the extension's folder (main's own commits, the merges: a branch's commits carry whatever date their author gave them). The same commit always gives the same catalog, byte for byte; `npm run catalog -- --out site/v1` writes it locally, unsigned. The app accepts a catalog only if its signature verifies with one of the keys built into the app, and installs a package only if its SHA-256 matches the catalog. An extension the app is too old for is listed but cannot be installed.
+
+## How publishing runs
+
+`.github/workflows/publish.yml` runs on every push to `main`, in three jobs:
+
+1. **Build**, with no secret: `npm ci --ignore-scripts`, then `node tools/catalog.mjs --out site/v1` writes the catalog, the packages and the icons, unsigned.
+2. **Sign**, in the `publish` environment, the only place the signing key exists. It checks out two paths, [`tools/sign.mjs`](../tools/sign.mjs) and `keys/catalog-public-keys.json`, and nothing else: no `package.json`, no `npm`, no `node_modules`. The signer uses Node's built-in modules only. Before it signs, it checks what it signs: format 1, every package under the `packages/` address above and next to the catalog with the size and SHA-256 the catalog states, every file icon under `icons/`, every readme on this repository. Once the repository holds the app's public keys in `keys/catalog-public-keys.json` (`{ "keys": ["<base64 of a raw 32-byte key>", …] }`), it also refuses a signature none of them verifies, so a wrong secret never publishes a catalog every app rejects.
+3. **Deploy** the signed `site/` to GitHub Pages, from the `github-pages` environment.
+
+Signing and deploying run only for `main`.
 
 ## The .yabext package
 

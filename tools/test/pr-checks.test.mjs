@@ -537,13 +537,48 @@ describe("the workflows", () => {
     assert.match(text, /node tools\/pr-checks\.mjs/);
   });
 
-  test("onlyThePublishEnvironmentSeesTheSigningKey", () => {
+  /** A workflow's jobs, by name: the lines of each job's block, without comment lines. */
+  const jobsOf = (text) => {
+    const jobs = {};
+    let name;
+    for (const line of text.slice(text.indexOf("\njobs:\n") + "\njobs:\n".length).split("\n")) {
+      const match = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+      if (match) jobs[(name = match[1])] = "";
+      else if (name && !line.trim().startsWith("#")) jobs[name] += `${line}\n`; // comments aside
+    }
+    return jobs;
+  };
+
+  test("onlyTheSignJobSeesTheKeyAndItRunsNoRepositoryCode", () => {
     const text = workflow("publish.yml");
     assert.match(text, /^on:\n {2}push:\n {4}branches: \[main\]\n {2}workflow_dispatch:/m);
+    assert.match(text, /^permissions: \{\}$/m);
+    const { build, sign, deploy } = jobsOf(text);
+    assert.ok(build && sign && deploy, Object.keys(jobsOf(text)).join(", "));
     assert.equal(text.match(/secrets\./g)?.length, 1, "the key is read once");
-    const job = text.slice(text.indexOf("environment: publish"));
-    assert.ok(text.includes("environment: publish") && job.includes("secrets.CATALOG_SIGNING_KEY"), "inside the publish environment's job");
-    assert.match(text, /--sign-key-env CATALOG_SIGNING_KEY/);
-    assert.match(text, /catalog\.json\.sig/, "the job fails without a signature");
+    assert.match(sign, /CATALOG_SIGNING_KEY: \$\{\{ secrets\.CATALOG_SIGNING_KEY \}\}/);
+    assert.match(sign, /^ {4}environment: publish$/m);
+    assert.match(sign, /^ {4}if: github\.ref == 'refs\/heads\/main'$/m);
+    assert.match(sign, /sparse-checkout: \|\n {12}\/tools\/sign\.mjs\n {12}\/keys\/catalog-public-keys\.json\n {10}sparse-checkout-cone-mode: false\n/);
+    assert.doesNotMatch(sign, /\bnpm\b|setup-node|node_modules|fetch-depth/, "no install, no other code");
+    assert.deepEqual([...sign.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]), ["node tools/sign.mjs site/v1/catalog.json"]);
+    assert.doesNotMatch(build, /environment:|secrets|pages: write|id-token/);
+    assert.match(build, /run: npm ci --ignore-scripts\n/);
+    assert.match(build, /run: node tools\/catalog\.mjs --out site\/v1\n/, "not npm run, which puts node_modules/.bin first on PATH");
+    assert.doesNotMatch(build, /npm run|cache:/);
+    assert.match(deploy, /needs: sign/);
+    assert.match(deploy, /^ {4}if: github\.ref == 'refs\/heads\/main'$/m);
+    assert.match(deploy, /name: github-pages/);
+    assert.match(deploy, /pages: write\n {6}id-token: write/);
+    assert.doesNotMatch(sign, /pages: write|id-token/);
+  });
+
+  test("publishingActionsArePinnedToCommits", () => {
+    const uses = [...workflow("publish.yml").matchAll(/uses: (\S+)(.*)$/gm)];
+    assert.ok(uses.length >= 7);
+    for (const [, action, comment] of uses) {
+      assert.match(action, /^actions\/[a-z-]+@[0-9a-f]{40}$/, action);
+      assert.match(comment, /^ # v\d+\.\d+\.\d+$/, `${action} names its version`);
+    }
   });
 });

@@ -1,22 +1,21 @@
 #!/usr/bin/env node
-// npm run catalog -- --out <dir> [--sign-key-env <NAME>]
+// npm run catalog -- --out <dir>
 //
 // Builds every extension and writes what the store publishes (site/v1 on GitHub Pages) into <dir>:
 //   catalog.json                        every extension, sorted by id, as schema/catalog.schema.json describes it
-//   catalog.json.sig                    the base64 Ed25519 signature of catalog.json's exact bytes, when $NAME holds
-//                                       a PKCS#8 PEM private key; without one, no signature is written
 //   packages/<id>-<version>.yabext      each package, byte for byte what npm run build writes
 //   icons/<id>.png                      the icon of an extension that uses a file icon
 //   catalog.schema.json, manifest.schema.json   the schemas, at the address their $id names
+// It never signs: tools/sign.mjs does, in a job of its own (see .github/workflows/publish.yml).
 //
-// The output is a function of the commit: an extension's updatedAt is the time of the last commit that changed its
-// folder, and generatedAt is the time of the last commit that changed extensions/ (the newest updatedAt, or a later
+// The output is a function of the commit. Dates follow main's own commits (first parents), the merges, since a
+// branch's commits carry whatever date their author gave them: an extension's updatedAt is the time of the last of them
+// that changed its folder, and generatedAt the last that changed extensions/ (the newest updatedAt, or a later
 // removal), or SOURCE_DATE_EPOCH when that is set; all in UTC, without fractions of a second. One extension that
 // does not build stops the catalog: none is published without it.
 //
-//   --out <dir>            where to write (required); earlier output there is replaced
-//   --sign-key-env <NAME>  the environment variable that holds the signing key
-//   --root <dir>           the repository to read (default: this repository)
+//   --out <dir>    where to write (required); earlier output there is replaced, an old catalog.json.sig removed
+//   --root <dir>   the repository to read (default: this repository)
 
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -44,27 +43,11 @@ const fail = (message) => {
 /** A time as the catalog writes it: UTC, seconds, no fraction. */
 const utc = (date) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
 
-/** The time of the last commit that changed `pathspec`, or undefined when no commit did (or there is no git). */
+/** The time of the last first-parent commit that changed `pathspec`, or undefined when none did (or there is no git). */
 function lastCommit(root, pathspec) {
-  const result = spawnSync("git", ["log", "-1", "--format=%cI", "--", pathspec], { cwd: root, encoding: "utf8" });
+  const result = spawnSync("git", ["log", "-1", "--first-parent", "--format=%cI", "--", pathspec], { cwd: root, encoding: "utf8" });
   const text = result.status === 0 ? result.stdout.trim() : "";
   return text === "" ? undefined : utc(new Date(text));
-}
-
-/** The signing key named by `variable`: undefined when it is unset or empty. Never prints the key. */
-function signingKey(variable) {
-  const pem = process.env[variable];
-  if (pem === undefined || pem.trim() === "") return undefined;
-  let key;
-  try {
-    key = crypto.createPrivateKey(pem.includes("\\n") ? pem.replaceAll("\\n", "\n") : pem);
-  } catch {
-    fail(`$${variable} does not hold a private key → fix: Set it to the PKCS#8 PEM text of an Ed25519 key (openssl genpkey -algorithm ed25519).`);
-  }
-  if (key.asymmetricKeyType !== "ed25519") {
-    fail(`$${variable} holds an ${key.asymmetricKeyType ?? "unknown"} key, not an Ed25519 one → fix: Use the store's Ed25519 signing key.`);
-  }
-  return key;
 }
 
 /** Removes what an earlier run wrote into `out`, and only that. */
@@ -145,7 +128,7 @@ async function entryFor(root, id, out) {
   };
 }
 
-/** generatedAt: SOURCE_DATE_EPOCH (seconds) when set, else the last commit that changed extensions/. */
+/** generatedAt: SOURCE_DATE_EPOCH (seconds) when set, else the last first-parent commit that changed extensions/. */
 function generatedAt(root) {
   const epoch = process.env.SOURCE_DATE_EPOCH;
   if (epoch !== undefined && epoch !== "") {
@@ -158,22 +141,20 @@ function generatedAt(root) {
 async function main(argv) {
   let root = fileURLToPath(new URL("..", import.meta.url));
   let out;
-  let keyVariable;
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
     if (argument === "--out") out = argv[++index];
-    else if (argument === "--sign-key-env") keyVariable = argv[++index];
     else if (argument === "--root") root = path.resolve(argv[++index] ?? ".");
     else if (argument === "--help" || argument === "-h") {
-      console.log("Usage: npm run catalog -- --out <dir> [--sign-key-env <NAME>]");
+      console.log("Usage: npm run catalog -- --out <dir>");
       return 0;
     } else {
-      console.log(`Unknown argument: ${argument}. Usage: npm run catalog -- --out <dir> [--sign-key-env <NAME>]`);
+      console.log(`Unknown argument: ${argument}. Usage: npm run catalog -- --out <dir>`);
       return 2;
     }
   }
-  if (!out || (keyVariable !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(keyVariable))) {
-    console.log("Usage: npm run catalog -- --out <dir> [--sign-key-env <NAME>]");
+  if (!out) {
+    console.log("Usage: npm run catalog -- --out <dir>");
     return 2;
   }
   out = path.resolve(out);
@@ -181,7 +162,6 @@ async function main(argv) {
   try {
     fs.mkdirSync(out, { recursive: true });
     clean(out);
-    const key = keyVariable === undefined ? undefined : signingKey(keyVariable);
 
     const directory = path.join(root, "extensions");
     const ids = fs.existsSync(directory)
@@ -210,13 +190,7 @@ async function main(argv) {
     fs.writeFileSync(path.join(out, "catalog.json"), bytes);
     const relative = path.relative(process.cwd(), out);
     const shown = relative === "" ? "." : relative.startsWith("..") || path.isAbsolute(relative) ? out : relative;
-    console.log(`wrote ${path.join(shown, "catalog.json")}: ${extensions.length} extension${extensions.length === 1 ? "" : "s"}, generated at ${catalog.generatedAt}`);
-    if (key) {
-      fs.writeFileSync(path.join(out, "catalog.json.sig"), crypto.sign(null, bytes, key).toString("base64"));
-      console.log(`signed it: ${path.join(shown, "catalog.json.sig")}`);
-    } else if (keyVariable !== undefined) {
-      console.log(`not signed: $${keyVariable} is not set, so there is no catalog.json.sig`);
-    }
+    console.log(`wrote ${path.join(shown, "catalog.json")}: ${extensions.length} extension${extensions.length === 1 ? "" : "s"}, generated at ${catalog.generatedAt}, unsigned`);
     return 0;
   } catch (error) {
     if (!(error instanceof CatalogError)) throw error;

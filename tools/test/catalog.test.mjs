@@ -135,58 +135,32 @@ describe("npm run catalog", () => {
     assert.ok(!fs.existsSync(path.join(one.folder, "packages", "dev.example.gone-1.0.0.yabext")));
   });
 
-  test("signatureVerifiesWithThePublicKey", () => {
+  test("theCatalogIsNeverSigned", () => {
     const root = store();
-    const { pem, publicKey } = keyPair();
-    const { status, out, folder } = catalog(root, "site/v1", { args: ["--sign-key-env", "TEST_CATALOG_KEY"], env: { TEST_CATALOG_KEY: pem } });
+    const folder = path.join(root, "site/v1");
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, "catalog.json.sig"), "an old signature");
+    const { status, out } = catalog(root);
     assert.equal(status, 0, out);
-    const bytes = fs.readFileSync(path.join(folder, "catalog.json"));
-    const signature = Buffer.from(fs.readFileSync(path.join(folder, "catalog.json.sig"), "utf8").trim(), "base64");
-    assert.equal(signature.length, 64);
-    assert.ok(crypto.verify(null, bytes, publicKey, signature));
-    // The app holds the raw 32-byte key.
-    const raw = Buffer.from(publicKey.export({ format: "jwk" }).x, "base64url");
-    assert.equal(raw.length, 32);
-    const rebuilt = crypto.createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: raw.toString("base64url") }, format: "jwk" });
-    assert.ok(crypto.verify(null, bytes, rebuilt, signature));
-    const tampered = Buffer.from(bytes);
-    tampered[tampered.length - 2] ^= 1;
-    assert.ok(!crypto.verify(null, tampered, publicKey, signature));
-    assert.ok(!crypto.verify(null, bytes, keyPair().publicKey, signature), "another key does not verify it");
-    assert.ok(!out.includes(pem.split("\n")[1]), "the key is never printed");
+    assert.ok(!fs.existsSync(path.join(folder, "catalog.json.sig")), "an old signature never stays next to a new catalog");
+    const asked = catalog(root, "site/v1", { args: ["--sign-key-env", "TEST_CATALOG_KEY"], env: { TEST_CATALOG_KEY: keyPair().pem } });
+    assert.equal(asked.status, 2, "signing is tools/sign.mjs's alone");
+    assert.match(asked.out, /Unknown argument: --sign-key-env/);
   });
 
-  test("noKeyMeansNoSignatureFile", () => {
+  test("datesComeFromTheMainLine", () => {
+    // A branch commit can carry any date; the merge on main is what dates the change.
     const root = store();
-    const { pem } = keyPair();
-    const signed = catalog(root, "site/v1", { args: ["--sign-key-env", "TEST_CATALOG_KEY"], env: { TEST_CATALOG_KEY: pem } });
-    assert.equal(signed.status, 0, signed.out);
-    const signature = path.join(signed.folder, "catalog.json.sig");
-    assert.ok(fs.existsSync(signature));
-
-    const empty = catalog(root, "site/v1", { args: ["--sign-key-env", "TEST_CATALOG_KEY"], env: { TEST_CATALOG_KEY: "" } });
-    assert.equal(empty.status, 0, empty.out);
-    assert.ok(!fs.existsSync(signature), "an old signature never stays next to a new catalog");
-    assert.match(empty.out, /TEST_CATALOG_KEY/);
-    assert.match(empty.out, /not signed/);
-
-    const unasked = catalog(root);
-    assert.equal(unasked.status, 0, unasked.out);
-    assert.ok(fs.existsSync(path.join(unasked.folder, "catalog.json")));
-    assert.ok(!fs.existsSync(signature));
-  });
-
-  test("aKeyThatIsNotEd25519IsRefused", () => {
-    const root = store();
-    const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" });
-    for (const key of [rsa, "not a key"]) {
-      const { status, out, folder } = catalog(root, "site/v1", { args: ["--sign-key-env", "TEST_CATALOG_KEY"], env: { TEST_CATALOG_KEY: key } });
-      assert.equal(status, 1, out);
-      assert.match(out, /TEST_CATALOG_KEY/);
-      assert.ok(!fs.existsSync(path.join(folder, "catalog.json.sig")));
-      assert.ok(!fs.existsSync(path.join(folder, "catalog.json")), "no unsigned catalog is left for a publish to pick up");
-      assert.ok(!out.includes(key.split("\n")[1] ?? key), "the key is never printed");
-    }
+    git(root, ["checkout", "-q", "-b", "feature"]);
+    fs.appendFileSync(path.join(root, "extensions", FIRST, "README.md"), "\nMore.\n");
+    git(root, ["commit", "-q", "-am", "backdated"], "2030-01-01T00:00:00Z");
+    git(root, ["checkout", "-q", "main"]);
+    git(root, ["merge", "-q", "--no-ff", "-m", "merge", "feature"], "2026-10-20T10:00:00Z");
+    const { status, out, folder } = catalog(root);
+    assert.equal(status, 0, out);
+    assert.equal(entryOf(folder, FIRST).updatedAt, "2026-10-20T10:00:00Z");
+    assert.equal(read(folder).generatedAt, "2026-10-20T10:00:00Z");
+    assert.equal(entryOf(folder, SECOND).updatedAt, "2026-10-15T12:30:00Z");
   });
 
   test("incompatibleFieldsArePassedThrough", () => {
@@ -238,5 +212,128 @@ describe("npm run catalog", () => {
     const { status, out } = catalog(root);
     assert.equal(status, 1);
     assert.match(out, /icon\.png/);
+  });
+});
+
+describe("node tools/sign.mjs", () => {
+  const signerSource = path.join(repo, "tools", "sign.mjs");
+
+  /** A catalog from store(), and a folder holding nothing but a copy of tools/sign.mjs (and `keys`, when given). */
+  function setUp({ keys } = {}) {
+    const root = store();
+    const built = catalog(root);
+    assert.equal(built.status, 0, built.out);
+    const alone = fs.mkdtempSync(path.join(root, "signer-"));
+    fs.mkdirSync(path.join(alone, "tools"));
+    fs.copyFileSync(signerSource, path.join(alone, "tools", "sign.mjs"));
+    if (keys !== undefined) {
+      fs.mkdirSync(path.join(alone, "keys"));
+      fs.writeFileSync(path.join(alone, "keys", "catalog-public-keys.json"), typeof keys === "string" ? keys : JSON.stringify({ keys }));
+    }
+    return { folder: built.folder, catalogFile: path.join(built.folder, "catalog.json"), alone };
+  }
+
+  /** Runs the copy in `alone`, from `alone`, with `key` (PEM text, or undefined) as $CATALOG_SIGNING_KEY. */
+  function sign(alone, catalogFile, key) {
+    const { NODE_TEST_CONTEXT, CATALOG_SIGNING_KEY, ...inherited } = process.env;
+    const result = spawnSync(process.execPath, [path.join(alone, "tools", "sign.mjs"), catalogFile], {
+      cwd: alone, encoding: "utf8", env: { ...inherited, ...(key === undefined ? {} : { CATALOG_SIGNING_KEY: key }) },
+    });
+    return { status: result.status, out: `${result.stdout}${result.stderr}` };
+  }
+  const raw = (publicKey) => Buffer.from(publicKey.export({ format: "jwk" }).x, "base64url").toString("base64");
+  const signatureOf = (folder) => Buffer.from(fs.readFileSync(path.join(folder, "catalog.json.sig"), "utf8").trim(), "base64");
+
+  test("itUsesOnlyNodesBuiltInModules", () => {
+    const text = fs.readFileSync(signerSource, "utf8");
+    const specifiers = [...text.matchAll(/\bfrom\s+"([^"]+)"|\bimport\s*\(\s*"([^"]+)"/g)].map((match) => match[1] ?? match[2]);
+    assert.ok(specifiers.length > 0);
+    assert.deepEqual(specifiers.filter((specifier) => !specifier.startsWith("node:")), [], "the publish job checks out this one file");
+    assert.doesNotMatch(text, /\brequire\(|process\.env\[/, "and reads only CATALOG_SIGNING_KEY");
+  });
+
+  test("signatureVerifiesWithThePublicKey", () => {
+    const { folder, catalogFile, alone } = setUp();
+    const { pem, publicKey } = keyPair();
+    const { status, out } = sign(alone, catalogFile, pem);
+    assert.equal(status, 0, out);
+    const bytes = fs.readFileSync(catalogFile);
+    const signature = signatureOf(folder);
+    assert.equal(signature.length, 64);
+    assert.ok(crypto.verify(null, bytes, publicKey, signature));
+    // The app holds the raw 32-byte key.
+    const rebuilt = crypto.createPublicKey({ key: { kty: "OKP", crv: "Ed25519", x: Buffer.from(raw(publicKey), "base64").toString("base64url") }, format: "jwk" });
+    assert.ok(crypto.verify(null, bytes, rebuilt, signature));
+    const tampered = Buffer.from(bytes);
+    tampered[tampered.length - 2] ^= 1;
+    assert.ok(!crypto.verify(null, tampered, publicKey, signature));
+    assert.ok(!crypto.verify(null, bytes, keyPair().publicKey, signature), "another key does not verify it");
+    assert.match(out, /keys\/catalog-public-keys\.json/, "it says the app's keys were not checked");
+    assert.ok(!out.includes(pem.split("\n")[1]), "the key is never printed");
+  });
+
+  test("theAppsKeysMustVerifyItWhenTheyAreCommitted", () => {
+    const { pem, publicKey } = keyPair();
+    const other = keyPair().publicKey;
+    const known = setUp({ keys: [raw(other), raw(publicKey)] });
+    const signed = sign(known.alone, known.catalogFile, pem);
+    assert.equal(signed.status, 0, signed.out);
+    assert.match(signed.out, /2 keys/);
+    assert.ok(crypto.verify(null, fs.readFileSync(known.catalogFile), publicKey, signatureOf(known.folder)));
+
+    const unknown = setUp({ keys: [raw(other)] });
+    const refused = sign(unknown.alone, unknown.catalogFile, pem);
+    assert.equal(refused.status, 1, refused.out);
+    assert.match(refused.out, /none of the 1 key/);
+    assert.ok(!fs.existsSync(path.join(unknown.folder, "catalog.json.sig")), "no signature the app would reject");
+
+    for (const keys of ["{ nope", JSON.stringify({ keys: [] }), JSON.stringify({ keys: ["c2hvcnQ="] })]) {
+      const broken = setUp({ keys });
+      const result = sign(broken.alone, broken.catalogFile, pem);
+      assert.equal(result.status, 1, `${keys}\n${result.out}`);
+      assert.match(result.out, /keys\/catalog-public-keys\.json/);
+      assert.ok(!fs.existsSync(path.join(broken.folder, "catalog.json.sig")));
+    }
+  });
+
+  test("aMissingOrWrongKeyFails", () => {
+    const { folder, catalogFile, alone } = setUp();
+    const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" });
+    for (const key of [undefined, "", rsa, "not a key"]) {
+      const { status, out } = sign(alone, catalogFile, key);
+      assert.equal(status, 1, out);
+      assert.match(out, /CATALOG_SIGNING_KEY/);
+      assert.ok(!fs.existsSync(path.join(folder, "catalog.json.sig")));
+      if (key) assert.ok(!out.includes(key.split("\n")[1] ?? key), "the key is never printed");
+    }
+  });
+
+  test("whatItSignsIsCheckedFirst", () => {
+    const { pem } = keyPair();
+    const cases = {
+      "a package elsewhere": (catalog) => { catalog.extensions[0].package = "https://example.com/v1/packages/x-1.0.0.yabext"; },
+      "a package path that climbs": (catalog) => { catalog.extensions[0].package = `${STORE}/packages/../../x.yabext`; },
+      "a sha256 that is not hex": (catalog) => { catalog.extensions[0].sha256 = "Z".repeat(64); },
+      "a size that differs": (catalog) => { catalog.extensions[0].size += 1; },
+      "a hash that differs": (catalog) => { catalog.extensions[0].sha256 = "0".repeat(64); },
+      "another format": (catalog) => { catalog.formatVersion = 2; },
+      "an icon elsewhere": (catalog) => { catalog.extensions[1].icon = "https://example.com/icon.png"; },
+      "a readme elsewhere": (catalog) => { catalog.extensions[0].readme = "https://example.com/readme"; },
+    };
+    for (const [name, change] of Object.entries(cases)) {
+      const { folder, catalogFile, alone } = setUp();
+      const catalog = JSON.parse(fs.readFileSync(catalogFile, "utf8"));
+      change(catalog);
+      fs.writeFileSync(catalogFile, JSON.stringify(catalog, null, 2));
+      fs.writeFileSync(path.join(folder, "catalog.json.sig"), "an old signature");
+      const { status, out } = sign(alone, catalogFile, pem);
+      assert.equal(status, 1, `${name}\n${out}`);
+      assert.ok(!fs.existsSync(path.join(folder, "catalog.json.sig")), name);
+    }
+    const missing = setUp();
+    fs.rmSync(path.join(missing.folder, "packages", `${FIRST}-1.0.0.yabext`));
+    const result = sign(missing.alone, missing.catalogFile, pem);
+    assert.equal(result.status, 1, result.out);
+    assert.match(result.out, new RegExp(`${FIRST.replaceAll(".", "\\.")}-1\\.0\\.0\\.yabext`));
   });
 });
