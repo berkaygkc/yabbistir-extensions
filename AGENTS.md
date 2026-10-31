@@ -29,7 +29,7 @@ Real extensions to learn from: `dev.yabbistir.video-download` (job, exec, networ
 
 ## Commands
 
-Run every command from the repository's root. Node 22.18 or later; run `npm install` once.
+Run every command from the repository's root. Node 24 (22.18 or later works); run `npm install` once.
 
 | Command | When |
 |---|---|

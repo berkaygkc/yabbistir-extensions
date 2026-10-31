@@ -1,6 +1,7 @@
 import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +14,8 @@ import { repo } from "./helpers.mjs";
 
 const ID = "dev.example.tool";
 const OTHER = "dev.example.other";
+/** A well-formed sha512 integrity made from `seed`. */
+const sri = (seed) => `sha512-${crypto.createHash("sha512").update(seed).digest("base64")}`;
 /** Another well-formed integrity: one character before the padding flipped, whatever the value holds. */
 const tweak = (integrity) => `${integrity.slice(0, -3)}${integrity.at(-3) === "A" ? "B" : "A"}${integrity.slice(-2)}`;
 
@@ -262,7 +265,7 @@ describe("extension libraries come from npm", () => {
     const refused = ["git+https://github.com/someone/lib.git", "git://github.com/someone/lib", "github:someone/lib", "someone/lib",
       "someone/lib#main", "gitlab:someone/lib", "file:../lib", "link:../lib", "../lib", "./lib", "~/lib", "/tmp/lib",
       "https://example.com/lib.tgz", "http://example.com/lib.tgz", "workspace:*", "npm:other@git+https://github.com/someone/lib.git",
-      "npm:other@file:../lib", "npm:other@someone/lib"];
+      "npm:other@file:../lib", "npm:other@someone/lib", "lib.tgz", "lib-1.0.0.tar", "lib.tar.gz", "LIB.TGZ", "npm:other@lib.tgz", "npm:lib.tgz"];
     for (const kind of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
       for (const spec of refused) {
         const problems = packageProblems(ID, JSON.stringify({ name: ID, [kind]: { lib: spec } }));
@@ -317,8 +320,8 @@ describe("the lockfile beside an extension", () => {
     lock.packages[`extensions/${ID}`] = { name: ID, version: "1.0.0", dependencies: { "left-pad": "1.3.0" } };
     lock.packages[`node_modules/${ID}`] = { resolved: `extensions/${ID}`, link: true };
     lock.packages["node_modules/left-pad"] = { version: "1.3.0", resolved: "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz",
-      integrity: "sha512-left", dependencies: { tiny: "^1.0.0" } };
-    lock.packages["node_modules/tiny"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/tiny/-/tiny-1.0.0.tgz", integrity: "sha512-tiny" };
+      integrity: sri("left-pad"), dependencies: { tiny: "^1.0.0" } };
+    lock.packages["node_modules/tiny"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/tiny/-/tiny-1.0.0.tgz", integrity: sri("tiny") };
     change(lock);
     return JSON.stringify(lock, null, 2);
   };
@@ -326,7 +329,9 @@ describe("the lockfile beside an extension", () => {
   test("theExtensionsOwnLibrariesMayChange", () => {
     assert.deepEqual(lockfileProblems(base, lockfile(), { extension: ID }), []);
     assert.deepEqual(lockfileProblems(lockfile(), base, { extension: ID }), [], "and go away");
-    const updated = lockfile((lock) => { lock.packages["node_modules/tiny"].version = "1.0.1"; });
+    const updated = lockfile((lock) => {
+      Object.assign(lock.packages["node_modules/tiny"], { version: "1.0.1", resolved: "https://registry.npmjs.org/tiny/-/tiny-1.0.1.tgz", integrity: sri("tiny 1.0.1") });
+    });
     assert.deepEqual(lockfileProblems(lockfile(), updated, { extension: ID }), []);
   });
 
@@ -354,7 +359,7 @@ describe("the lockfile beside an extension", () => {
 
   test("anEntryNothingNeedsMayNotBeAdded", () => {
     const orphan = lockfile((lock) => {
-      lock.packages["node_modules/stray"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/stray/-/stray-1.0.0.tgz", integrity: "sha512-s" };
+      lock.packages["node_modules/stray"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/stray/-/stray-1.0.0.tgz", integrity: sri("stray") };
     });
     assert.ok(lockfileProblems(base, orphan, { extension: ID }).some((problem) => /node_modules\/stray.*outside/.test(problem)));
   });
@@ -362,10 +367,10 @@ describe("the lockfile beside an extension", () => {
   test("anotherExtensionsLibrariesMayNotChange", () => {
     const withOther = structuredClone(real);
     withOther.packages[`extensions/${OTHER}`] = { name: OTHER, version: "1.0.0", dependencies: { other: "1.0.0" } };
-    withOther.packages["node_modules/other"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/other/-/other-1.0.0.tgz", integrity: "sha512-o" };
+    withOther.packages["node_modules/other"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/other/-/other-1.0.0.tgz", integrity: sri("other") };
     // The extension uses the same library, so only "it is another workspace's too" keeps it out.
     const uses = (lock) => { lock.packages[`extensions/${ID}`].dependencies.other = "1.0.0"; };
-    const changed = lockfile((lock) => { uses(lock); lock.packages["node_modules/other"].integrity = "sha512-changed"; }, withOther);
+    const changed = lockfile((lock) => { uses(lock); lock.packages["node_modules/other"].integrity = sri("changed"); }, withOther);
     assert.ok(lockfileProblems(lockfile(uses, withOther), changed, { extension: ID }).some((problem) => /node_modules\/other.*outside/.test(problem)));
   });
 
@@ -386,6 +391,20 @@ describe("the lockfile beside an extension", () => {
       const problems = lockfileProblems(base, lockfile((lock) => sources.git(lock.packages["node_modules/tiny"])), { extension });
       assert.ok(problems.some((problem) => /registry/.test(problem)), "with or without an extension");
     }
+  });
+
+  test("anExtensionLibraryHoldsItsOwnPackagesTarball", () => {
+    const borrowed = lockfile((lock) => {
+      lock.packages["node_modules/tiny"].resolved = "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz";
+      lock.packages["node_modules/tiny"].integrity = sri("is-number");
+    });
+    assert.ok(lockfileProblems(base, borrowed, { extension: ID }).some((problem) => /node_modules\/tiny \(it does not come from its own tarball/.test(problem)));
+    const aliased = (target) => lockfile((lock) => {
+      lock.packages[`extensions/${ID}`].dependencies.pad = `npm:left-pad@1.3.0`;
+      lock.packages["node_modules/pad"] = { ...lock.packages["node_modules/left-pad"], name: target };
+    });
+    assert.deepEqual(lockfileProblems(base, aliased("left-pad"), { extension: ID }), [], "an npm: alias names its target");
+    assert.ok(lockfileProblems(base, aliased("is-number"), { extension: ID }).some((problem) => /node_modules\/pad \(it is an npm: alias/.test(problem)));
   });
 
   test("aLibraryWithAnInstallScriptOrAProgramIsRefused", () => {
@@ -419,7 +438,7 @@ describe("the lockfile without an extension", () => {
       if (location !== "node_modules/esbuild" && !location.startsWith("node_modules/@esbuild/")) continue;
       entry.version = "0.29.0";
       entry.resolved = entry.resolved.replaceAll("0.28.2", "0.29.0");
-      entry.integrity = `${entry.integrity.slice(0, -2)}x=`;
+      entry.integrity = tweak(entry.integrity);
       for (const name of Object.keys(entry.optionalDependencies ?? {})) entry.optionalDependencies[name] = "0.29.0";
     }
     lock.packages[""].devDependencies.esbuild = "0.29.0";
@@ -430,6 +449,18 @@ describe("the lockfile without an extension", () => {
     const problems = lockfileProblems(JSON.stringify(real), edit(swap), { manifests: manifests() });
     assert.equal(problems.length, 1, problems.join("\n"));
     assert.match(problems[0], /lockfile changes without a package\.json change: node_modules\/@esbuild\/linux-x64/);
+  });
+
+  test("anEntryHoldsItsOwnPackagesTarball", () => {
+    // A no-op spec change asks for fflate; the entry then carries another package's tarball and integrity.
+    const pinned = edit((lock) => {
+      lock.packages[""].devDependencies.fflate = "=0.8.3";
+      lock.packages["node_modules/fflate"].resolved = "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz";
+      lock.packages["node_modules/fflate"].integrity = sri("is-number");
+    });
+    const problems = lockfileProblems(JSON.stringify(real), pinned, { manifests: manifests((root) => { root.devDependencies.fflate = "=0.8.3"; }) });
+    assert.equal(problems.length, 1, problems.join("\n"));
+    assert.match(problems[0], /node_modules\/fflate \(it does not come from its own tarball on the npm registry, https:\/\/registry\.npmjs\.org\/fflate\/-\/fflate-0\.8\.3\.tgz\)/);
   });
 
   test("anUpgradeThatPackageJsonAsksForPasses", () => {
@@ -451,6 +482,7 @@ describe("the pull request run", () => {
     fs.mkdirSync(path.join(folder, "src"), { recursive: true });
     fs.writeFileSync(path.join(folder, "src", "index.ts"), source);
     fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify({ id: ID, version: "1.2.0" }));
+    for (const file of ["package.json", "package-lock.json"]) fs.copyFileSync(path.join(repo, file), path.join(root, file));
     for (const [file, text] of Object.entries(extra)) {
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
       fs.writeFileSync(path.join(root, file), text);
@@ -585,8 +617,28 @@ describe("the pull request run", () => {
     const tracked = () => [`extensions/${ID}/src/index.ts`, `extensions/${ID}/node_modules/lib/index.js`, "node_modules/.package-lock.json"];
     const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`], exec, tracked });
     assert.equal(ok, false);
-    assert.deepEqual(failed(results), ["no node_modules inside extensions/"]);
+    assert.equal(failed(results).length, 1);
+    assert.match(failed(results)[0], /install state/);
     assert.match(results.find((result) => !result.ok).problems[0], new RegExp(`extensions/${ID.replaceAll(".", "\\.")}/node_modules/lib/index\\.js`));
+  });
+
+  test("aShrinkwrapOrAnNpmrcFailsEveryPullRequest", async () => {
+    for (const file of ["npm-shrinkwrap.json", ".npmrc"]) {
+      const { root, exec } = setUp({ extra: { [file]: "{}\n" } });
+      const { ok, results } = await runChecks({ root, files: ["docs/review-checklist.md", file], exec });
+      assert.equal(ok, false, file);
+      const state = results.find((result) => result.name.startsWith("the install state"));
+      assert.ok(state.problems.some((problem) => problem.startsWith(`${file}: `)), state.problems.join("\n"));
+    }
+  });
+
+  test("pathsThatDifferOnlyByCaseFail", async () => {
+    const { root, exec } = setUp();
+    const tracked = () => [`extensions/${ID}/src/index.ts`, `extensions/${ID}/src/Index.ts`];
+    const { results } = await runChecks({ root, files: [`extensions/${ID}/src/Index.ts`], exec, tracked });
+    const state = results.find((result) => result.name.startsWith("the install state"));
+    assert.equal(state.ok, false);
+    assert.match(state.problems.join("\n"), new RegExp(`extensions/${ID.replaceAll(".", "\\.")}/src/Index\\.ts and extensions/${ID.replaceAll(".", "\\.")}/src/index\\.ts`));
   });
 
   test("twoFoldersFailAndARemovedFolderIsNotBuilt", async () => {
@@ -596,6 +648,43 @@ describe("the pull request run", () => {
     assert.match(failed(results)[0], /one extension folder/);
     assert.ok(!calls.some((call) => call.includes(OTHER)), "the removed extension has nothing to build");
     assert.ok(calls.includes(`run build -- ${ID}`));
+  });
+});
+
+describe("node tools/static-checks.mjs", () => {
+  const files = ["tools/static-checks.mjs", "tools/lib/static-rules.mjs", "tools/lockfile-state.mjs"];
+
+  test("itRunsWithNothingInstalled", () => {
+    // The static job checks out these three files from the base branch and nothing else.
+    for (const file of files) {
+      const text = fs.readFileSync(path.join(repo, file), "utf8");
+      const specifiers = [...text.matchAll(/\bfrom\s+"([^"]+)"|\bimport\s*\(\s*"([^"]+)"/g)].map((match) => match[1] ?? match[2]);
+      const local = specifiers.filter((specifier) => !specifier.startsWith("node:"))
+        .map((specifier) => path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier)));
+      assert.deepEqual(local.filter((target) => !files.includes(target)), [], `${file} imports only Node and these files`);
+    }
+  });
+
+  test("itChecksAPullRequestCheckedOutAsData", () => {
+    // The base branch's checker, copied apart, against a pull request that pins fflate to another package's tarball.
+    const checker = scratch();
+    for (const file of files) {
+      fs.mkdirSync(path.dirname(path.join(checker, file)), { recursive: true });
+      fs.copyFileSync(path.join(repo, file), path.join(checker, file));
+    }
+    const pr = scratch();
+    git(pr, "init", "-q", "-b", "main");
+    for (const file of ["package.json", "package-lock.json"]) fs.copyFileSync(path.join(repo, file), path.join(pr, file));
+    git(pr, "add", "-A");
+    git(pr, "commit", "-q", "-m", "base");
+    const lock = JSON.parse(fs.readFileSync(path.join(pr, "package-lock.json"), "utf8"));
+    lock.packages["node_modules/fflate"].resolved = "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz";
+    fs.writeFileSync(path.join(pr, "package-lock.json"), JSON.stringify(lock, null, 2));
+    git(pr, "commit", "-q", "-am", "pin");
+    const run = spawnSync(process.execPath, [path.join(checker, "tools", "static-checks.mjs"), "--root", pr, "--base", "HEAD~1"], { encoding: "utf8" });
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(run.stdout, /node_modules\/fflate/);
+    assert.match(run.stdout, /static checks failed/);
   });
 });
 
@@ -719,6 +808,9 @@ describe("the workflows", () => {
     assert.match(text, /fetch-depth: 0/);
     assert.match(text, /node tools\/pr-checks\.mjs/);
     assert.match(text, /node-version: 24\n/, "npm 11: npm 10 runs a git dependency's prepare even with --ignore-scripts");
+    const { checks } = jobsOf(text);
+    assert.match(checks, /run: npm ci --ignore-scripts\n/, "no install script of the pull request runs before the checks");
+    assert.doesNotMatch(text, /run: npm ci\n/);
   });
 
   /** A workflow's jobs, by name: the lines of each job's block, without comment lines. */
@@ -732,6 +824,23 @@ describe("the workflows", () => {
     }
     return jobs;
   };
+
+  test("theStaticJobRunsTheBaseBranchsCheckerOnThePullRequestAsData", () => {
+    const { static: job } = jobsOf(workflow("pr.yml"));
+    assert.ok(job, "pr.yml has a static job");
+    assert.doesNotMatch(job, /\bnpm\b|setup-node|node_modules/, "nothing installed");
+    assert.match(job, /path: pr\n/);
+    assert.match(job, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}\n {10}path: checker\n/);
+    assert.match(job, /sparse-checkout: \|\n {12}\/tools\/lockfile-state\.mjs\n {12}\/tools\/static-checks\.mjs\n {12}\/tools\/lib\/static-rules\.mjs\n {10}sparse-checkout-cone-mode: false\n/);
+    assert.deepEqual([...job.matchAll(/^\s+run: (.+)$/gm)].map((match) => match[1]),
+      ["node checker/tools/lockfile-state.mjs --root pr", "node checker/tools/static-checks.mjs --root pr --base \"$BASE_SHA\""]);
+  });
+
+  test("publishingStopsOnALockfileStateProblemBeforeInstalling", () => {
+    const { build } = jobsOf(workflow("publish.yml"));
+    const runs = [...build.matchAll(/^\s+(?:- )?run: (.+)$/gm)].map((match) => match[1]);
+    assert.deepEqual(runs.slice(0, 2), ["node tools/lockfile-state.mjs", "npm ci --ignore-scripts"]);
+  });
 
   test("onlyTheSignJobSeesTheKeyAndItRunsNoRepositoryCode", () => {
     const text = workflow("publish.yml");

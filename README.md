@@ -17,7 +17,7 @@ Until then, build an extension here (`npm run build -- <id>`) and install `dist/
 
 ## Write one
 
-You need macOS 26 or later on Apple silicon with yabbistir, and Node 22.18 or later.
+You need macOS 26 or later on Apple silicon with yabbistir, and Node 24 (22.18 or later works).
 
 1. Clone this repository and run `npm install`.
 2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.

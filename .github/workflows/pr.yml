@@ -1,5 +1,9 @@
-# Checks every pull request against the rules in docs/publishing.md ("The checks"); tools/pr-checks.mjs runs them
-# all and lists each one. The token can only read, and no secret reaches this workflow.
+# Checks every pull request against the rules in docs/publishing.md ("The checks"), in two jobs. The token can only
+# read, and no secret reaches this workflow.
+#   static   the rules that read files and git only, with the base branch's own checker and the pull request checked
+#            out as data: nothing is installed and nothing of the pull request runs, so neither its tests nor its
+#            edits to tools/ can change this job's result. Merging should wait for it.
+#   checks   everything, with the pull request's code: build, validate, its tests, the tools' tests, the catalog.
 name: Pull request checks
 
 on:
@@ -13,6 +17,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: checker
+          sparse-checkout: |
+            /tools/lockfile-state.mjs
+            /tools/static-checks.mjs
+            /tools/lib/static-rules.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      # The runner's own Node: these three files use Node's built-in modules only.
+      - name: Lockfile state
+        run: node checker/tools/lockfile-state.mjs --root pr
+      - name: Static checks
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node checker/tools/static-checks.mjs --root pr --base "$BASE_SHA"
+
   checks:
     name: Checks
     # The app is macOS only; the tools are tested where it runs (the package test unpacks with ditto, as the app does).
@@ -27,7 +59,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      # No install script runs: not the libraries', not a workspace's own.
+      - run: npm ci --ignore-scripts
       - name: Run the checks
         env:
           BASE_REF: ${{ github.base_ref }}

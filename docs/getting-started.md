@@ -5,7 +5,7 @@ This page takes you from an empty folder to a working action: **Slugify**, which
 You need:
 
 - macOS 26 or later on Apple silicon, with yabbistir installed (only to try the extension in the app; writing and testing it needs nothing but Node).
-- Node 22.18 or later. The tests import TypeScript directly, which older Node versions cannot do. `node --version` tells you.
+- Node 24, the version the store's checks run on (Node 22.18 is the oldest that works: the tests import TypeScript directly, which older versions cannot do). `node --version` tells you; `nvm use` picks it from `.nvmrc`.
 - A clone of this repository with its dependencies: `npm install` in its root folder.
 
 Every command below runs from the repository's root folder.
