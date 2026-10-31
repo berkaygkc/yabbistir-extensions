@@ -272,7 +272,7 @@ describe("the lockfile beside an extension", () => {
   });
 
   test("theToolsPackagesMayNotChange", () => {
-    const swapped = lockfile((lock) => { lock.packages["node_modules/@esbuild/linux-x64"].integrity = "sha512-swapped"; });
+    const swapped = lockfile((lock) => { lock.packages["node_modules/@esbuild/linux-x64"].integrity += "-swapped"; });
     const problems = lockfileProblems(base, swapped, ID);
     assert.equal(problems.length, 1);
     assert.match(problems[0], /node_modules\/@esbuild\/linux-x64/);
@@ -282,7 +282,7 @@ describe("the lockfile beside an extension", () => {
   test("aLibrarySharedWithTheToolsMayNotChange", () => {
     const sharing = (change) => lockfile((lock) => { lock.packages[`extensions/${ID}`].dependencies.fflate = "0.8.3"; change(lock); });
     assert.deepEqual(lockfileProblems(base, sharing(() => {}), ID), [], "using it as it is is fine");
-    const changed = sharing((lock) => { lock.packages["node_modules/fflate"].resolved = "https://example.com/fflate.tgz"; });
+    const changed = sharing((lock) => { lock.packages["node_modules/fflate"].resolved += "?swapped"; });
     assert.match(lockfileProblems(sharing(() => {}), changed, ID)[0], /node_modules\/fflate/, "even when the extension already used it");
   });
 
@@ -437,7 +437,7 @@ describe("the pull request run", () => {
   test("theLockfileIsCheckedWhenItChangesBesideAnExtension", async () => {
     const real = fs.readFileSync(path.join(repo, "package-lock.json"), "utf8");
     const swapped = JSON.parse(real);
-    swapped.packages["node_modules/@esbuild/linux-x64"].integrity = "sha512-swapped";
+    swapped.packages["node_modules/@esbuild/linux-x64"].integrity += "-swapped"; // differs from whatever is there
     const { root, calls, exec } = setUp({ extra: { "package-lock.json": JSON.stringify(swapped, null, 2) } });
     const readBase = (file) => (file === "package-lock.json" ? real : null);
     const { ok, results } = await runChecks({ root, files: [`extensions/${ID}/src/index.ts`, "package-lock.json"], exec, readBase });
