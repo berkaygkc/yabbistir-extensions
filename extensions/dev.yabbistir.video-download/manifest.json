@@ -1,0 +1,41 @@
+{
+  "id": "dev.yabbistir.video-download",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:arrow.down.circle",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["files"],
+  "permissions": ["network", "exec"],
+  "network": { "domains": ["youtube.com", "youtu.be", "instagram.com", "x.com", "twitter.com"] },
+  "requires": {
+    "tools": [
+      { "name": "yt-dlp", "install": "brew install yt-dlp" },
+      { "name": "ffmpeg", "install": "brew install ffmpeg" },
+      { "name": "deno", "install": "brew install deno" }
+    ]
+  },
+  "preferences": [
+    { "id": "browserCookies", "type": "choice", "title": "cookies.title", "default": "off", "confirm": "cookies.confirm",
+      "options": [
+        { "id": "off", "title": "cookies.off" },
+        { "id": "safari", "title": "cookies.safari" },
+        { "id": "chrome", "title": "cookies.chrome" },
+        { "id": "firefox", "title": "cookies.firefox" }
+      ] }
+  ],
+  "contributes": {
+    "actions": [
+      { "id": "download", "title": "download.title", "keywords": "download.keywords", "input": "item",
+        "accepts": { "kinds": ["link"], "pattern": "^https?://([a-z0-9-]+\\.)*(youtube\\.com|youtu\\.be|instagram\\.com|x\\.com|twitter\\.com)/" },
+        "targets": ["finder"], "job": true, "output": "file", "verb": "verb",
+        "variants": [
+          { "id": "video", "title": "video.title", "subtitle": "video.subtitle", "failTitle": "video.fail" },
+          { "id": "audio", "title": "audio.title", "subtitle": "audio.subtitle", "failTitle": "audio.fail" }
+        ] }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Çevir",
+  "description": "Metni bu Mac’te çevirir, Apple Intelligence ile özetler.",
+  "translate.title": "Çevir",
+  "translate.keywords": ["çevir", "çeviri", "translate", "türkçe", "ingilizce"],
+  "tr.title": "Türkçeye çevir",
+  "tr.subtitle": "Bu Mac’te",
+  "en.title": "İngilizceye çevir",
+  "en.subtitle": "Bu Mac’te",
+  "summarize.title": "Özetle",
+  "summarize.keywords": ["özetle", "özet", "kısalt", "summarize"],
+  "verb.translate": "Çevir",
+  "verb.summarize": "Özetle",
+  "failTitle.summarize": "Özetlenemedi",
+  "summarizing": "Özetleniyor",
+  "sameLanguage.tr": "Metin zaten Türkçe",
+  "sameLanguage.en": "Metin zaten İngilizce",
+  "empty.translate": "Çevrilecek metin yok",
+  "empty.summarize": "Özetlenecek metin yok",
+  "instructions": "Bu metni Türkçe olarak, en fazla 3 cümlelik sade bir özet halinde yaz. Yalnızca özeti yaz."
+}

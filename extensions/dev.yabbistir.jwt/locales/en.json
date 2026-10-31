@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "Recognizes copied JSON Web Tokens and shows what is inside.",
+  "tag": "JWT",
+  "header": "Header",
+  "payload": "Payload",
+  "info": "Info",
+  "expired": "expired",
+  "unchecked": "The signature isn't checked"
+}

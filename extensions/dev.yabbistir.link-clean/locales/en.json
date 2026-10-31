@@ -1,0 +1,6 @@
+{
+  "name": "Link Cleaner",
+  "description": "Strips tracking parameters from the links you copy.",
+  "clean.title": "Remove tracking parameters",
+  "clean.description": "Drops utm_*, fbclid, gclid and similar parameters from copied links."
+}

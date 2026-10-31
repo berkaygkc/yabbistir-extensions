@@ -1,0 +1,6 @@
+{
+  "name": "Link Temizle",
+  "description": "Kopyaladığın linklerden izleme parametrelerini siler.",
+  "clean.title": "İzleme parametrelerini sil",
+  "clean.description": "Kopyalanan linklerdeki utm_*, fbclid, gclid gibi parametreleri atar."
+}

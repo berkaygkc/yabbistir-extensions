@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "Kopyalanan JSON Web Token'ları tanır ve içini gösterir.",
+  "tag": "JWT",
+  "header": "Başlık",
+  "payload": "İçerik",
+  "info": "Bilgi",
+  "expired": "süresi doldu",
+  "unchecked": "İmza doğrulanmaz"
+}

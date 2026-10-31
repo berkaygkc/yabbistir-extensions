@@ -1,0 +1,25 @@
+{
+  "id": "dev.yabbistir.translate",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:character.bubble",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["text", "ai"],
+  "permissions": [],
+  "contributes": {
+    "actions": [
+      { "id": "translate", "title": "translate.title", "keywords": "translate.keywords", "input": "item",
+        "accepts": { "kinds": ["text"] }, "output": "text", "verb": "verb.translate",
+        "variants": [
+          { "id": "tr", "title": "tr.title", "subtitle": "tr.subtitle" },
+          { "id": "en", "title": "en.title", "subtitle": "en.subtitle" }
+        ] },
+      { "id": "summarize", "title": "summarize.title", "keywords": "summarize.keywords", "input": "item",
+        "accepts": { "kinds": ["text"] }, "job": true, "output": "text", "verb": "verb.summarize", "failTitle": "failTitle.summarize" }
+    ]
+  }
+}

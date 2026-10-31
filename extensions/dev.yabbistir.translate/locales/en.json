@@ -1,0 +1,21 @@
+{
+  "name": "Translate",
+  "description": "Translates text on this Mac and summarizes it with Apple Intelligence.",
+  "translate.title": "Translate",
+  "translate.keywords": ["translate", "translation", "turkish", "english"],
+  "tr.title": "Translate to Turkish",
+  "tr.subtitle": "On this Mac",
+  "en.title": "Translate to English",
+  "en.subtitle": "On this Mac",
+  "summarize.title": "Summarize",
+  "summarize.keywords": ["summarize", "summary", "shorten", "tl;dr"],
+  "verb.translate": "Translate",
+  "verb.summarize": "Summarize",
+  "failTitle.summarize": "Couldn’t summarize",
+  "summarizing": "Summarizing",
+  "sameLanguage.tr": "The text is already in Turkish",
+  "sameLanguage.en": "The text is already in English",
+  "empty.translate": "There’s no text to translate",
+  "empty.summarize": "There’s no text to summarize",
+  "instructions": "Summarize this text in plain English in at most 3 sentences. Write only the summary."
+}

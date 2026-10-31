@@ -1,0 +1,18 @@
+{
+  "id": "dev.yabbistir.link-clean",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:link.badge.plus",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["links"],
+  "permissions": ["capture"],
+  "contributes": {
+    "captureRules": [
+      { "id": "clean", "title": "clean.title", "description": "clean.description", "accepts": { "kinds": ["link", "text"], "pattern": "(?i)^\\s*https?://\\S+\\s*$" } }
+    ]
+  }
+}
