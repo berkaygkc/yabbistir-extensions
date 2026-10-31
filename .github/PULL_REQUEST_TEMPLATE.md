@@ -35,6 +35,6 @@ review follows docs/review-checklist.md. Delete the hints in comments as you fil
 
 - [ ] `npm test -- <id>`, `npm run validate -- <id>`, `npm run build -- <id>` and `npm run typecheck` pass.
 - [ ] I tried it in yabbistir with `npm run dev -- <id>`.
-- [ ] Only `extensions/<id>/` changed, and its `version` is raised for a change.
+- [ ] Only `extensions/<id>/` changed (and the root `package-lock.json`, if the extension adds a library), and its `version` is raised for a change. Anything only the maintainer changes ([the list](https://github.com/berkaygkc/yabbistir-extensions/blob/main/docs/publishing.md#what-a-pull-request-may-change)) fails the static checks for anyone but the maintainer.
 - [ ] README.md explains what it does and every permission; CHANGELOG.md has this version.
 - [ ] I went through [the review checklist](https://github.com/berkaygkc/yabbistir-extensions/blob/main/docs/review-checklist.md).

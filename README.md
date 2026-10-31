@@ -48,6 +48,10 @@ docs/               guides and references
 .github/            the pull request template, and the workflows that check, label and publish
 ```
 
+## Security
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says; it also sums up how the catalog is signed.
+
 ## License
 
 MIT, for the tools and the docs. Each extension states its own license in its manifest.

@@ -5,7 +5,7 @@ description: Use when creating, changing, testing or preparing a pull request fo
 
 # Writing a yabbistir extension
 
-An extension is `extensions/<id>/`: `manifest.json`, `src/index.ts`, `locales/en.json`, `tests/*.test.mjs`, `README.md`, `CHANGELOG.md`. Its code runs in JavaScriptCore inside yabbistir, not in Node, and the app draws all UI. AGENTS.md at the repository's root has the rules and the definition of done; follow it. Run every command from the root, with Node 22.18 or later, after `npm install`.
+An extension is `extensions/<id>/`: `manifest.json`, `src/index.ts`, `locales/en.json`, `tests/*.test.mjs`, `README.md`, `CHANGELOG.md`. Its code runs in JavaScriptCore inside yabbistir, not in Node, and the app draws all UI. AGENTS.md at the repository's root has the rules and the definition of done; follow it. Run every command from the root, with Node 24 (22.18 or later works).18 or later, after `npm install`.
 
 ## 1. Understand the idea
 
@@ -83,6 +83,6 @@ All four pass with no errors and no warnings, in this order. After the build, `n
 
 - `README.md`: what it does, an example, every permission and tool with its reason.
 - `CHANGELOG.md`: a `## <version>` section matching the manifest's `version`, raised for every change to an existing extension.
-- Only `extensions/<id>/` changed.
+- Only `extensions/<id>/` changed, plus the root `package-lock.json` when the extension adds a library. Anything only the maintainer changes ([the list](../../../docs/publishing.md#what-a-pull-request-may-change)) fails the static checks for anyone but the maintainer.
 - Go through [docs/review-checklist.md](../../../docs/review-checklist.md) and fill in [the pull request template](../../../.github/PULL_REQUEST_TEMPLATE.md): what it does, an example or screenshot, a reason per permission, the tools needed.
 - Names and messages follow [docs/design-guidelines.md](../../../docs/design-guidelines.md): short, plain, sentence-case action titles that start with a verb.

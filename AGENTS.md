@@ -45,7 +45,7 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 
 ## Rules
 
-1. **Change only your own extension's folder**, `extensions/<id>/`. One extension per pull request. Do not edit `tools/`, `templates/`, `packages/`, `schema/` or another extension unless that is the task itself, in a separate change.
+1. **Change only your own extension's folder**, `extensions/<id>/`, plus the root `package-lock.json` when it adds a library. One extension per pull request. Do not edit another extension, or anything only the maintainer changes ([the list](docs/publishing.md#what-a-pull-request-may-change): the workflows, `tools/`, `templates/`, `packages/`, `schema/`, the root package files, agent and editor settings): a pull request that touches those fails the static checks for anyone but the maintainer.
 2. **No Node.** No `fs`, `path`, `child_process`, `http`, `crypto` (Node's), `events`, `util`, `url`, `buffer` imports (not even npm packages with those names), and no `process`, `Buffer`, `require`, `global`, `__dirname`. Use the `yab` API and web standards: `URL`, `TextEncoder`, `TextDecoder`, `atob`, `btoa`, `fetch`, `setTimeout`, `AbortController`, `crypto.randomUUID`, `Intl`. See [docs/errors.md#node-builtins](docs/errors.md#node-builtins). (Tests run in Node and may use `node:` modules; only `src/` runs in the app.)
 3. **Fewest permissions.** None is the default and enough for most extensions. Add `network` (with `network.domains`), `exec` (with `requires.tools`), `capture` or `history` only when the extension cannot work without it, and say why in the README. On-device AI, translation, images and files in the work folder need no permission. See [docs/permissions.md](docs/permissions.md).
 4. **English is required.** Every key the manifest uses is in `locales/en.json`. Every text a person reads is a locale key in the manifest and goes through `yab.t` in code. Other languages are optional.
@@ -59,7 +59,7 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 - Tests cover the main path, each message a person can see, and the expected failures (empty input, missing tool, failed request, cancel).
 - `README.md` says what the extension does, gives an example, and explains every permission and tool. `CHANGELOG.md` has a `## <version>` section for the manifest's `version`.
 - A change to an existing extension raises its `version` and adds a CHANGELOG section.
-- Only `extensions/<id>/` changed (plus the root `package-lock.json` if you added a library).
+- Only `extensions/<id>/` changed (plus the root `package-lock.json` if you added a library); nothing [only the maintainer changes](docs/publishing.md#what-a-pull-request-may-change).
 
 ## The essentials
 

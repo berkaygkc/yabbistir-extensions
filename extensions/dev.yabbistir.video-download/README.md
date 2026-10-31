@@ -6,7 +6,7 @@ Video is requested as H.264 with AAC, which QuickTime plays on every Mac. When a
 
 ## Permissions
 
-- **network**, limited to `youtube.com`, `youtu.be`, `instagram.com`, `x.com` and `twitter.com`. yt-dlp fetches the media from these sites.
+- **network**, with `youtube.com`, `youtu.be`, `instagram.com`, `x.com` and `twitter.com`: the sites the extension works with, shown before you install it. The list holds the extension's own requests. yt-dlp is a separate program, so the list does not limit it: it reaches these sites and the servers they deliver media from (content networks such as `googlevideo.com`), as any download of such a link does.
 - **exec**, limited to the tools below. The extension runs only `yt-dlp` and `ffmpeg` (and yt-dlp may call `deno`). It passes a fixed list of arguments and puts the link after `--`, so the link can never be read as an option.
 
 ## Tools to install
