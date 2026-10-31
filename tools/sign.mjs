@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// node tools/sign.mjs <dir>/catalog.json
+// node tools/sign.mjs <site>/v1/catalog.json
 //
-// Signs the catalog npm run catalog wrote: writes <dir>/catalog.json.sig, the base64 Ed25519 signature of
-// catalog.json's exact bytes, made with the PKCS#8 PEM key in $CATALOG_SIGNING_KEY.
+// Signs the catalog npm run catalog wrote: writes <site>/v1/catalog.json.sig, the base64 Ed25519 signature of
+// catalog.json's exact bytes, made with the PKCS#8 PEM key in $CATALOG_SIGNING_KEY. <site> is what gets published.
 //
 // The publish job that holds the key checks out this one file (and keys/), never runs npm and has no node_modules,
 // so this file uses Node's built-in modules only and reads no other file of the repository.
 //
 // Before it signs, it checks what it signs: format 1; every package under the store's packages/ address, next to the
 // catalog with the size and SHA-256 the catalog states; every file icon under icons/ and present; every readme on this
-// repository. After it signs, it verifies the signature, and when keys/catalog-public-keys.json exists (the keys built
+// repository; and <site> holds nothing else: the catalog, its signature, the packages and file icons it names, and the
+// two schemas, all regular files. After it signs, it verifies the signature, and when keys/catalog-public-keys.json exists (the keys built
 // into the app, { "keys": ["<base64 of a raw 32-byte Ed25519 public key>", …] }), that one of them verifies it: a wrong
 // secret then stops the job instead of publishing a catalog every app rejects. Any failure leaves no signature.
 
@@ -39,7 +40,7 @@ function fileUnder(url, prefix, extension) {
   return FILE_NAME.test(name) && name.endsWith(extension) && !name.includes("..") ? name : undefined;
 }
 
-/** Checks the catalog in `bytes` against the files next to it in `folder`. */
+/** Checks the catalog in `bytes` against the files next to it in `folder`; returns them, relative to `folder`. */
 function checkCatalog(bytes, folder) {
   if (bytes.length > MAX_CATALOG_BYTES) fail(`catalog.json is ${bytes.length} bytes, more than the app reads (${MAX_CATALOG_BYTES}).`);
   let catalog;
@@ -50,6 +51,7 @@ function checkCatalog(bytes, folder) {
   }
   if (catalog === null || typeof catalog !== "object" || catalog.formatVersion !== 1) fail("catalog.json: formatVersion is not 1.");
   if (!Array.isArray(catalog.extensions)) fail("catalog.json: extensions is not a list.");
+  const named = [];
   catalog.extensions.forEach((entry, index) => {
     const where = `catalog.json: extensions[${index}]${typeof entry?.id === "string" ? ` (${entry.id})` : ""}`;
     if (entry === null || typeof entry !== "object") fail(`${where} is not an object.`);
@@ -66,14 +68,33 @@ function checkCatalog(bytes, folder) {
     if (bytesOfPackage.length !== entry.size || crypto.createHash("sha256").update(bytesOfPackage).digest("hex") !== entry.sha256) {
       fail(`${where}: packages/${name} does not have the size and SHA-256 the catalog states.`);
     }
+    named.push(`packages/${name}`);
     if (typeof entry.icon !== "string") fail(`${where}: icon is not a string.`);
     if (!entry.icon.startsWith("sf:")) {
       const icon = fileUnder(entry.icon, `${STORE}/icons/`, ".png");
       if (icon === undefined || !fs.existsSync(path.join(folder, "icons", icon))) fail(`${where}: icon is neither sf:<name> nor a file under ${STORE}/icons/.`);
+      named.push(`icons/${icon}`);
     }
     if (typeof entry.readme !== "string" || !entry.readme.startsWith(REPOSITORY)) fail(`${where}: readme is not on ${REPOSITORY}.`);
   });
-  return catalog.extensions.length;
+  return { count: catalog.extensions.length, named };
+}
+
+/** Fails when `site` holds anything but `allowed` (paths relative to it, "/"-separated): no other file, no link. */
+function checkSite(site, allowed) {
+  const extra = [];
+  const walk = (relative) => {
+    for (const name of fs.readdirSync(path.join(site, relative)).sort()) {
+      const inner = relative === "" ? name : `${relative}/${name}`;
+      const stat = fs.lstatSync(path.join(site, inner));
+      if (stat.isDirectory()) walk(inner);
+      else if (!stat.isFile() || !allowed.has(inner)) extra.push(inner);
+    }
+  };
+  walk("");
+  if (extra.length > 0) {
+    fail(`site: ${extra.slice(0, 5).join(", ")}${extra.length > 5 ? ` and ${extra.length - 5} more` : ""}: not named by the catalog, so not published → fix: Publish only what npm run catalog writes.`);
+  }
 }
 
 /** The app's public keys from keys/catalog-public-keys.json, or undefined when there is no such file yet. */
@@ -109,7 +130,7 @@ function signingKey() {
 
 function main(argv) {
   if (argv.length !== 1 || argv[0].startsWith("-")) {
-    console.log("Usage: node tools/sign.mjs <dir>/catalog.json");
+    console.log("Usage: node tools/sign.mjs <site>/v1/catalog.json");
     return 2;
   }
   const file = path.resolve(argv[0]);
@@ -122,7 +143,10 @@ function main(argv) {
     } catch {
       fail(`${argv[0]}: there is no such file → fix: Run npm run catalog -- --out <dir> first.`);
     }
-    const count = checkCatalog(bytes, path.dirname(file));
+    const folder = path.dirname(file);
+    if (path.basename(folder) !== "v1" || path.basename(file) !== "catalog.json") fail(`${argv[0]}: the catalog is <site>/v1/catalog.json, the address the app reads.`);
+    const { count, named } = checkCatalog(bytes, folder);
+    checkSite(path.dirname(folder), new Set(["catalog.json", "catalog.schema.json", "manifest.schema.json", ...named].map((name) => `v1/${name}`)));
     const known = appKeys();
     const key = signingKey();
     const signature = crypto.sign(null, bytes, key);

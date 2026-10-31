@@ -308,6 +308,31 @@ describe("node tools/sign.mjs", () => {
     }
   });
 
+  test("theSiteHoldsOnlyWhatTheCatalogNames", () => {
+    const { pem } = keyPair();
+    const extras = { "an extra package": "v1/packages/dev.example.extra-1.0.0.yabext", "a page": "index.html", "a note": "v1/notes.txt",
+      "an icon for an sf: extension": `v1/icons/${FIRST}.png`, "a script": "v2/app.js" };
+    for (const [name, file] of Object.entries(extras)) {
+      const { folder, catalogFile, alone } = setUp();
+      const site = path.dirname(folder);
+      fs.mkdirSync(path.dirname(path.join(site, file)), { recursive: true });
+      fs.writeFileSync(path.join(site, file), "x");
+      const { status, out } = sign(alone, catalogFile, pem);
+      assert.equal(status, 1, `${name}\n${out}`);
+      assert.ok(out.includes(file), `${name}: ${out}`);
+      assert.ok(!fs.existsSync(path.join(folder, "catalog.json.sig")), name);
+    }
+    const linked = setUp();
+    fs.symlinkSync(linked.catalogFile, path.join(linked.folder, "copy.json"));
+    const refused = sign(linked.alone, linked.catalogFile, pem);
+    assert.equal(refused.status, 1, refused.out);
+    assert.match(refused.out, /v1\/copy\.json/);
+    // What npm run catalog writes, schemas and file icon included, is exactly what is allowed.
+    const clean = setUp();
+    assert.ok(fs.existsSync(path.join(clean.folder, "icons", `${SECOND}.png`)) && fs.existsSync(path.join(clean.folder, "catalog.schema.json")));
+    assert.equal(sign(clean.alone, clean.catalogFile, pem).status, 0);
+  });
+
   test("whatItSignsIsCheckedFirst", () => {
     const { pem } = keyPair();
     const cases = {
