@@ -1,0 +1,319 @@
+import { after, describe, test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { fixtureFiles, materialize, readExpected, readFixture } from "../lib/fixtures.mjs";
+import { ALLOWED_LICENSES, APP_CODES, STORE_CODES, formatIssue, validateExtension } from "../lib/validate.mjs";
+
+const cli = fileURLToPath(new URL("../validate.mjs", import.meta.url));
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "yab-validate-"));
+after(() => fs.rmSync(work, { recursive: true, force: true }));
+
+let counter = 0;
+const scratch = () => fs.mkdtempSync(path.join(work, `${counter++}-`));
+const codes = (issues) => [...new Set(issues.map((issue) => issue.code))].sort();
+
+// ---------------------------------------------------------------------------------------------------------------
+// A complete store extension, to change one thing at a time.
+
+const ID = "dev.example.tool";
+
+function storeManifest() {
+  return {
+    id: ID,
+    version: "1.0.0",
+    apiVersion: 1,
+    defaultLocale: "en",
+    name: "name",
+    description: "description",
+    icon: "sf:hammer",
+    author: "example",
+    license: "MIT",
+    categories: ["developer"],
+    preferences: [
+      { id: "mode", type: "choice", title: "mode.title", default: "short",
+        options: [{ id: "short", title: "mode.short" }, { id: "long", title: "mode.long" }] },
+    ],
+    contributes: {
+      actions: [
+        { id: "shout", title: "shout.title", keywords: "shout.keywords", input: "item", accepts: { kinds: ["text"] }, output: "text",
+          variants: [{ id: "all", title: "all.title", subtitle: "all.subtitle" }] },
+      ],
+    },
+  };
+}
+
+function storeLocales() {
+  return {
+    en: {
+      name: "Tool", description: "Does a thing", "mode.title": "Mode", "mode.short": "Short", "mode.long": "Long",
+      "shout.title": "Shout", "shout.keywords": ["shout", "upper"], "all.title": "All of it", "all.subtitle": "Every letter",
+    },
+    tr: { name: "Araç", "shout.title": "Bağır" },
+  };
+}
+
+/** Writes <root>/extensions/<folder>/ and returns { root, folder }. */
+function writeExtension({ manifest = storeManifest(), locales = storeLocales(), files = { "src/index.ts": "export const actions = {};\n",
+  "README.md": "# Tool\n", "CHANGELOG.md": "## 1.0.0\n" }, folderName } = {}) {
+  const root = scratch();
+  const folder = path.join(root, "extensions", folderName ?? manifest.id ?? ID);
+  fs.mkdirSync(path.join(folder, "locales"), { recursive: true });
+  fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify(manifest, null, 2));
+  for (const [language, table] of Object.entries(locales)) {
+    fs.writeFileSync(path.join(folder, "locales", `${language}.json`), typeof table === "string" ? table : JSON.stringify(table));
+  }
+  for (const [file, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(folder, file)), { recursive: true });
+    fs.writeFileSync(path.join(folder, file), text);
+  }
+  return { root, folder };
+}
+
+const withManifest = (change) => {
+  const manifest = storeManifest();
+  change(manifest);
+  return manifest;
+};
+
+// ---------------------------------------------------------------------------------------------------------------
+
+describe("the parity corpus", () => {
+  const expected = readExpected();
+  const files = fixtureFiles();
+
+  test("expected.json lists every fixture and nothing else", () => {
+    assert.deepEqual(Object.keys(expected).sort(), files);
+  });
+
+  test("it has valid and invalid cases", () => {
+    assert.ok(files.filter((file) => file.startsWith("valid/")).length >= 5);
+    assert.ok(files.filter((file) => file.startsWith("invalid/")).length >= 14);
+  });
+
+  test("every code the app reports has a fixture", () => {
+    const covered = new Set(Object.values(expected).flat());
+    assert.deepEqual(APP_CODES.filter((code) => !covered.has(code)), []);
+  });
+
+  test("its codes are the app's codes", () => {
+    const known = new Set(APP_CODES);
+    assert.deepEqual(Object.values(expected).flat().filter((code) => !known.has(code)), []);
+  });
+
+  for (const file of files) {
+    test(file, () => {
+      const folder = materialize(readFixture(file), scratch());
+      const { issues } = validateExtension(folder, { store: false });
+      assert.deepEqual(codes(issues), expected[file], issues.map(formatIssue).join("\n"));
+    });
+  }
+});
+
+describe("the app's rules", () => {
+  test("captureRuleTags keeps the app's wording and is a warning", () => {
+    const folder = materialize(readFixture("valid/capture-rule-tags-warning.json"), scratch());
+    const { issues } = validateExtension(folder, { store: false });
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0].code, "captureRuleTags");
+    assert.equal(issues[0].level, "warning");
+    assert.equal(issues[0].field, "contributes.captureRules[0].accepts.tags");
+    assert.equal(issues[0].message, "capture rules never see tags; this rule would never run");
+  });
+
+  test("every issue says how to fix it", () => {
+    for (const file of fixtureFiles()) {
+      const folder = materialize(readFixture(file), scratch());
+      for (const issue of validateExtension(folder).issues) {
+        assert.ok(issue.fix && issue.fix.length > 0, `${file}: ${formatIssue(issue)}`);
+        assert.ok(issue.level === "error" || issue.level === "warning");
+      }
+    }
+  });
+
+  test("an issue names the file and the field", () => {
+    const folder = materialize(readFixture("invalid/version-not-semver.json"), scratch());
+    const [issue] = validateExtension(folder, { store: false, relativeTo: path.dirname(folder) }).issues;
+    assert.deepEqual({ path: issue.path, field: issue.field, code: issue.code, expected: issue.expected },
+      { path: "dev.example.sample/manifest.json", field: "version", code: "invalidVersion", expected: "MAJOR.MINOR.PATCH" });
+    assert.equal(issue.message, "\"1.0\" is not semantic versioning");
+    assert.equal(issue.fix, "Write the version as \"1.0.0\".");
+  });
+
+  test("a source folder with src/index.ts needs no index.js yet; the app's rules still do", () => {
+    const { folder } = writeExtension();
+    assert.ok(!codes(validateExtension(folder).issues).includes("indexMissing"));
+    assert.ok(codes(validateExtension(folder, { store: false }).issues).includes("indexMissing"));
+    fs.rmSync(path.join(folder, "src"), { recursive: true });
+    assert.ok(codes(validateExtension(folder).issues).includes("indexMissing"));
+  });
+
+  test("the folder name must equal the id", () => {
+    const { folder } = writeExtension({ folderName: "dev.example.other" });
+    assert.deepEqual(codes(validateExtension(folder).issues), ["idFolderMismatch"]);
+  });
+});
+
+describe("the store's rules", () => {
+  test("a complete extension has no issues", () => {
+    const { folder } = writeExtension();
+    assert.deepEqual(validateExtension(folder).issues.map(formatIssue), []);
+  });
+
+  test("the license must be on the list", () => {
+    for (const license of ALLOWED_LICENSES) {
+      const { folder } = writeExtension({ manifest: withManifest((m) => { m.license = license; }) });
+      assert.deepEqual(codes(validateExtension(folder).issues), [], license);
+    }
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.license = "GPL-3.0"; }) });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["licenseNotAllowed"]);
+    assert.equal(issues[0].field, "license");
+    assert.match(issues[0].expected, /MIT, Apache-2\.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2\.0/);
+  });
+
+  test("README.md and CHANGELOG.md must exist", () => {
+    const { folder } = writeExtension({ files: { "src/index.ts": "" } });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["changelogMissing", "readmeMissing"]);
+    assert.ok(issues.every((issue) => issue.field === ""));
+    assert.ok(issues.some((issue) => issue.path.endsWith("README.md")));
+  });
+
+  test("en must have every key, including ones the app does not check", () => {
+    const locales = storeLocales();
+    locales.tr = { ...locales.en, "all.subtitle": "Her harf", "mode.long": "Uzun" };
+    delete locales.en["all.subtitle"];
+    delete locales.en["mode.long"];
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.defaultLocale = "tr"; }), locales });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["enLocaleKeyMissing"]);
+    assert.deepEqual(issues.map((issue) => issue.field).sort(),
+      ["contributes.actions[0].variants[0].subtitle", "preferences[0].options[1].title"]);
+    assert.equal(issues[0].message.includes("locales/en.json"), true);
+  });
+
+  test("a key missing from the default en locale is reported once", () => {
+    const locales = storeLocales();
+    delete locales.en["shout.title"];
+    const { folder } = writeExtension({ locales });
+    assert.deepEqual(codes(validateExtension(folder).issues), ["unknownLocaleKey"]);
+  });
+
+  test("en must exist", () => {
+    const locales = storeLocales();
+    locales.tr = { ...locales.en };
+    delete locales.en;
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.defaultLocale = "tr"; }), locales });
+    assert.deepEqual(codes(validateExtension(folder).issues), ["enLocaleMissing"]);
+  });
+
+  test("a locale file that is not JSON is named", () => {
+    const { folder } = writeExtension({ locales: { ...storeLocales(), tr: "{ \"name\": " } });
+    const issues = validateExtension(folder).issues;
+    assert.ok(issues.some((issue) => issue.code === "localeUnreadable" && issue.path.endsWith(path.join("locales", "tr.json"))),
+      issues.map(formatIssue).join("\n"));
+  });
+
+  test("fields the schema does not know are rejected", () => {
+    const manifest = withManifest((m) => {
+      m.homepage = "https://example.com";
+      m.contributes.actions[0].colour = "red";
+    });
+    const { folder } = writeExtension({ manifest });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["unknownField"]);
+    assert.deepEqual(issues.map((issue) => issue.field).sort(), ["contributes.actions[0].colour", "homepage"]);
+  });
+
+  test("the schema catches what the app's checks leave out", () => {
+    const manifest = withManifest((m) => {
+      m.preferences[0].options[0].id = "sh ort";
+      m.contributes.actions.push({ id: "now", title: "shout.title", keywords: "shout.keywords", input: "none", accepts: { kinds: [] }, output: "text" });
+    });
+    const { folder } = writeExtension({ manifest });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["schemaMismatch"]);
+    assert.deepEqual(issues.map((issue) => issue.field).sort(), ["contributes.actions[1].accepts.kinds", "preferences[0].options[0].id"]);
+  });
+
+  test("a schema issue never repeats an app issue", () => {
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.version = "1.0"; m.categories = ["games"]; }) });
+    assert.deepEqual(codes(validateExtension(folder).issues), ["invalidVersion", "unknownCategory"]);
+  });
+
+  test("type mismatches show next to other errors", () => {
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.version = "1.0"; m.contributes.actions[0].hint = "yes"; }) });
+    const issues = validateExtension(folder).issues;
+    assert.deepEqual(codes(issues), ["invalidVersion", "schemaMismatch"]);
+    assert.equal(issues.find((issue) => issue.code === "schemaMismatch").field, "contributes.actions[0].hint");
+  });
+
+  test("app mode leaves the store's rules out", () => {
+    const { folder } = writeExtension({ manifest: withManifest((m) => { m.license = "GPL-3.0"; m.homepage = "x"; }), files: { "index.js": "" } });
+    assert.deepEqual(codes(validateExtension(folder, { store: false }).issues), []);
+    assert.ok(codes(validateExtension(folder).issues).length >= 3);
+  });
+
+  test("store codes and app codes do not overlap", () => {
+    assert.deepEqual(STORE_CODES.filter((code) => APP_CODES.includes(code)), []);
+  });
+});
+
+describe("npm run validate", () => {
+  const run = (root, ...args) => spawnSync(process.execPath, [cli, "--root", root, ...args], { encoding: "utf8" });
+
+  test("prints one line per issue and exits 1", () => {
+    const { root } = writeExtension({ manifest: withManifest((m) => { m.version = "1.0"; }) });
+    const result = run(root, ID);
+    assert.equal(result.status, 1, result.stderr);
+    assert.ok(result.stdout.split("\n").includes(
+      `extensions/${ID}/manifest.json: version: "1.0" is not semantic versioning (expected MAJOR.MINOR.PATCH) → fix: Write the version as "1.0.0".`),
+      result.stdout);
+  });
+
+  test("names a missing file without a field", () => {
+    const { root } = writeExtension({ files: { "src/index.ts": "", "CHANGELOG.md": "" } });
+    const result = run(root, ID);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, new RegExp(`^extensions/${ID.replaceAll(".", "\\.")}/README\\.md: README\\.md is missing → fix: `, "m"));
+  });
+
+  test("exits 0 with warnings only", () => {
+    const manifest = withManifest((m) => {
+      m.permissions = ["capture"];
+      m.contributes.captureRules = [{ id: "clean", title: "shout.title", accepts: { kinds: ["link"], tags: ["x"] } }];
+    });
+    const { root } = writeExtension({ manifest });
+    const result = run(root, ID);
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /contributes\.captureRules\[0\]\.accepts\.tags: warning: capture rules never see tags; this rule would never run/);
+  });
+
+  test("exits 0 for a clean extension", () => {
+    const { root } = writeExtension();
+    const result = run(root, ID);
+    assert.equal(result.status, 0, result.stdout);
+  });
+
+  test("checks every extension when no id is given", () => {
+    const { root } = writeExtension();
+    const bad = path.join(root, "extensions", "dev.example.bad");
+    fs.cpSync(path.join(root, "extensions", ID), bad, { recursive: true });
+    const result = run(root);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /^extensions\/dev\.example\.bad\/manifest\.json: id: the id "dev\.example\.tool" does not match the folder name "dev\.example\.bad"/m);
+    assert.match(result.stdout, new RegExp(`^extensions/${ID.replaceAll(".", "\\.")}: ok$`, "m"));
+  });
+
+  test("says so when an extension does not exist", () => {
+    const { root } = writeExtension();
+    const result = run(root, "dev.example.nothing");
+    assert.equal(result.status, 1);
+    assert.match(result.stdout + result.stderr, /extensions\/dev\.example\.nothing/);
+  });
+});
