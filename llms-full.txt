@@ -2690,6 +2690,8 @@ A **source** is a list the app shows in a column of its own in the panel, next t
 
 ## The manifest
 
+Sources need yabbistir 0.3.0 or later: set `minAppVersion` to `0.3.0`.
+
 A source with a secret action and a text action, as a password vault would have:
 
 ```json
@@ -2804,7 +2806,7 @@ export function lockedListing(): SourceListing {
 A `secret` action returns something that must not be kept or seen: a password, a token, a recovery code. The rules, which `npm run validate` checks:
 
 - A `secret` action belongs to a `sensitive` source ([`sourceSecretNeedsSensitive`](errors.md#sourcesecretneedssensitive)).
-- An extension with a `secret` action cannot ask for `network` ([`sourceSecretWithNetwork`](errors.md#sourcesecretwithnetwork)): the extension itself has no way to send a secret anywhere.
+- An extension with a `secret` action cannot ask for `network` ([`sourceSecretWithNetwork`](errors.md#sourcesecretwithnetwork)), so it cannot reach the network itself. In a source's `list` and `run`, `yab.open` and `yab.notify` throw `permissionDenied` too: a link or a notice could carry a value out. The programs it runs with `yab.exec` can still reach the internet, so reviewers check what each tool does with what it is given.
 - A `secret` action has no `copyTitle` or `copied` ([`sourceCopyNeedsText`](errors.md#sourcecopyneedstext)): ⌘C never copies a secret.
 
 The app pastes a secret as one item for this Mac only, marked so that clipboard managers, its own history included, skip it, and gives the clipboard back a moment after the paste. When it cannot paste, without Accessibility access for example, it leaves the secret on the clipboard for 30 seconds and says so.
@@ -4524,6 +4526,8 @@ Every pull request is read against this list before it is merged. Authors: go th
 - [ ] Rows are cached, if at all, only in a module variable with a short lifetime, dropped when the source answers `locked`. Values are never cached.
 - [ ] `sensitive` is set only when the values are secrets, and every `secret` action is in such a source; an extension with one has no `network`.
 - [ ] Row ids are stable and come back to `run` unchanged; `run` checks them before passing them to a tool.
+- [ ] A `sensitive` source passes no row or value to a tool argument other than the row's id.
+- [ ] A `sensitive` source's tools cannot send its data elsewhere: they talk only to the service the source is for, with no option that uploads, syncs or shares.
 - [ ] An empty value is a clear error, never pasted.
 
 ## Download Video and browser cookies

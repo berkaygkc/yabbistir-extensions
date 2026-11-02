@@ -34,6 +34,8 @@ Every pull request is read against this list before it is merged. Authors: go th
 - [ ] Rows are cached, if at all, only in a module variable with a short lifetime, dropped when the source answers `locked`. Values are never cached.
 - [ ] `sensitive` is set only when the values are secrets, and every `secret` action is in such a source; an extension with one has no `network`.
 - [ ] Row ids are stable and come back to `run` unchanged; `run` checks them before passing them to a tool.
+- [ ] A `sensitive` source passes no row or value to a tool argument other than the row's id.
+- [ ] A `sensitive` source's tools cannot send its data elsewhere: they talk only to the service the source is for, with no option that uploads, syncs or shares.
 - [ ] An empty value is a clear error, never pasted.
 
 ## Download Video and browser cookies
