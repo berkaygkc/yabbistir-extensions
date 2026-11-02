@@ -16,7 +16,8 @@ export const sources: Sources = {
     },
     run(rowId, actionId, ctx) {
       const text = /^\d+$/.test(rowId) ? snippetsIn(ctx.preferences.snippets)[Number(rowId)] : undefined;
-      // The list changed in Settings since the rows were made: say so rather than paste another snippet.
+      // An id is the snippet's place in the list, so it shifts when a snippet before it is removed in Settings, and
+      // only one past the end is caught here. Fine for a sample; real data needs ids that stay with their row.
       if (text === undefined) throw new Error(yab.t("gone"));
       return { text };
     },
