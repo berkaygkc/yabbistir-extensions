@@ -17,7 +17,7 @@ lpass login --trust <email>
 
 Logging in always happens in Terminal: lpass asks for your master password there, and for a second factor if your account has one. The extension never asks for either.
 
-lpass 1.6.2 or later is needed, since older versions can no longer connect to LastPass. When the column says *lpass needs an update*, run `brew upgrade lastpass-cli`.
+lpass 1.6.2 or later is needed, since older versions can no longer connect to LastPass. When the column says *lpass needs an update*, press ↵ or ⌘C on that row to copy `brew upgrade lastpass-cli`, and run it in Terminal.
 
 ## Staying unlocked
 
@@ -40,9 +40,9 @@ Accounts that log in with a FIDO2 security key, or through single sign-on (SSO):
 ## Permissions and privacy
 
 - **exec**, limited to `lpass`. The extension runs `lpass --version`, `lpass status -q`, `lpass ls` and `lpass show`, always with fixed options. The only other argument is an entry's id, which must be a number before it reaches lpass. It never uses lpass's own clipboard option, and it asks for no network permission.
-- **lpass can read your whole vault** once you are logged in. The extension reads names and usernames for the list, and one entry's password or username when you press ↵, ⇧↵ or ⌘C on its row.
+- **lpass can read your whole vault** once you are logged in. For the list, the extension reads each entry's name, username and URL; the URL only to leave out folders and secure notes, and it is never kept or shown. It reads one entry's password or username when you press ↵, ⇧↵ or ⌘C on its row.
 - **Passwords are never stored or shown.** Not in yabbistir's history, not in the extension's storage or a file, not in a log and not in an error message. yabbistir pastes a password as one item for this Mac only, marked so that clipboard managers (its own history included) skip it, and gives your clipboard back a moment later. When it cannot paste, without Accessibility access for example, it leaves the password on the clipboard for 30 seconds and says so.
 - **An empty password is never pasted.** When lpass cannot decrypt an entry, it prints an empty field; the extension says so instead.
-- **The list stays in memory only**, for at most five minutes. yabbistir forgets it when the Mac locks or sleeps, when LastPass is locked, and when the app quits.
+- **The list stays in memory only.** The extension reuses its list for up to five minutes, and yabbistir keeps the rows in memory until the Mac locks or sleeps, LastPass locks, or the app quits. They never reach yabbistir's history, its search index or the disk.
 
 Because it can paste secrets, the extension is marked sensitive. Before you install it, yabbistir tells you it "Can read and paste secrets such as passwords. They’re never written to history or disk."
