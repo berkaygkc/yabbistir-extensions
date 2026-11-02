@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "LastPass kayıtların bir sütunda. ↵ şifreyi, ⇧↵ kullanıcı adını yapıştırır. lpass ile çalışır; lpass kasanın tamamını okuyabilir. Şifreler hiçbir yerde saklanmaz ve gösterilmez.",
+  "source.title": "LastPass",
+  "password.title": "Şifreyi yapıştır",
+  "password.label": "Şifre",
+  "username.title": "Kullanıcı adını yapıştır",
+  "username.label": "Kullanıcı adı",
+  "username.copyTitle": "Kullanıcı adını kopyala",
+  "username.copied": "Kullanıcı adı kopyalandı.",
+  "locked": "LastPass kilitli",
+  "emailPlaceholder": "<e-posta>",
+  "updateNeeded": "lpass güncellenmeli",
+  "listFailed": "lpass kasayı listeleyemedi.",
+  "showFailed": "lpass bu kaydı okuyamadı.",
+  "emptyPassword": "Bu kaydın şifresi okunamadı (lpass güncellenmeli olabilir).",
+  "emptyUsername": "Bu kayıtta kullanıcı adı yok."
+}
