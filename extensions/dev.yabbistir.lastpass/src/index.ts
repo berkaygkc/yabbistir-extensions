@@ -12,6 +12,11 @@ const LIFETIME = 5 * 60_000;
 const LIST_FORMAT = "--format=%ai\t%an\t%au\t%al";
 /** lpass reads its local copy of the vault without syncing, and prints plain text. */
 const LOCAL_PLAIN = ["--sync=no", "--color=never"];
+/**
+ * lpass fetches its local copy first. Only after a `--sync=no` command fails while logged in: `lpass logout` deletes
+ * the copy and `lpass login` does not fetch it again, so without this the column would stay empty after a new login.
+ */
+const FETCH_PLAIN = ["--sync=now", "--color=never"];
 /** The URLs lpass gives folders and secure notes, which hold no login to paste. */
 const NOT_LOGINS = new Set(["http://group", "http://sn"]);
 /** What the app turns into a space in a row's title, and what it trims from its ends after that. */
@@ -63,6 +68,21 @@ function rowsOf(lines: string[]): SourceRow[] {
 /** The value lpass printed: its one trailing newline taken off, every other character kept. */
 const printed = (stdout: string): string => (stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout);
 
+/**
+ * Every line `lpass ls` prints to standard output with `options`, or undefined when it fails. Through onLine: an exec
+ * result keeps only the last 64 KB, less than a large vault prints.
+ */
+async function listed(options: string[], signal: AbortSignal): Promise<string[] | undefined> {
+  const lines: string[] = [];
+  const listing = await yab.exec("lpass", ["ls", ...options, LIST_FORMAT], {
+    signal,
+    onLine: (line, stream) => {
+      if (stream === "stdout") lines.push(line);
+    },
+  });
+  return listing.exitCode === 0 ? lines : undefined;
+}
+
 export const sources: Sources = {
   vault: {
     async list(ctx) {
@@ -87,15 +107,8 @@ export const sources: Sources = {
       const age = cached === undefined ? Infinity : Date.now() - cached.at;
       if (cached !== undefined && age >= 0 && age <= LIFETIME) return { rows: cached.rows };
 
-      // Every line, through onLine: an exec result keeps only the last 64 KB, less than a large vault prints.
-      const lines: string[] = [];
-      const listing = await yab.exec("lpass", ["ls", ...LOCAL_PLAIN, LIST_FORMAT], {
-        signal,
-        onLine: (line, stream) => {
-          if (stream === "stdout") lines.push(line);
-        },
-      });
-      if (listing.exitCode !== 0) throw new Error(yab.t("listFailed"));
+      const lines = (await listed(LOCAL_PLAIN, signal)) ?? (await listed(FETCH_PLAIN, signal));
+      if (lines === undefined) throw new Error(yab.t("listFailed"));
       cached = { at: Date.now(), rows: rowsOf(lines) };
       return { rows: cached.rows };
     },
@@ -105,7 +118,7 @@ export const sources: Sources = {
       // Ids are lpass's own numbers: anything else never reaches the tool.
       if (field === undefined || !/^\d+$/.test(rowId)) throw new Error(yab.t("showFailed"));
       // Never --clip: the app pastes the value itself, concealed, and gives the clipboard back.
-      const result = await yab.exec("lpass", ["show", field, ...LOCAL_PLAIN, rowId], { signal: ctx.signal });
+      let result = await yab.exec("lpass", ["show", field, ...LOCAL_PLAIN, rowId], { signal: ctx.signal });
       if (result.exitCode !== 0) {
         // LastPass may have locked since the list: then say so, and let the rows go with the lock.
         const status = await yab.exec("lpass", ["status", "-q"], { signal: ctx.signal });
@@ -113,7 +126,8 @@ export const sources: Sources = {
           cached = undefined;
           throw new Error(yab.t("locked"));
         }
-        throw new Error(yab.t("showFailed"));
+        result = await yab.exec("lpass", ["show", field, ...FETCH_PLAIN, rowId], { signal: ctx.signal });
+        if (result.exitCode !== 0) throw new Error(yab.t("showFailed"));
       }
       const value = printed(result.stdout);
       // lpass prints an empty field when it cannot decrypt one: never paste that.

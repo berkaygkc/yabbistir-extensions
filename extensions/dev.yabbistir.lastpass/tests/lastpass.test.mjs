@@ -48,17 +48,22 @@ const ROWS = [
 
 /**
  * A fake lpass answering the extension's commands as the real one does. Change `lpass.state` to log out, age the
- * tool or make a command fail; `show` replaces every `lpass show` answer.
+ * tool or make a command fail; `show` replaces every `lpass show` answer. `localCopy: false` is lpass right after
+ * `lpass logout` and `lpass login`: logging out deletes its local copy of the vault, logging in does not fetch it, so
+ * every `--sync=no` command fails until one with `--sync=now` fetches it.
  */
 function fakeLpass(changes = {}) {
-  const state = { version: "LastPass CLI v1.6.2", loggedIn: true, listing: LISTING, listExit: 0, listStderr: "", entries: ENTRIES, show: undefined, ...changes };
+  const state = { version: "LastPass CLI v1.6.2", loggedIn: true, localCopy: true, listing: LISTING, listExit: 0, listStderr: "", entries: ENTRIES, show: undefined, ...changes };
   const ok = (stdout, stderr = "") => ({ exitCode: 0, stdout, stderr });
+  const noCopy = { exitCode: 1, stdout: "", stderr: "Error: Unable to fetch blob.\n" };
   const lpass = (args) => {
+    if (args.includes("--sync=now") && state.loggedIn) state.localCopy = true;
     switch (args[0]) {
       case "--version": return ok(`${state.version}\n`);
       case "status": return state.loggedIn ? ok("") : { exitCode: 1, stdout: "", stderr: "" };
-      case "ls": return { exitCode: state.listExit, stdout: state.listing, stderr: state.listStderr };
+      case "ls": return state.localCopy ? { exitCode: state.listExit, stdout: state.listing, stderr: state.listStderr } : noCopy;
       case "show": {
+        if (!state.localCopy) return noCopy;
         if (state.show !== undefined) return state.show;
         const entry = state.entries[args.at(-1)];
         if (entry === undefined) return { exitCode: 1, stdout: "", stderr: "Error: Could not find specified account(s).\n" };
@@ -165,14 +170,30 @@ describe("list", () => {
     assert.deepEqual(await host.list("vault"), { rows: [{ id: "1003", title: "Kasa" }] });
   });
 
+  test("right after lpass login the list fetches lpass's local copy once, then reads it locally again", async () => {
+    const lpass = fakeLpass({ localCopy: false });
+    const host = hostWith(await newHelper(), lpass);
+    assert.deepEqual(await host.list("vault"), { rows: ROWS });
+    assert.deepEqual(runs(host).slice(2), [
+      ["ls", "--sync=no", "--color=never", "--format=%ai\t%an\t%au\t%al"],
+      ["ls", "--sync=now", "--color=never", "--format=%ai\t%an\t%au\t%al"],
+    ]);
+
+    const later = hostWith(await newHelper(), lpass);
+    assert.deepEqual(await later.list("vault"), { rows: ROWS });
+    assert.deepEqual(runs(later).slice(2), [["ls", "--sync=no", "--color=never", "--format=%ai\t%an\t%au\t%al"]]);
+  });
+
   test("a failed listing says so without its output, and is not cached", async () => {
     const sources = await newHelper();
     const lpass = fakeLpass({ listExit: 1, listing: "1001\ts3cr3t-örnek\tdeniz.k\thttps://ornek.dev\n", listStderr: "Error: s3cr3t-örnek\n" });
-    await assert.rejects(hostWith(sources, lpass).list("vault"), (error) => {
+    const failing = hostWith(sources, lpass);
+    await assert.rejects(failing.list("vault"), (error) => {
       assert.equal(error.message, "lpass could not list the vault.");
       assert.ok(!error.stack.includes("s3cr3t"));
       return true;
     });
+    assert.equal(listings(failing), 2, "fetching a fresh copy is tried once too");
 
     Object.assign(lpass.state, { listExit: 0, listing: LISTING, listStderr: "" });
     const host = hostWith(sources, lpass);
@@ -279,6 +300,20 @@ describe("run", () => {
     assert.equal(listings(after), 1, "the rows went with the lock");
   });
 
+  test("logged out and in again since the list: the entry is read once lpass fetches its copy", async () => {
+    const sources = await newHelper();
+    const lpass = fakeLpass();
+    await hostWith(sources, lpass).list("vault");
+    lpass.state.localCopy = false;
+    const host = hostWith(sources, lpass, { now: START + 1_000 });
+    assert.deepEqual(await host.runSource("vault", "1001", "password"), { secret: "s3cr3t-örnek" });
+    assert.deepEqual(runs(host), [
+      ["show", "--password", "--sync=no", "--color=never", "1001"],
+      ["status", "-q"],
+      ["show", "--password", "--sync=now", "--color=never", "1001"],
+    ]);
+  });
+
   test("row ids must be numbers", async () => {
     const host = hostWith(await newHelper(), fakeLpass());
     for (const rowId of ["1; rm", "--help", "-1", "", "12\n", "１２", "1001 "]) {
@@ -303,6 +338,8 @@ describe("everywhere", () => {
     await on({ loggedIn: false }, (host) => host.list("vault"));
     await on({ version: "LastPass CLI v1.6.0" }, (host) => host.list("vault"));
     await on({ listExit: 1, listStderr: "Error: s3cr3t-örnek\n" }, (host) => host.list("vault"));
+    await on({ localCopy: false }, (host) => host.list("vault"));
+    await on({ localCopy: false }, (host) => host.runSource("vault", "1001", "password"));
     await on({}, async (host) => {
       await host.runSource("vault", "1001", "password");
       await host.runSource("vault", "1001", "username");
@@ -339,7 +376,7 @@ describe("everywhere", () => {
     await host.runSource("vault", "1001", "password");
     lpass.state.show = { exitCode: 1, stdout: "", stderr: "" };
     await settled(host.runSource("vault", "1001", "password"));
-    assert.equal(signals.length, 6, "the status asked after a failed show too");
+    assert.equal(signals.length, 7, "the status and the fetching show after a failed show too");
     assert.ok(signals.every((signal) => signal instanceof AbortSignal));
   });
 

@@ -31,7 +31,7 @@ LPASS_AGENT_TIMEOUT=28800
 
 ## New entries
 
-The extension runs lpass with `--sync=no`: it lists and reads lpass's local copy of your vault and never syncs on the way, which keeps the panel quick. An entry you add or change elsewhere shows up after lpass syncs; run `lpass sync` in Terminal to get it now. The column also reuses its list for up to five minutes.
+The extension runs lpass with `--sync=no`: it lists and reads lpass's local copy of your vault and does not sync on the way, which keeps the panel quick. The one exception is right after you log in again: `lpass logout` deletes that copy and `lpass login` does not fetch it, so when the local copy is missing the extension asks lpass to fetch it once. An entry you add or change elsewhere shows up after lpass syncs; run `lpass sync` in Terminal to get it now. The column also reuses its list for up to five minutes.
 
 ## Not supported
 
