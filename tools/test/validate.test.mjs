@@ -171,6 +171,113 @@ describe("the app's rules", () => {
   });
 });
 
+describe("sources", () => {
+  // The corpus pins which codes a folder gets; these pin how often, where, and in which words.
+  const sourceManifest = (change = () => {}) => withManifest((m) => {
+    m.permissions = ["exec"];
+    m.requires = { tools: [{ name: "vault-cli", install: "brew install vault-cli" }] };
+    m.contributes.sources = [{ id: "vault", title: "vault.title", sensitive: true, actions: [
+      { id: "password", kind: "secret", title: "password.title", label: "password.label" },
+      { id: "username", kind: "text", title: "username.title", label: "username.label", copyTitle: "username.copy", copied: "username.copied" },
+    ] }];
+    change(m);
+  });
+  const sourceLocales = () => {
+    const locales = storeLocales();
+    Object.assign(locales.en, { "vault.title": "Vault", "password.title": "Paste password", "password.label": "Password",
+      "username.title": "Paste username", "username.label": "Username", "username.copy": "Copy username", "username.copied": "Username copied." });
+    return locales;
+  };
+  const issuesOf = (manifest, { store = false, locales = sourceLocales() } = {}) =>
+    validateExtension(writeExtension({ manifest, locales, files: { "index.js": "", "src/index.ts": "", "README.md": "#\n", "CHANGELOG.md": "##\n" } }).folder,
+      { store }).issues;
+  const summary = (issues) => issues.map(({ field, code }) => `${field} ${code}`);
+
+  test("a sensitive source with a secret and a text action is clean, in the store too", () => {
+    assert.deepEqual(issuesOf(sourceManifest()).map(formatIssue), []);
+    assert.deepEqual(issuesOf(sourceManifest(), { store: true }).map(formatIssue), []);
+  });
+
+  test("sourceCopyNeedsText is reported once for each key a secret action has", () => {
+    const manifest = sourceManifest((m) => Object.assign(m.contributes.sources[0].actions[0], { copyTitle: "username.copy", copied: "username.copied" }));
+    const issues = issuesOf(manifest);
+    assert.deepEqual(summary(issues), ["contributes.sources[0].actions[0].copyTitle sourceCopyNeedsText",
+      "contributes.sources[0].actions[0].copied sourceCopyNeedsText"]);
+    assert.equal(issues[0].message, "a secret action has no \"copyTitle\"; secrets are never copied to be kept");
+    assert.equal(issues[1].fix, "Remove \"copied\" or make the action \"kind\": \"text\".");
+  });
+
+  test("sourceSecretNeedsSensitive is once per source, sourceSecretWithNetwork once per manifest", () => {
+    const manifest = sourceManifest((m) => {
+      m.permissions = ["exec", "network"];
+      m.network = { domains: ["ornek.dev"] };
+      delete m.contributes.sources[0].sensitive;
+      m.contributes.sources.push({ ...structuredClone(m.contributes.sources[0]), id: "second", sensitive: false });
+    });
+    const issues = issuesOf(manifest);
+    assert.deepEqual(summary(issues), ["contributes.sources[0].sensitive sourceSecretNeedsSensitive",
+      "contributes.sources[1].sensitive sourceSecretNeedsSensitive", "permissions sourceSecretWithNetwork"]);
+    assert.equal(issues[0].message, "a source with a secret action must be sensitive");
+    assert.equal(issues[0].fix, "Add \"sensitive\": true to the source.");
+    assert.equal(issues[2].message, "an extension with a secret source action cannot ask for \"network\"");
+    assert.equal(issues[2].fix, "Remove \"network\" from \"permissions\", or make the actions \"kind\": \"text\".");
+  });
+
+  test("an unknown kind is not a secret", () => {
+    const manifest = sourceManifest((m) => {
+      m.permissions = ["exec", "network"];
+      m.network = { domains: ["ornek.dev"] };
+      m.contributes.sources[0].sensitive = false;
+      m.contributes.sources[0].actions[0].kind = "password";
+      m.contributes.sources[0].actions[0].copied = "username.copied";
+    });
+    const issues = issuesOf(manifest);
+    assert.deepEqual(summary(issues), ["contributes.sources[0].actions[0].kind unknownSourceActionKind"]);
+    assert.deepEqual([issues[0].message, issues[0].expected, issues[0].fix], ["\"password\" is not a source action kind", "secret, text", "Use \"secret\" or \"text\"."]);
+  });
+
+  test("the action count, the shapes, the ids and the keys keep the app's words", () => {
+    const counted = issuesOf(sourceManifest((m) => { delete m.contributes.sources[0].actions; }));
+    assert.deepEqual(summary(counted), ["contributes.sources[0].actions sourceActionCount"]);
+    assert.deepEqual([counted[0].message, counted[0].expected, counted[0].fix],
+      ["a source needs one or two actions, not 0", "1 or 2", "List one action, or two: ↵ runs the first and ⇧↵ the second."]);
+    const shapes = issuesOf(sourceManifest((m) => { m.contributes.sources.push("vault"); m.contributes.sources[0].actions.push(3); }));
+    assert.deepEqual(summary(shapes), ["contributes.sources[0].actions sourceActionCount", "contributes.sources[0].actions[2] notAnObject",
+      "contributes.sources[1] notAnObject"]);
+    assert.deepEqual(shapes.slice(1).map((issue) => issue.message), ["a source action must be an object", "a source must be an object"]);
+    const ids = issuesOf(sourceManifest((m) => {
+      m.contributes.sources[0].actions[1].id = "pass word";
+      m.contributes.sources.push({ ...structuredClone(m.contributes.sources[0]), actions: [structuredClone(m.contributes.sources[0].actions[1])] });
+      delete m.contributes.sources[1].actions[0].kind;
+      m.contributes.sources[1].actions[0].label = "missing.key";
+    }));
+    assert.deepEqual(summary(ids), ["contributes.sources[0].actions[1].id invalidMemberID", "contributes.sources[1].id duplicateID",
+      "contributes.sources[1].actions[0].id invalidMemberID", "contributes.sources[1].actions[0].kind missingField",
+      "contributes.sources[1].actions[0].label unknownLocaleKey"]);
+    assert.deepEqual(ids.slice(0, 2).map((issue) => issue.message), ["\"pass word\" is not a usable source action id", "the source id \"vault\" is used twice"]);
+    assert.equal(ids[3].fix, "Add \"kind\": \"secret\" or \"text\".");
+  });
+
+  test("a value of the wrong type is unreadable once the checks pass", () => {
+    const textOnly = issuesOf(sourceManifest((m) => { m.contributes.sources[0].actions.shift(); m.contributes.sources[0].sensitive = "yes"; }));
+    assert.deepEqual(summary(textOnly), ["contributes.sources[0].sensitive manifestUnreadable"]);
+    assert.deepEqual(summary(issuesOf(sourceManifest((m) => { m.contributes.sources[0].sensitive = "yes"; }))),
+      ["contributes.sources[0].sensitive sourceSecretNeedsSensitive"], "only true is sensitive");
+    assert.deepEqual(summary(issuesOf(sourceManifest((m) => { m.contributes.sources = { vault: {} }; }))), ["contributes.sources manifestUnreadable"]);
+    assert.deepEqual(summary(issuesOf(sourceManifest((m) => { m.contributes.sources[0].sensitive = null; }))),
+      ["contributes.sources[0].sensitive sourceSecretNeedsSensitive"], "null is no sensitive");
+  });
+
+  test("the store wants every source key in English", () => {
+    const locales = sourceLocales();
+    locales.tr = { ...locales.en };
+    delete locales.en["username.copied"];
+    delete locales.en["vault.title"];
+    const issues = issuesOf(sourceManifest((m) => { m.defaultLocale = "tr"; }), { store: true, locales });
+    assert.deepEqual(summary(issues).sort(), ["contributes.sources[0].actions[1].copied enLocaleKeyMissing", "contributes.sources[0].title enLocaleKeyMissing"]);
+  });
+});
+
 describe("the store's rules", () => {
   test("a complete extension has no issues", () => {
     const { folder } = writeExtension();

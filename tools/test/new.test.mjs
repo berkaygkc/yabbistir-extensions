@@ -13,7 +13,7 @@ const fresh = () => {
 };
 after(() => roots.forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
-const TEMPLATES = ["action", "detector", "capture-rule", "job"];
+const TEMPLATES = ["action", "detector", "capture-rule", "job", "source"];
 
 describe("npm run new", () => {
   for (const template of TEMPLATES) {
@@ -95,7 +95,7 @@ describe("npm run new", () => {
     assert.equal(run("new", ["../escape.x", "--template", "action"], { root }).status, 1);
     const unknown = run("new", ["dev.example.x", "--template", "nope"], { root });
     assert.equal(unknown.status, 1);
-    assert.match(unknown.out, /action, detector, capture-rule, job/);
+    assert.match(unknown.out, /action, detector, capture-rule, job, source/);
     assert.deepEqual(fs.readdirSync(path.join(root, "extensions")), []);
   });
 });

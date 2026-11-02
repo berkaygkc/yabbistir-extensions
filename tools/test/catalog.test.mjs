@@ -186,6 +186,39 @@ describe("npm run catalog", () => {
     assert.equal(first.updatedAt, "2026-10-20T10:00:00Z");
   });
 
+  test("a sensitive source marks the entry", () => {
+    const root = store();
+    const folder = path.join(root, "extensions", FIRST);
+    const manifest = JSON.parse(fs.readFileSync(path.join(folder, "manifest.json"), "utf8"));
+    manifest.contributes.sources = [{ id: "vault", title: "vault.title", sensitive: true, actions: [
+      { id: "password", kind: "secret", title: "password.title", label: "password.label" },
+    ] }];
+    fs.writeFileSync(path.join(folder, "manifest.json"), JSON.stringify(manifest, null, 2));
+    const en = JSON.parse(fs.readFileSync(path.join(folder, "locales", "en.json"), "utf8"));
+    fs.writeFileSync(path.join(folder, "locales", "en.json"),
+      JSON.stringify({ ...en, "vault.title": "Vault", "password.title": "Paste password", "password.label": "Password" }, null, 2));
+    git(root, ["commit", "-q", "-am", "a vault"], "2026-10-20T10:00:00Z");
+    const { status, out, folder: site } = catalog(root);
+    assert.equal(status, 0, out);
+    assert.deepEqual(checkSchema(catalogSchema, read(site)), []);
+    const first = entryOf(site, FIRST);
+    assert.equal(first.sensitive, true, "the app asks for consent to secrets before the download");
+    assert.deepEqual(Object.keys(first).slice(9, 13), ["permissions", "networkHosts", "tools", "sensitive"]);
+  });
+
+  test("other entries carry no sensitive field", () => {
+    const root = store();
+    // A source that is not sensitive is no reason for the field either.
+    assert.equal(run("new", ["dev.example.third", "--template", "source", "--author", "third-author"], { root }).status, 0);
+    git(root, ["add", "extensions"]);
+    git(root, ["commit", "-q", "-m", "third"], "2026-10-20T10:00:00Z");
+    const { status, out, folder } = catalog(root);
+    assert.equal(status, 0, out);
+    const entries = read(folder).extensions;
+    assert.deepEqual(entries.map((entry) => entry.id), [FIRST, SECOND, "dev.example.third"]);
+    for (const entry of entries) assert.equal(Object.hasOwn(entry, "sensitive"), false, entry.id);
+  });
+
   test("anExtensionThatDoesNotBuildFailsTheCatalog", () => {
     const root = store();
     fs.writeFileSync(path.join(root, "extensions", FIRST, "src", "index.ts"), "import fs from \"node:fs\";\nexport const actions = { a: { run: () => ({ text: String(fs) }) } };\n");

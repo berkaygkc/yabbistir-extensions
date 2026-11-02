@@ -18,6 +18,8 @@ Four things need a permission, listed in the manifest's `permissions`. Before th
 | [`capture`](#capture) | Seeing each new copy, to run capture rules | "Can see everything you copy" |
 | [`history`](#history) | Reading earlier copies | "Can read your whole history" |
 
+A source marked `sensitive` adds one more sentence, though it is not a permission: "Can read and paste secrets such as passwords. They’re never written to history or disk." An extension with a secret source action cannot ask for `network` at all; see [Sources](sources.md#secrets).
+
 **Ask for as little as you can.** Every permission is a sentence the person has to accept and a reason a reviewer reads your code more closely. List the hosts you need rather than any host, run one program rather than a shell, and prefer `yab.ai` and `yab.translate` to a web service when they can do the job. Each permission you keep needs a reason in the pull request and in the README.
 
 ## network
@@ -30,7 +32,7 @@ Four things need a permission, listed in the manifest's `permissions`. Before th
 ```
 
 - `yab.http.fetch(url, init)` and the web `fetch` both work, held to the same rules.
-- Only in a run the person started (an action or a job). Hints, detectors, previews and capture rules get `permissionDenied`.
+- Only in a run the person started (an action or a job) and in a source's `list` and `run`. Hints, detectors, previews and capture rules get `permissionDenied`.
 - Only to the listed hosts: a host matches a domain when it is the domain or ends with `.` and the domain, so `example.com` covers `www.example.com`. Redirects must stay inside the list. Leaving the list empty, or leaving `network` out, allows any host, and the consent sentence says "Can reach any website".
 - `http` and `https` only. Response header names arrive lowercased. A text body over 10 MB fails unless it is streamed to a file with `toFile`.
 - Failures reject with `networkError`, a host outside the list with `permissionDenied`, a cancelled job with `cancelled`.
@@ -55,7 +57,7 @@ See [Call an API with a key](recipes/call-an-api-with-a-key.md).
 - The program is looked for in `/opt/homebrew/bin`, then `/usr/local/bin`, then the system's folders. If it is not installed, the call fails with `toolMissing` and a message that says how to install it, and Settings shows the `install` command for the person to copy.
 - **No shell.** `args` is a list of strings, and each reaches the program as it is: quotes, `;`, `$(…)` and `*` mean nothing special. Never run a shell (`sh -c …`) to get around that.
 - The program runs in the call's work folder (`yab.files.workDir`) with only `PATH`, `HOME`, `TMPDIR`, `USER` and `LANG` set. Its exit code comes back in `exitCode` and is not an error by itself: check it. `onLine` hears its output line by line; `input` is written to its standard input.
-- Only in a run the person started. Cancelling the job, or aborting `signal`, stops the program and everything it started.
+- Only in a run the person started and in a source's `list` and `run`. Cancelling the job, or aborting `signal`, stops the program and everything it started.
 
 The program can do anything the person can, so a reviewer checks every argument. **Arguments are fixed or checked by the extension.** Put anything that comes from the item after `--`, so a link such as `--exec=…` can never be read as an option, and never pass options that make the program run other programs. See the [review checklist](review-checklist.md#exec) and [Download with yt-dlp](recipes/download-with-yt-dlp.md).
 

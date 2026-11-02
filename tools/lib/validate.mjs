@@ -21,7 +21,8 @@ export const APP_CODES = [
   "captureRulesNeedCapture", "networkNeedsDomains", "invalidDomain", "execNeedsTools", "toolsNeedExec", "notAnObject",
   "invalidToolName", "invalidMemberID", "duplicateID", "unknownPreferenceType", "secretDefault", "folderDefault",
   "choiceNeedsOptions", "unknownInput", "unknownOutput", "unknownTarget", "targetsOnlyNeedsTargets", "acceptsMissing",
-  "kindsEmpty", "unknownKind", "invalidPattern", "captureRuleTags", "indexMissing",
+  "kindsEmpty", "unknownKind", "invalidPattern", "captureRuleTags", "sourceActionCount", "unknownSourceActionKind",
+  "sourceSecretNeedsSensitive", "sourceSecretWithNetwork", "sourceCopyNeedsText", "indexMissing",
 ];
 
 /** Codes of the rules only the store has. */
@@ -37,6 +38,7 @@ const INPUTS = ["none", "item"];
 const OUTPUTS = ["text", "html", "image", "link", "file", "files", "none"];
 const TARGETS = ["finder", "terminal", "browser", "editor", "other"];
 const KINDS = ["text", "code", "link", "color", "image", "file"];
+const SOURCE_ACTION_KINDS = ["secret", "text"];
 
 // The app matches these with ICU, where \d is any decimal digit.
 export const ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9-]+)+$/;
@@ -244,6 +246,12 @@ function localeKeys(root) {
     take(rule, "description", `contributes.captureRules[${i}].description`);
   });
   list(contributes.detectors).forEach((detector, i) => take(detector, "tag", `contributes.detectors[${i}].tag`));
+  list(contributes.sources).forEach((source, i) => {
+    take(source, "title", `contributes.sources[${i}].title`);
+    list(source?.actions).forEach((action, j) => {
+      for (const key of ["title", "label", "copyTitle", "copied"]) take(action, key, `contributes.sources[${i}].actions[${j}].${key}`);
+    });
+  });
   return keys;
 }
 
@@ -270,7 +278,7 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
     }
   };
 
-  /** An action, variant, preference, rule or detector id: present, usable, and once in its list. */
+  /** An action, variant, preference, rule, detector, source or source action id: present, usable, and once in its list. */
   const memberID = (object, field, what, seen) => {
     const id = string("id", object, field, `Give the ${what} an "id".`);
     if (id === undefined) return;
@@ -468,6 +476,57 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
     } else issue(`${field}.accepts`, "acceptsMissing", "a capture rule needs \"accepts\"", "Add \"accepts\": {\"kinds\": [\"link\"]}.");
   });
 
+  // Sources: a secret is pasted, never kept, and never next to the network.
+  const sourceIDs = new Set();
+  let hasSecret = false;
+  list(contributes.sources).forEach((source, index) => {
+    const field = `contributes.sources[${index}]`;
+    if (!isObject(source)) { issue(field, "notAnObject", "a source must be an object", "Write it as {\"id\", \"title\", \"actions\"}."); return; }
+    memberID(source, `${field}.id`, "source", sourceIDs);
+    localeKey("title", source, `${field}.title`);
+    const actions = list(source.actions);
+    if (actions.length < 1 || actions.length > 2) {
+      issue(`${field}.actions`, "sourceActionCount", `a source needs one or two actions, not ${actions.length}`,
+        "List one action, or two: ↵ runs the first and ⇧↵ the second.", "1 or 2");
+    }
+    const actionIDs = new Set();
+    let sourceHasSecret = false;
+    actions.forEach((action, actionIndex) => {
+      const actionField = `${field}.actions[${actionIndex}]`;
+      if (!isObject(action)) {
+        issue(actionField, "notAnObject", "a source action must be an object", "Write it as {\"id\", \"kind\", \"title\", \"label\"}.");
+        return;
+      }
+      memberID(action, `${actionField}.id`, "source action", actionIDs);
+      const kind = string("kind", action, `${actionField}.kind`, "Add \"kind\": \"secret\" or \"text\".");
+      if (kind !== undefined && !SOURCE_ACTION_KINDS.includes(kind)) {
+        issue(`${actionField}.kind`, "unknownSourceActionKind", `"${kind}" is not a source action kind`, "Use \"secret\" or \"text\".",
+          SOURCE_ACTION_KINDS.join(", "));
+      }
+      localeKey("title", action, `${actionField}.title`);
+      localeKey("label", action, `${actionField}.label`);
+      for (const key of ["copyTitle", "copied"]) {
+        if (!Object.hasOwn(action, key)) continue;
+        localeKey(key, action, `${actionField}.${key}`);
+        if (kind === "secret") {
+          issue(`${actionField}.${key}`, "sourceCopyNeedsText", `a secret action has no "${key}"; secrets are never copied to be kept`,
+            `Remove "${key}" or make the action "kind": "text".`);
+        }
+      }
+      if (kind === "secret") sourceHasSecret = true;
+    });
+    if (sourceHasSecret) {
+      hasSecret = true;
+      if (source.sensitive !== true) {
+        issue(`${field}.sensitive`, "sourceSecretNeedsSensitive", "a source with a secret action must be sensitive", "Add \"sensitive\": true to the source.");
+      }
+    }
+  });
+  if (hasSecret && granted.has("network")) {
+    issue("permissions", "sourceSecretWithNetwork", "an extension with a secret source action cannot ask for \"network\"",
+      "Remove \"network\" from \"permissions\", or make the actions \"kind\": \"text\".");
+  }
+
   const detectorIDs = new Set();
   list(contributes.detectors).forEach((detector, index) => {
     const field = `contributes.detectors[${index}]`;
@@ -573,5 +632,8 @@ function decodeManifest(root, report) {
   }
   if (expect(contributes, "captureRules", "contributes.captureRules", "array")) {
     contributes.captureRules.forEach((rule, index) => accepts(rule.accepts, `contributes.captureRules[${index}].accepts`, true));
+  }
+  if (expect(contributes, "sources", "contributes.sources", "array")) {
+    contributes.sources.forEach((source, index) => expect(source, "sensitive", `contributes.sources[${index}].sensitive`, "boolean"));
   }
 }

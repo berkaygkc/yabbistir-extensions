@@ -1,11 +1,11 @@
 ---
 name: yabbistir-extension
-description: Use when creating, changing, testing or preparing a pull request for a yabbistir extension in this repository (anything under extensions/, an action, detector, capture rule or job for the yabbistir clipboard app).
+description: Use when creating, changing, testing or preparing a pull request for a yabbistir extension in this repository (anything under extensions/, an action, detector, capture rule, job or source for the yabbistir clipboard app).
 ---
 
 # Writing a yabbistir extension
 
-An extension is `extensions/<id>/`: `manifest.json`, `src/index.ts`, `locales/en.json`, `tests/*.test.mjs`, `README.md`, `CHANGELOG.md`. Its code runs in JavaScriptCore inside yabbistir, not in Node, and the app draws all UI. AGENTS.md at the repository's root has the rules and the definition of done; follow it. Run every command from the root, with Node 24 (22.18 or later works).18 or later, after `npm install`.
+An extension is `extensions/<id>/`: `manifest.json`, `src/index.ts`, `locales/en.json`, `tests/*.test.mjs`, `README.md`, `CHANGELOG.md`. Its code runs in JavaScriptCore inside yabbistir, not in Node, and the app draws all UI. AGENTS.md at the repository's root has the rules and the definition of done; follow it. Run every command from the root, with Node 24 (22.18 or later works), after `npm install`.
 
 ## 1. Understand the idea
 
@@ -18,6 +18,7 @@ Decide what the extension does to what, and where the person meets it. Then pick
 | Takes seconds or minutes, or runs a program | Action with `"job": true` | `job` |
 | Recognize a kind of content and explain it | Detector with `validate` and `preview` | `detector` |
 | Change or drop copies before they are stored | Capture rule | `capture-rule` |
+| Show a list of its own in the panel (snippets, a vault's entries) and paste a row's value | Source | `source` |
 
 If a recipe in [docs/recipes/](../../../docs/concepts.md#recipes) is close, start from it: each is a complete extension.
 
@@ -32,6 +33,8 @@ Start with none. Add one only when the extension cannot work without it ([docs/p
 
 On-device AI (`yab.ai.generate`), translation (`yab.translate`), images, preferences, secrets and files in the work folder need none.
 
+A source whose values are secrets, such as passwords, is `"sensitive": true` and gives them through a `"kind": "secret"` action. Such an extension cannot ask for `network`, and the person is told before install that it can read and paste secrets ([docs/sources.md](../../../docs/sources.md#secrets)).
+
 ## 3. Create it
 
 ```sh
@@ -42,8 +45,12 @@ The id is a lowercase reverse-domain name and equals the folder name. `author` i
 
 1. Edit `manifest.json`. Every field a person reads holds a key into `locales/en.json`. Look fields up in [docs/manifest.md](../../../docs/manifest.md); never invent one.
 2. Add the keys to `locales/en.json`; a `keywords` key's value is a list. Only English is required: the template's `locales/tr.json` describes its sample, so delete it, or translate every key into it.
-3. Write `src/index.ts`: `export const actions: Actions = { <id>: { run(item, ctx) { … } } }` (or `detectors`, `captureRules`), with `import type { … } from "@yabbistir/api"`. Look `yab` up in [docs/api.md](../../../docs/api.md). Import your own files as `./file.ts`.
+3. Write `src/index.ts`: `export const actions: Actions = { <id>: { run(item, ctx) { … } } }` (or `detectors`, `captureRules`, `sources`), with `import type { … } from "@yabbistir/api"`. Look `yab` up in [docs/api.md](../../../docs/api.md). Import your own files as `./file.ts`.
 4. Return `{ none: true, message: yab.t("…") }` for expected situations; throw only for real failures.
+   For a source ([docs/sources.md](../../../docs/sources.md)):
+   - `list(ctx)` returns `{ rows: [{ id, title, subtitle? }] }`, or `{ locked: true, message, command? }`. Ids are unique, stable, and come back to `run` unchanged.
+   - `run(rowId, actionId, ctx)` returns `{ secret }` or `{ text }`, as the action's `kind` says, never empty.
+   - Never log a row or a value, never put one (or a tool's output) in an error message, and never write rows or values to `yab.storage` or a file. Cache rows only in a module variable with a short lifetime, dropped when locked.
 5. Run `npm run validate -- <id>` and fix each line it prints; the fix is in the line, and [docs/errors.md](../../../docs/errors.md) explains every code.
 
 ## 4. Test it
@@ -66,6 +73,7 @@ test("doesTheThing", async () => {
 - Cover the main path, every message the person can see, and the expected failures.
 - Answer network calls with `http`, programs with `exec`, the model with `ai`, translation with `translate`.
 - Use `host.hint`, `host.validate`, `host.preview` and `host.capture` for calls that run without effects.
+- For a source, pass `sources` to `createFakeHost` and use `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)`; check that `host.logs` stays empty.
 - Run `npm test -- <id>` until it passes.
 
 ## 5. Build and check

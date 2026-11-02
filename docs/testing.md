@@ -45,6 +45,8 @@ An item needs only what matters to the test: the host fills in `id`, `tags: []` 
 | `host.validate(detector, item?)` | `detector.validate(item)` | Resolves to a boolean; a promise is refused. |
 | `host.preview(detector, item?, context?)` | `detector.preview(item, ctx)` | No effects; the sections are checked. |
 | `host.capture(rule, item?, context?)` | `rule.run(item, ctx)` | No effects; the result is checked. |
+| `host.list(sourceId, context?)` | `sources[sourceId].list(ctx)` | A source's list, as the app calls it: effects allowed, no item. Resolves to the rows the app keeps, or the locked state ([Sources](#sources)). |
+| `host.runSource(sourceId, rowId, actionId, context?)` | `sources[sourceId].run(rowId, actionId, ctx)` | The same, for one action; resolves to `{ secret }` or `{ text }`. |
 
 `context` sets parts of `ctx` for that call: `{ language: "tr", variant: "audio", target: { bundleID: "com.apple.finder", name: "Finder", kind: "finder" } }`. Pass `null` as the item for a generator.
 
@@ -75,6 +77,7 @@ await assert.rejects(host.run(actions.broken, { text: "x" }), { code: "badResult
 | `files` | `{ path: text or Uint8Array }`: files on the fake disk, such as an item's own files. |
 | `storage` | What `yab.storage` holds at the start. |
 | `now` | A `Date`, ISO text or milliseconds: `Date.now()` and `new Date()` during calls, and items' `copiedAt`. |
+| `sources` | The extension's `sources` export, for `host.list` and `host.runSource`. |
 
 An answer in any table can be an `Error` to make the call fail, and `yabError(code, message)` makes one with a `code`, the way the app's errors have one.
 
@@ -83,7 +86,8 @@ An answer in any table can be an `Error` to make the call fail, and `yabError(co
 | Field | Holds |
 |---|---|
 | `host.calls` | Every `yab` call in order, as `{ api, args }`, such as `{ api: "exec", args: ["yt-dlp", [...]] }`. Callbacks and signals are left out, and so are `t` and plain reads (`storage.get`, `files.read`, `files.exists`, `image.info`). |
-| `host.results` | What each call returned. |
+| `host.results` | What each call returned; a source's answers are left out, as the app keeps no value. |
+| `host.logs` | The extension's Development log: each `console` line written during a call, and the host's own notes, such as a listing cut at 10,000 rows. The lines still reach your console too. |
 | `host.notifications` | The `yab.notify` messages, cut to 200 characters. |
 | `host.opened` | The links `yab.open` got. |
 | `host.progress` | Each `yab.job.progress` as `{ fraction, message }`. |
@@ -162,6 +166,32 @@ assert.equal(acceptsMatch(manifest.contributes.detectors[0].accepts, { kind: "te
 ```
 
 Both check the kind (a single image file counts for `image`), the tags, and the [pattern](concepts.md#patterns), searched for in the trimmed text or URL. The app matches patterns with ICU; the helpers use JavaScript's `RegExp` with the `u` flag, after turning a leading `(?i)`, `(?s)` or `(?m)` into flags, `\d` into any decimal digit, and a bare script name such as `\p{Greek}` into `\p{Script=Greek}`. That is close to the app, not identical: `\w` and `\s` differ slightly, and ICU-only syntax (`a++`, `(?>…)`, `(?x)`, a flag group after the start, sets with `&&` or `--`, `[[:alpha:]]`, `\Q…\E`, block properties) throws an error that says so. `npm run validate` remains the judge of whether a pattern is valid ICU, and `npm run dev` shows the app's real matching.
+
+## Sources
+
+`host.list` and `host.runSource` call a source the way the app does: as the person's own call, so `yab.exec` works with the `exec` permission, with `ctx.trigger` `"source"`, and with no item, variant or target. Pass the extension's `sources` export when you make the host:
+
+```js
+import { sources } from "../src/index.ts";
+
+const host = createFakeHost({
+  folder,
+  sources,
+  exec: { "vault-cli": (args) => ({ exitCode: 0, stdout: args[0] === "list" ? "42\texample.com\tada\n" : "s3cret\n", stderr: "" }) },
+});
+assert.deepEqual(await host.list("vault"), { rows: [{ id: "42", title: "example.com", subtitle: "ada" }] });
+assert.deepEqual(await host.runSource("vault", "42", "password"), { secret: "s3cret" });
+assert.deepEqual(host.logs, []);
+```
+
+What they resolve to is what the app keeps:
+
+- `host.list` gives `{ rows }` with each title and subtitle on one line and cut to 256 characters, at most 10,000 rows (and a line in `host.logs` past that), or `{ locked: true, message, command? }`.
+- `host.runSource` gives `{ secret }` or `{ text }`, whichever the manifest's `kind` for the action says.
+- Anything else rejects with `badResult` and the app's reason: a value of the other kind, an empty value, a row without a title, two rows with one id. The reason names shapes and places, never a value.
+- Before calling, both fail as the app would: `notFound` for a source or action the manifest does not have, or an export missing from `sources`, and `toolMissing` for a tool of `requires.tools` missing from `exec`.
+
+Test the locked answer, an empty value, a failing tool, and that nothing reaches `host.logs`. The rules are in [Sources](sources.md).
 
 ## Everything else
 

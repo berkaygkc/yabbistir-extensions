@@ -1,0 +1,23 @@
+{
+  "id": "{{id}}",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:text.quote",
+  "author": "{{author}}",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "preferences": [
+    { "id": "snippets", "type": "text", "title": "snippets.title", "default": "Thank you! | Best regards | See you tomorrow." }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "snippets", "title": "source.title", "actions": [
+        { "id": "paste", "kind": "text", "title": "paste.title", "label": "paste.label",
+          "copyTitle": "paste.copyTitle", "copied": "paste.copied" }
+      ] }
+    ]
+  }
+}

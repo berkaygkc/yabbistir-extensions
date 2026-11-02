@@ -20,7 +20,7 @@ Until then, build an extension here (`npm run build -- <id>`) and install `dist/
 You need macOS 26 or later on Apple silicon with yabbistir, and Node 24 (22.18 or later works).
 
 1. Clone this repository and run `npm install`.
-2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
+2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule`, `job` or `source`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
 3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`. Only English is required: the template's `locales/tr.json` holds Turkish for its sample, so translate it or delete it.
 4. `npm test -- dev.yourname.tool`, then `npm run build -- dev.yourname.tool`, then `npm run validate -- dev.yourname.tool` check it.
 5. `npm run dev -- dev.yourname.tool` links it into yabbistir and rebuilds on every change. When it is ready, open a pull request.
@@ -30,7 +30,7 @@ Read next:
 - [Getting started](docs/getting-started.md): a first extension, step by step.
 - [Concepts](docs/concepts.md): what an extension can do, and which kind fits your idea.
 - [Manifest](docs/manifest.md) and [API](docs/api.md) references, [Permissions](docs/permissions.md), [Errors](docs/errors.md).
-- Guides: [jobs](docs/jobs.md), [results and targets](docs/results-and-targets.md), [detectors and previews](docs/detectors-and-previews.md), [capture rules](docs/capture-rules.md), [localization](docs/localization.md), [testing](docs/testing.md), [design guidelines](docs/design-guidelines.md).
+- Guides: [jobs](docs/jobs.md), [results and targets](docs/results-and-targets.md), [detectors and previews](docs/detectors-and-previews.md), [capture rules](docs/capture-rules.md), [sources](docs/sources.md), [localization](docs/localization.md), [testing](docs/testing.md), [design guidelines](docs/design-guidelines.md).
 - [Recipes](docs/concepts.md#recipes): six small, complete extensions.
 - [Publishing](docs/publishing.md) and the [review checklist](docs/review-checklist.md).
 

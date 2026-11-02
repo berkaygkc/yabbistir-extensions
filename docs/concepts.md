@@ -82,9 +82,13 @@ A **detector** tags items as they are copied: a JWT, an issue key, a timestamp. 
 
 A **capture rule** sees each new copy before it is stored and decides: keep it, store a cleaned version instead, put it in a category too, or do not store it at all. Rules need the `capture` permission, see text and URLs only (never tags or pixels), and have 200 ms. See [Capture rules](capture-rules.md).
 
+## Sources
+
+A **source** is a list the app shows in a column of its own in the panel: snippets, a team's canned replies, a vault's entries. `sources[id].list(ctx)` returns the rows, or that the source is locked; `sources[id].run(rowId, actionId, ctx)` returns the value one of the source's one or two actions pastes, as `{ text }` or, for a `sensitive` source, `{ secret }`. Rows and values stay in the app's memory, never in the history or on disk. See [Sources](sources.md).
+
 ## Calls with effects and calls without
 
-Some calls happen because the person chose something: running an action or a job. Those may use the network, run programs, show notices, open links, ask the on-device model or translate, as far as the extension's permissions allow.
+Some calls happen because the person chose something: running an action or a job, and a source's `list` and `run`. Those may use the network, run programs, show notices, open links, ask the on-device model or translate, as far as the extension's permissions allow.
 
 Other calls happen on their own: hints, detector checks, previews and capture rules. They run without effects: `yab.http.fetch`, `fetch`, `yab.exec`, `yab.notify`, `yab.open`, `yab.ai`, `yab.translate` and `yab.history` reject or throw `permissionDenied` there. They can still read the item, the preferences, secrets and storage, and use pure functions such as `yab.t`.
 
@@ -96,6 +100,7 @@ Other calls happen on their own: hints, detector checks, previews and capture ru
 | Detector `validate` | 50 ms, no promises |
 | Capture rule | 200 ms (then it is skipped and the copy is stored as it is) |
 | Action | 10 seconds |
+| A source's `list` and `run` | 10 seconds each |
 | Job | none; the person can cancel it |
 
 A call that runs over is cut off.
@@ -103,7 +108,7 @@ A call that runs over is cut off.
 ## When something goes wrong
 
 - A `run` that throws fails: the app shows "Extension failed" with the extension's name and the error's message. Write messages for people, with `yab.t`.
-- Three failures in a row turn the extension off; Settings shows it as off and the person is told. Failures that are not the extension's fault do not count: `cancelled`, `interrupted`, `toolMissing`, `networkError` and `permissionDenied`. A job's thrown error does not count either; only a broken result (`badResult`, `notFound`, `syntax`) does.
+- Three failures in a row turn the extension off; Settings shows it as off and the person is told. A source's failures never count. Failures that are not the extension's fault do not count either: `cancelled`, `interrupted`, `toolMissing`, `networkError` and `permissionDenied`. A job's thrown error does not count either; only a broken result (`badResult`, `notFound`, `syntax`) does.
 - So an expected situation (nothing to do, input of the wrong shape) returns `{ none: true, message }` rather than throwing, and a detector's `validate` returns `false` rather than throwing.
 
 Every error code is in [errors](errors.md#runtime-errors).
@@ -130,6 +135,8 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Run a command-line program | An action or job with the `exec` permission | `--template job` |
 | Summarize, rewrite or translate on the Mac | `yab.ai.generate`, `yab.translate` (no permission) | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Work with earlier copies | `yab.history` (the `history` permission) | [Permissions](permissions.md#history) |
+| A list of the extension's own in the panel (snippets, canned replies), a row's text pasted on ↵ | A source | `--template source`, [Sources](sources.md) |
+| Paste passwords or tokens from a command-line vault | A `sensitive` source with a `secret` action and the `exec` permission | [Sources](sources.md#secrets) |
 
 **A capture rule cannot show a tag or a chip.** Only detectors tag items, and they run after the copy is stored, so a rule never sees tags or adds them. To change copies and mark them too, put a rule and a detector in one extension.
 
@@ -137,9 +144,9 @@ Not possible: drawing your own interface, running in the background on a timer, 
 
 ## Several contributions in one extension
 
-One extension can add any mix of actions, detectors and capture rules. Scaffold with the template nearest to the main thing it does, then add the others by hand:
+One extension can add any mix of actions, detectors, capture rules and sources. Scaffold with the template nearest to the main thing it does, then add the others by hand:
 
-1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
+1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`, `sources`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
 2. In `src/index.ts`, export the matching objects, keyed by those ids: `export const detectors: Detectors = { … }` next to `export const actions: Actions = { … }`.
 3. Add every new string key to `locales/en.json`, and tests for each part.
 

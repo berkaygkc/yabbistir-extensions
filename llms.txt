@@ -2,14 +2,14 @@
 
 > Extensions for yabbistir, a clipboard history app for macOS. An extension is TypeScript bundled into one JavaScript file that runs in JavaScriptCore, not Node, inside yabbistir's helper process. It only computes; the app draws every piece of UI.
 
-Commands run from the repository's root: `npm run new -- <id> --template <action|detector|capture-rule|job>` creates an extension in `extensions/<id>/`, then `npm test -- <id>`, `npm run validate -- <id>` and `npm run build -- <id>` check it. Coding agents start with AGENTS.md. llms-full.txt holds every document below in one file.
+Commands run from the repository's root: `npm run new -- <id> --template <action|detector|capture-rule|job|source>` creates an extension in `extensions/<id>/`, then `npm test -- <id>`, `npm run validate -- <id>` and `npm run build -- <id>` check it. Coding agents start with AGENTS.md. llms-full.txt holds every document below in one file.
 
 ## Start here
 
 - [AGENTS.md](AGENTS.md): the working guide: repository map, commands, rules, the definition of done, common mistakes
 - [README.md](README.md): what this repository is, installing extensions, five steps to your first one
 - [Getting started](docs/getting-started.md): a first action from scratch, with its test, built and linked into the app
-- [Concepts](docs/concepts.md): item, context, action, detector, capture rule, job, result, and which contribution point fits an idea
+- [Concepts](docs/concepts.md): item, context, action, detector, capture rule, source, job, result, and which contribution point fits an idea
 
 ## Reference
 
@@ -24,6 +24,7 @@ Commands run from the repository's root: `npm run new -- <id> --template <action
 - [Results and targets](docs/results-and-targets.md): what an action returns, how it is pasted, and paste targets such as Finder
 - [Detectors and previews](docs/detectors-and-previews.md): tagging copied items and adding preview sections
 - [Capture rules](docs/capture-rules.md): changing or dropping a copy before it is stored
+- [Sources](docs/sources.md): a column of the extension's own rows in the panel; locked sources, secrets and caching
 - [Localization](docs/localization.md): locale files, keys, `yab.t`, keywords
 - [Testing](docs/testing.md): the fake host and what it checks
 - [Design guidelines](docs/design-guidelines.md): naming, icons, short text, the app's calm grey look

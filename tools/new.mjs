@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// npm run new -- <id> --template <action|detector|capture-rule|job>
+// npm run new -- <id> --template <action|detector|capture-rule|job|source>
 //
 // Creates extensions/<id>/ from templates/<template>/: a manifest, src/index.ts, English and Turkish strings, a test
 // that uses the fake host, a README and a CHANGELOG. It passes `npm run validate` and `npm test` right away.
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import { ID_PATTERN } from "./lib/validate.mjs";
 
-const TEMPLATES = ["action", "detector", "capture-rule", "job"];
+const TEMPLATES = ["action", "detector", "capture-rule", "job", "source"];
 const here = fileURLToPath(new URL("..", import.meta.url));
 
 function titleOf(id) {

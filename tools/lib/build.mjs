@@ -171,7 +171,7 @@ export async function buildExtension(root, id, { package: pack = true } = {}) {
   const entry = path.join(source, "src", "index.ts");
   const alternative = path.join(source, "src", "index.js");
   const input = fs.existsSync(entry) ? entry : fs.existsSync(alternative) ? alternative : undefined;
-  if (!input) return fail(`extensions/${id}/src/index.ts: it is missing → fix: Add src/index.ts, which exports actions, detectors and/or captureRules.`);
+  if (!input) return fail(`extensions/${id}/src/index.ts: it is missing → fix: Add src/index.ts, which exports actions, detectors, captureRules and/or sources.`);
 
   fs.mkdirSync(folder, { recursive: true });
   const compiled = await compile(input, path.join(folder, "index.js"), root);

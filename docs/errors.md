@@ -106,7 +106,7 @@ The quoted text is the message; `<…>` stands for what the validator fills in.
 
 ### `notAnObject`
 
-`a tool must be an object`, `a preference must be an object`, `an action must be an object`, `a variant must be an object`, `a capture rule must be an object`, `a detector must be an object`, or `"accepts" must be an object`. **Fix:** write that entry as `{ … }` with its fields.
+`a tool must be an object`, `a preference must be an object`, `an action must be an object`, `a variant must be an object`, `a capture rule must be an object`, `a source must be an object`, `a source action must be an object`, `a detector must be an object`, or `"accepts" must be an object`. **Fix:** write that entry as `{ … }` with its fields.
 
 ### `invalidToolName`
 
@@ -114,11 +114,11 @@ The quoted text is the message; `<…>` stands for what the validator fills in.
 
 ### `invalidMemberID`
 
-`"<id>" is not a usable <action, variant, preference, capture rule, detector> id`. **Fix:** use only letters, digits, `.`, `_` and `-`.
+`"<id>" is not a usable <action, variant, preference, capture rule, source, source action, detector> id`. **Fix:** use only letters, digits, `.`, `_` and `-`.
 
 ### `duplicateID`
 
-`the <action, variant, preference, capture rule, detector> id "<id>" is used twice`. **Fix:** give each its own id within its list.
+`the <action, variant, preference, capture rule, source, source action, detector> id "<id>" is used twice`. **Fix:** give each its own id within its list.
 
 ### `unknownPreferenceType`
 
@@ -177,6 +177,26 @@ The second message means the pattern uses something the store cannot check again
 ### `captureRuleTags`
 
 A warning: `capture rules never see tags; this rule would never run`. A rule's `accepts` lists `tags`, but rules run before detectors tag anything, so it would never match. **Fix:** remove `tags`; filter on `kinds` and `pattern`.
+
+### `sourceActionCount`
+
+`a source needs one or two actions, not <n>`. **Fix:** list one action, or two: ↵ runs the first and ⇧↵ the second ([Sources](sources.md#the-manifest)).
+
+### `unknownSourceActionKind`
+
+`"<kind>" is not a source action kind`. **Fix:** use `secret` for a value that is pasted and never kept, or `text`.
+
+### `sourceSecretNeedsSensitive`
+
+`a source with a secret action must be sensitive`. **Fix:** add `"sensitive": true` to the source; the person is then told before install that the extension can read and paste secrets ([Secrets](sources.md#secrets)).
+
+### `sourceSecretWithNetwork`
+
+`an extension with a secret source action cannot ask for "network"`. Reported once, at `permissions`. **Fix:** remove `network` from `permissions` (and the `network` field), or make the actions `"kind": "text"`.
+
+### `sourceCopyNeedsText`
+
+`a secret action has no "<copyTitle, copied>"; secrets are never copied to be kept`. Reported once for each of the two keys. **Fix:** remove the key, or make the action `"kind": "text"`.
 
 ### `indexMissing`
 
@@ -281,15 +301,15 @@ The extension threw. **Cause:** your code, a failed check of your own, or a `yab
 
 ### `timeout`
 
-The call ran past its limit: 500 ms for a hint or a preview, 50 ms for `validate`, 200 ms for a capture rule, 10 seconds for an action. **Fix:** make it a [job](jobs.md) if it is slow by nature; otherwise do less, or narrow `accepts` so it runs less often.
+The call ran past its limit: 500 ms for a hint or a preview, 50 ms for `validate`, 200 ms for a capture rule, 10 seconds for an action or a source's `list` and `run`. **Fix:** make it a [job](jobs.md) if it is slow by nature; otherwise do less, or narrow `accepts` so it runs less often.
 
 ### `notFound`
 
-The app called an action, detector or rule the code does not export. **Fix:** the ids in the manifest and the keys of `actions`, `detectors` and `captureRules` in `src/index.ts` must match exactly.
+The app called an action, detector, rule or source the code does not export (`sources.<id>.list is not exported`). **Fix:** the ids in the manifest and the keys of `actions`, `detectors`, `captureRules` and `sources` in `src/index.ts` must match exactly.
 
 ### `badResult`
 
-What the call returned is not a result the app accepts, or a `yab` call got arguments it cannot use. Examples: `run` returned a string instead of `{ text }`, a file result outside `yab.files.workDir`, a preview section of an unknown `type`, `yab.exec` with arguments that are not strings, `yab.files.write` with `..` in the name, `yab.job.progress` with a fraction that is not a number. The app logs the reason to the Development log. **Fix:** return one of the [result shapes](results-and-targets.md); the fake host reports the same reason in tests.
+What the call returned is not a result the app accepts, or a `yab` call got arguments it cannot use. Examples: `run` returned a string instead of `{ text }`, a file result outside `yab.files.workDir`, a preview section of an unknown `type`, a source's `run` that returned `{ text }` for a `secret` action or an empty value, a listing with two rows of one `id`, `yab.exec` with arguments that are not strings, `yab.files.write` with `..` in the name, `yab.job.progress` with a fraction that is not a number. The app logs the reason to the Development log. **Fix:** return one of the [result shapes](results-and-targets.md); the fake host reports the same reason in tests.
 
 ### `unavailable`
 
@@ -325,6 +345,7 @@ Three failures in a row turn an extension off; Settings shows it as off and a no
 
 - **Never counted:** `cancelled`, `interrupted`, `toolMissing`, `networkError`, `permissionDenied`.
 - **In a job,** only a broken extension counts: `badResult`, `notFound`, `syntax`. A job's own thrown errors are reported to the person, not counted.
+- **In a source's `list` and `run`,** nothing counts, a timeout included: a source never turns its extension off.
 - **Everywhere else** (actions, hints, detectors, previews, rules), any other failure counts, `script` and `timeout` included.
 - A load that fails (`index.js could not load`) counts too.
 
@@ -340,5 +361,7 @@ Messages the fake host gives in `npm test`:
 - `<tool> is not in the extension's required tools` (`permissionDenied`): add it to `requires.tools`.
 - `the fake host has no AI answer; pass createFakeHost({ ai })` (`unavailable`), and the same for `translate` and `vision`.
 - `run returned … ; expected {text}, {html, text}, …` (`badResult`): return a result shape.
+- `run returned {text}; this action expects {secret}`, `rows[<i>].id repeats an earlier row's id` and the other reasons of a source (`badResult`): the answer breaks a rule of [Sources](sources.md#list-and-run); the reason names the shape and the place, never the value.
+- `sources.<id>.list is not exported; pass the extension's sources: createFakeHost({ sources })` (`notFound`): give the fake host the extension's `sources` export.
 - `… is not available in hints, detectors and previews` (`permissionDenied`): an effect in a call without effects.
 - `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, or a TypeScript import that Node cannot load: use `import type` for `@yabbistir/api`, import your files with `.ts`, avoid `enum` and `namespace`, and use Node 22.18 or later ([Testing](testing.md)).

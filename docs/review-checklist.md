@@ -28,6 +28,14 @@ Every pull request is read against this list before it is merged. Authors: go th
 - [ ] The exit code is checked; output is parsed, not trusted.
 - [ ] Cancelling stops the tool: `ctx.signal` is passed to `yab.exec`.
 
+## Sources
+
+- [ ] Rows and values are never logged, never put in an error message, and never written to `yab.storage` or a file. A tool's output stays out of messages.
+- [ ] Rows are cached, if at all, only in a module variable with a short lifetime, dropped when the source answers `locked`. Values are never cached.
+- [ ] `sensitive` is set only when the values are secrets, and every `secret` action is in such a source; an extension with one has no `network`.
+- [ ] Row ids are stable and come back to `run` unchanged; `run` checks them before passing them to a tool.
+- [ ] An empty value is a clear error, never pasted.
+
 ## Download Video and browser cookies
 
 - [ ] The browser-cookies preference is **off by default** and asks for confirmation (`confirm`) when turned on.
