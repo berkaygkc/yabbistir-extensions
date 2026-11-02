@@ -1,0 +1,28 @@
+{
+  "id": "dev.yabbistir.lastpass",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:key",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "lpass", "install": "brew install lastpass-cli" }
+    ]
+  },
+  "contributes": {
+    "sources": [
+      { "id": "vault", "title": "source.title", "sensitive": true, "actions": [
+        { "id": "password", "kind": "secret", "title": "password.title", "label": "password.label" },
+        { "id": "username", "kind": "text", "title": "username.title", "label": "username.label",
+          "copyTitle": "username.copyTitle", "copied": "username.copied" }
+      ] }
+    ]
+  }
+}

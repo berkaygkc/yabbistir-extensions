@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "Your LastPass entries as a column. ↵ pastes the password, ⇧↵ the username. Uses lpass, which can read your whole vault; passwords are never stored or shown.",
+  "source.title": "LastPass",
+  "password.title": "Paste password",
+  "password.label": "Password",
+  "username.title": "Paste username",
+  "username.label": "Username",
+  "username.copyTitle": "Copy username",
+  "username.copied": "Username copied.",
+  "locked": "LastPass is locked",
+  "emailPlaceholder": "<email>",
+  "updateNeeded": "lpass needs an update: brew upgrade lastpass-cli",
+  "listFailed": "lpass could not list the vault.",
+  "showFailed": "lpass could not read this entry.",
+  "emptyPassword": "This entry’s password couldn’t be read (lpass may need an update).",
+  "emptyUsername": "This entry has no username."
+}
