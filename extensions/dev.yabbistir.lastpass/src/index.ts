@@ -14,6 +14,9 @@ const LIST_FORMAT = "--format=%ai\t%an\t%au\t%al";
 const LOCAL_PLAIN = ["--sync=no", "--color=never"];
 /** The URLs lpass gives folders and secure notes, which hold no login to paste. */
 const NOT_LOGINS = new Set(["http://group", "http://sn"]);
+/** What the app turns into a space in a row's title, and what it trims from its ends after that. */
+const LINE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
+const EDGE_SPACE = /^[\p{Z}\t-\r\u0085]+|[\p{Z}\t-\r\u0085]+$/gu;
 
 // The helper's memory only, never yab.storage or a file: whether lpass was recent enough once, and the last rows.
 let versionChecked = false;
@@ -30,17 +33,28 @@ function recentEnough(output: string): boolean {
   return true;
 }
 
-/** The logins among `lpass ls` lines: numbered entries with a name, without folders, secure notes or a repeated id. */
+/**
+ * The logins among `lpass ls` lines: numbered entries with a name, without folders or secure notes. A line is the id,
+ * the name, the username and the URL; a tab in the name only adds fields in the middle, so the id is the first field,
+ * the URL the last and the username the one before it. A line break in a name splits its entry over two lines, the
+ * second of which may claim any id: every row of an id listed more than once is left out, so a name never carries
+ * another entry's id.
+ */
 function rowsOf(lines: string[]): SourceRow[] {
-  const rows: SourceRow[] = [];
-  const seen = new Set<string>();
+  const entries: Array<{ id: string; name: string; username: string; url: string }> = [];
+  const listed = new Map<string, number>();
   for (const line of lines) {
-    // At most four parts: whatever follows the third tab is the URL.
-    const [id = "", name = "", username = "", ...rest] = line.split("\t");
-    const url = rest.join("\t");
-    if (!/^\d+$/.test(id) || id === "0" || seen.has(id)) continue;
-    if (name.trim() === "" || NOT_LOGINS.has(url)) continue;
-    seen.add(id);
+    const fields = line.split("\t");
+    const id = fields[0] ?? "";
+    if (/^\d+$/.test(id)) listed.set(id, (listed.get(id) ?? 0) + 1);
+    if (fields.length < 4) continue;
+    entries.push({ id, name: fields.slice(1, -2).join(" "), username: fields.at(-2) ?? "", url: fields.at(-1) ?? "" });
+  }
+  const rows: SourceRow[] = [];
+  for (const { id, name, username, url } of entries) {
+    if (!/^\d+$/.test(id) || id === "0" || listed.get(id) !== 1 || NOT_LOGINS.has(url)) continue;
+    // A name the app would clean down to nothing would fail the whole listing.
+    if (name.replace(LINE_BREAKS, " ").replace(EDGE_SPACE, "") === "") continue;
     rows.push({ id, title: name, subtitle: username || undefined });
   }
   return rows;
@@ -55,8 +69,11 @@ export const sources: Sources = {
       const signal = ctx.signal;
       if (!versionChecked) {
         const version = await yab.exec("lpass", ["--version"], { signal });
-        // Not remembered when it fails, so the column works again after `brew upgrade` without a restart.
-        if (version.exitCode !== 0 || !recentEnough(version.stdout)) throw new Error(yab.t("updateNeeded"));
+        // A calm row with the command, as for a lock. Not remembered, so the column works again after `brew upgrade`
+        // without a restart.
+        if (version.exitCode !== 0 || !recentEnough(version.stdout)) {
+          return { locked: true, message: yab.t("updateNeeded"), command: "brew upgrade lastpass-cli" };
+        }
         versionChecked = true;
       }
 
@@ -89,7 +106,15 @@ export const sources: Sources = {
       if (field === undefined || !/^\d+$/.test(rowId)) throw new Error(yab.t("showFailed"));
       // Never --clip: the app pastes the value itself, concealed, and gives the clipboard back.
       const result = await yab.exec("lpass", ["show", field, ...LOCAL_PLAIN, rowId], { signal: ctx.signal });
-      if (result.exitCode !== 0) throw new Error(yab.t("showFailed"));
+      if (result.exitCode !== 0) {
+        // LastPass may have locked since the list: then say so, and let the rows go with the lock.
+        const status = await yab.exec("lpass", ["status", "-q"], { signal: ctx.signal });
+        if (status.exitCode !== 0) {
+          cached = undefined;
+          throw new Error(yab.t("locked"));
+        }
+        throw new Error(yab.t("showFailed"));
+      }
       const value = printed(result.stdout);
       // lpass prints an empty field when it cannot decrypt one: never paste that.
       if (field === "--password") {

@@ -10,7 +10,7 @@
   "username.copied": "Username copied.",
   "locked": "LastPass is locked",
   "emailPlaceholder": "<email>",
-  "updateNeeded": "lpass needs an update: brew upgrade lastpass-cli",
+  "updateNeeded": "lpass needs an update",
   "listFailed": "lpass could not list the vault.",
   "showFailed": "lpass could not read this entry.",
   "emptyPassword": "This entry’s password couldn’t be read (lpass may need an update).",

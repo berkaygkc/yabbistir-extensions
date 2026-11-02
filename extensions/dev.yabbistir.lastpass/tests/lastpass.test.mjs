@@ -36,7 +36,8 @@ const LISTING = [
   "1012\t\tdeniz.k\thttps://adsiz.ornek.dev",
   "1013\t  \tdeniz.k\thttps://bosluk.ornek.dev",
   "x1014\tBozuk\tdeniz.k\thttps://ornek.dev",
-  "1001\tornek.dev yine\tdeniz.k\thttps://ornek.dev",
+  "1030\tİkiz\tdeniz.k\thttps://ikiz.ornek.dev",
+  "1030\tİkiz yine\tdeniz.k\thttps://ikiz.ornek.dev",
 ].join("\n") + "\n";
 
 const ROWS = [
@@ -78,7 +79,7 @@ const commands = (host) => runs(host).map((args) => args[0]);
 const listings = (host) => commands(host).filter((command) => command === "ls").length;
 const settled = (promise) => promise.then(() => undefined, () => undefined);
 
-const UPDATE = "lpass needs an update: brew upgrade lastpass-cli";
+const UPDATE = { locked: true, message: "lpass needs an update", command: "brew upgrade lastpass-cli" };
 const SHOW_FAILED = "lpass could not read this entry.";
 
 describe("list", () => {
@@ -140,6 +141,30 @@ describe("list", () => {
     assert.equal(listings(after), 1, "the rows are read again, well within five minutes");
   });
 
+  test("a tab in a name stays in the name, and a tab in a folder's name still leaves it out", async () => {
+    const listing = ["1001\tİş\tPortalı\tdeniz.k\thttps://ornek.dev", "1010\tİş\tKlasörü\t\thttp://group", "1011\tWi-Fi\tnotu\t\thttp://sn"].join("\n") + "\n";
+    const host = hostWith(await newHelper(), fakeLpass({ listing }));
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1001", title: "İş Portalı", subtitle: "deniz.k" }] });
+  });
+
+  test("a name with a line break cannot forge another entry's row", async () => {
+    // 1001's name is "Sahte\n1002\tPosta": lpass prints it over two lines, and the second claims 1002's id.
+    const listing = [
+      "1001\tSahte",
+      "1002\tPosta\tdeniz.k\thttps://ornek.dev",
+      "1002\tPosta\tdeniz.k@ornek.dev\thttps://posta.ornek.dev",
+      "1003\tKasa\t\thttps://kasa.ornek.dev",
+    ].join("\n") + "\n";
+    const host = hostWith(await newHelper(), fakeLpass({ listing }));
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1003", title: "Kasa" }] }, "every row of a repeated id goes");
+  });
+
+  test("a name that is blank once the app cleans it is left out", async () => {
+    const listing = ["1001\t\u0085\tdeniz.k\thttps://ornek.dev", "1002\t\u2028 \u3000\tdeniz.k\thttps://ornek.dev", "1003\tKasa\t\thttps://kasa.ornek.dev"].join("\n") + "\n";
+    const host = hostWith(await newHelper(), fakeLpass({ listing }));
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1003", title: "Kasa" }] });
+  });
+
   test("a failed listing says so without its output, and is not cached", async () => {
     const sources = await newHelper();
     const lpass = fakeLpass({ listExit: 1, listing: "1001\ts3cr3t-örnek\tdeniz.k\thttps://ornek.dev\n", listStderr: "Error: s3cr3t-örnek\n" });
@@ -157,9 +182,9 @@ describe("list", () => {
 });
 
 describe("lpass version", () => {
-  test("an old lpass asks for an update", async () => {
+  test("an old lpass shows a calm row with the command that updates it", async () => {
     const host = hostWith(await newHelper(), fakeLpass({ version: "LastPass CLI v1.6.0" }));
-    await assert.rejects(host.list("vault"), { message: UPDATE });
+    assert.deepEqual(await host.list("vault"), UPDATE);
     assert.deepEqual(commands(host), ["--version"], "nothing else runs");
   });
 
@@ -169,7 +194,7 @@ describe("lpass version", () => {
       assert.deepEqual(listing, { rows: ROWS }, version);
     }
     for (const version of ["LastPass CLI v1.6.1", "LastPass CLI v1.5.9", "LastPass CLI v0.9.9", "LastPass CLI", ""]) {
-      await assert.rejects(hostWith(await newHelper(), fakeLpass({ version })).list("vault"), { message: UPDATE }, version);
+      assert.deepEqual(await hostWith(await newHelper(), fakeLpass({ version })).list("vault"), UPDATE, version);
     }
   });
 
@@ -187,9 +212,9 @@ describe("lpass version", () => {
   test("an update is noticed without a restart", async () => {
     const sources = await newHelper();
     const lpass = fakeLpass({ version: "LastPass CLI v1.6.0" });
-    await assert.rejects(hostWith(sources, lpass).list("vault"), { message: UPDATE });
+    assert.deepEqual(await hostWith(sources, lpass).list("vault"), UPDATE);
     const again = hostWith(sources, lpass);
-    await assert.rejects(again.list("vault"), { message: UPDATE }, "an old lpass is refused every time");
+    assert.deepEqual(await again.list("vault"), UPDATE, "an old lpass is asked about every time");
     assert.deepEqual(commands(again), ["--version"]);
     lpass.state.version = "LastPass CLI v1.6.2";
     assert.deepEqual(await hostWith(sources, lpass).list("vault"), { rows: ROWS });
@@ -239,6 +264,21 @@ describe("run", () => {
     }
   });
 
+  test("a show that fails because LastPass locked says so, and the list is read again", async () => {
+    const sources = await newHelper();
+    const lpass = fakeLpass();
+    await hostWith(sources, lpass).list("vault");
+    Object.assign(lpass.state, { loggedIn: false, show: { exitCode: 1, stdout: "", stderr: "Error: Could not find decryption key.\n" } });
+    const host = hostWith(sources, lpass, { now: START + 1_000 });
+    await assert.rejects(host.runSource("vault", "1001", "password"), { message: "LastPass is locked" });
+    assert.deepEqual(runs(host), [["show", "--password", "--sync=no", "--color=never", "1001"], ["status", "-q"]]);
+
+    Object.assign(lpass.state, { loggedIn: true, show: undefined });
+    const after = hostWith(sources, lpass, { now: START + 2_000 });
+    assert.deepEqual(await after.list("vault"), { rows: ROWS });
+    assert.equal(listings(after), 1, "the rows went with the lock");
+  });
+
   test("row ids must be numbers", async () => {
     const host = hostWith(await newHelper(), fakeLpass());
     for (const rowId of ["1; rm", "--help", "-1", "", "12\n", "１２", "1001 "]) {
@@ -270,6 +310,7 @@ describe("everywhere", () => {
     await on({}, (host) => host.runSource("vault", "1003", "password"));
     await on({}, (host) => host.runSource("vault", "1003", "username"));
     await on({ show: { exitCode: 1, stdout: "", stderr: "Error: s3cr3t-örnek\n" } }, (host) => host.runSource("vault", "1001", "password"));
+    await on({ loggedIn: false, show: { exitCode: 1, stdout: "s3cr3t-örnek\n", stderr: "" } }, (host) => host.runSource("vault", "1001", "password"));
     await on({}, (host) => host.runSource("vault", "1; rm", "password"));
     return hosts;
   }
@@ -286,7 +327,8 @@ describe("everywhere", () => {
   });
 
   test("every lpass run carries the call's signal", async () => {
-    const host = hostWith(await newHelper(), fakeLpass());
+    const lpass = fakeLpass();
+    const host = hostWith(await newHelper(), lpass);
     const signals = [];
     const exec = host.yab.exec;
     host.yab.exec = (tool, args, options) => {
@@ -295,7 +337,9 @@ describe("everywhere", () => {
     };
     await host.list("vault");
     await host.runSource("vault", "1001", "password");
-    assert.equal(signals.length, 4);
+    lpass.state.show = { exitCode: 1, stdout: "", stderr: "" };
+    await settled(host.runSource("vault", "1001", "password"));
+    assert.equal(signals.length, 6, "the status asked after a failed show too");
     assert.ok(signals.every((signal) => signal instanceof AbortSignal));
   });
 
@@ -305,9 +349,11 @@ describe("everywhere", () => {
     const host = hostWith(await newHelper(), fakeLpass(), { language: "tr" });
     await assert.rejects(host.runSource("vault", "1003", "password"), { message: "Bu kaydın şifresi okunamadı (lpass güncellenmeli olabilir)." });
     await assert.rejects(host.runSource("vault", "x", "password"), { message: "lpass bu kaydı okuyamadı." });
+    const old = hostWith(await newHelper(), fakeLpass({ version: "LastPass CLI v1.6.0" }), { language: "tr" });
+    assert.deepEqual(await old.list("vault"), { locked: true, message: "lpass güncellenmeli", command: "brew upgrade lastpass-cli" });
   });
 
-  test("without lpass the column says how to install it", async () => {
+  test("without lpass every call fails as toolMissing, with the manifest's install command", async () => {
     const host = createFakeHost({ folder, sources: await newHelper() });
     await assert.rejects(host.list("vault"), { code: "toolMissing", message: /brew install lastpass-cli/ });
   });

@@ -10,7 +10,7 @@
   "username.copied": "Kullanıcı adı kopyalandı.",
   "locked": "LastPass kilitli",
   "emailPlaceholder": "<e-posta>",
-  "updateNeeded": "lpass güncellenmeli: brew upgrade lastpass-cli",
+  "updateNeeded": "lpass güncellenmeli",
   "listFailed": "lpass kasayı listeleyemedi.",
   "showFailed": "lpass bu kaydı okuyamadı.",
   "emptyPassword": "Bu kaydın şifresi okunamadı (lpass güncellenmeli olabilir).",
