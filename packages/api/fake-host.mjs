@@ -9,9 +9,10 @@
 // It holds an extension to the app's rules: permissions come from the manifest, `yab.http.fetch` and `fetch` reach only
 // the manifest's domains and answer from `http`, `yab.exec` runs only the manifest's tools and answers from `exec`, and
 // hints, detectors, previews and capture rules get no network, programs, notices, AI or translation. A source's rows
-// and values are checked, cleaned and capped as the app does. What the app would refuse is refused here with the same
-// `code` ("permissionDenied", "networkError", "toolMissing", …). Nothing reaches the network or runs a program; files
-// live in memory.
+// and values are checked, cleaned and capped as the app does, and its calls open no link and show no notice. The
+// console is the app's (five methods) from the moment this module loads. What the app would refuse is refused here
+// with the same `code` ("permissionDenied", "networkError", "toolMissing", …). Nothing reaches the network or runs a
+// program; files live in memory.
 //
 // createFakeHost(options) → host
 //   folder       the extension's folder (a path or file: URL): reads manifest.json and locales/*.json
@@ -63,9 +64,11 @@
 //   notifications, opened, progress, results     what yab.notify, yab.open and yab.job.progress got, and what the
 //                                                calls above returned (a source's answers are not kept: the app keeps
 //                                                no value)
-//   logs                 the extension's Development log: each console line written during a call (text as it is,
-//                        objects as JSON, joined with spaces), and the host's own notes, such as a listing cut at 10 000
-//                        rows. Console lines still reach the test's console too.
+//   logs                 console lines and the host's own notes: each line written during this host's calls, or
+//                        outside any call (the module's top level, a timer), as the app writes it (text as it is,
+//                        objects as JSON, joined with spaces), and notes such as a listing cut at 10 000 rows. The
+//                        console has the app's five methods (log, info, warn, error, debug); the rest throw, as in
+//                        the app. Lines still reach the test's console too.
 //   files, storage       the fake disk (a Map of path → bytes) and the store
 //
 // acceptsMatch(accepts, item, { extensionID }?) → boolean
@@ -393,14 +396,20 @@ function checkValue(value, kind) {
 }
 
 // ---- The console ----
-// While a call runs, the global console also writes each line to the calling host's `logs`, as the app writes console
-// lines to the extension's Development log. Every line still reaches the console it replaces, and one written outside
-// a call is only passed on.
+// The app gives an extension a console of five methods (log, info, warn, error, debug) and writes each line to the
+// extension's Development log. This console takes the global's place once, when this module loads (before the
+// extension's code, as tests import it), so a method taken from it at load (`const { log } = console`) is recorded
+// too. A line written while a call runs goes to that call's host's `logs`; one written outside a call (the module's
+// top level, a timer after a call) goes to every host's, and one written before any host exists to each host made
+// later. Every line still reaches the console it replaced. The app's console has no table, dir, trace or the rest, so
+// calling one throws here as it does there.
 
 const consoleSink = new AsyncLocalStorage();
 const LOG_LEVELS = ["log", "info", "warn", "error", "debug"];
-let consoleHolds = 0;
-let releaseConsole = () => {};
+/** Lines written outside a call before any host was made: each host starts with them. */
+const beforeHosts = [];
+/** Every host's `logs`, once there is one: where a line written outside a call goes. */
+let hostLogs;
 
 /** A console argument as the app writes it: text as it is, an object as JSON, anything else as String() gives it. */
 function logText(value) {
@@ -416,31 +425,21 @@ function logText(value) {
   return String(value);
 }
 
-/** Puts the recording console in place for one call; returns what takes it away again once no call needs it. */
-function holdConsole() {
-  if (consoleHolds++ === 0) {
-    const previous = Object.getOwnPropertyDescriptor(globalThis, "console");
-    const real = globalThis.console;
-    const recording = Object.create(real);
-    for (const level of LOG_LEVELS) {
-      recording[level] = (...args) => {
-        consoleSink.getStore()?.(args.map(logText).join(" "));
-        return real[level](...args);
-      };
-    }
-    Object.defineProperty(globalThis, "console", { value: recording, writable: true, configurable: true, enumerable: previous?.enumerable ?? false });
-    releaseConsole = () => {
-      if (globalThis.console !== recording) return;
-      if (previous) Object.defineProperty(globalThis, "console", previous);
-      else delete globalThis.console;
+{
+  const real = globalThis.console;
+  const recording = {};
+  for (const level of LOG_LEVELS) {
+    recording[level] = (...args) => {
+      const line = args.map(logText).join(" ");
+      const inCall = consoleSink.getStore();
+      if (inCall) inCall(line);
+      else if (hostLogs) for (const logs of hostLogs) logs.push(line);
+      else beforeHosts.push(line);
+      return real[level](...args);
     };
   }
-  let held = true;
-  return () => {
-    if (!held) return;
-    held = false;
-    if (--consoleHolds === 0) releaseConsole();
-  };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "console");
+  Object.defineProperty(globalThis, "console", { value: recording, writable: true, configurable: true, enumerable: previous?.enumerable ?? false });
 }
 
 export function createFakeHost(options = {}) {
@@ -460,7 +459,8 @@ export function createFakeHost(options = {}) {
   const opened = [];
   const progress = [];
   const results = [];
-  const logs = [];
+  const logs = [...beforeHosts];
+  (hostLogs ??= new Set()).add(logs);
   const files = new Map(Object.entries(options.files ?? {}).map(([file, data]) => [file, bytesOf(data)]));
   const storage = structuredClone(options.storage ?? {});
   const images = new Map();
@@ -506,6 +506,11 @@ export function createFakeHost(options = {}) {
     if (own.cancelled) throw cancelled();
     if (!own.effects) throw yabError("permissionDenied", `${name} is not available in hints, detectors and previews`);
     return own;
+  }
+  /** A source's list or run opens no link and shows no notice: either could carry a value out. */
+  function refuseSources() {
+    const { kind } = scope();
+    if (kind === "sourceList" || kind === "sourceRun") throw yabError("permissionDenied", "a source cannot open links or show notices");
   }
   function requirePermission(permission) {
     const own = requireEffects(permission);
@@ -876,12 +881,14 @@ export function createFakeHost(options = {}) {
     notify(message) {
       record("notify", [message]);
       requireEffects("yab.notify");
+      refuseSources();
       if (typeof message !== "string") throw yabError("badResult", "yab.notify takes a message");
       notifications.push([...message].slice(0, 200).join(""));
     },
     open(url) {
       record("open", [url]);
       requireEffects("yab.open");
+      refuseSources();
       let link;
       try {
         link = new URL(String(url));
@@ -1001,7 +1008,6 @@ export function createFakeHost(options = {}) {
     own.item = item;
     own.overrides = overrides ?? {};
     const restoreGlobals = setGlobals();
-    const releaseHeldConsole = holdConsole();
     return withClock(clock, () => new Promise((resolve, reject) => {
       own.pending.add(() => reject(cancelled()));
       consoleSink.run((line) => logs.push(line), () => current.run(own, () => {
@@ -1014,7 +1020,6 @@ export function createFakeHost(options = {}) {
     })).finally(() => {
       active.delete(own);
       restoreGlobals();
-      releaseHeldConsole();
     });
   }
   function checkResult(value, own) {

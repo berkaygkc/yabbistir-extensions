@@ -1,5 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { acceptsMatch, createFakeHost, yabError } from "../fake-host.mjs";
 
@@ -409,26 +413,99 @@ describe("sources", () => {
     await assert.rejects(createFakeHost({ manifest: vault, exec: tools }).list("vault"), { code: "notFound", message: /sources\.vault\.list is not exported/ });
   });
 
-  test("console lines go to host.logs", async () => {
-    const host = hostWith({ list: () => {
-      console.log("listing", { count: 1 }, 2);
-      console.error("done");
-      return { rows: [] };
-    } });
-    const forwarded = [];
-    const realConsole = globalThis.console;
-    const original = { log: console.log, error: console.error };
-    console.log = (...args) => forwarded.push(args);
-    console.error = (...args) => forwarded.push(args);
+  test("a source cannot open links or show notices", async () => {
+    const tries = () => {
+      const codes = [];
+      for (const ask of [() => yab.notify("s3cr3t-örnek"), () => yab.open("https://ornek.dev/?p=s3cr3t-örnek")]) {
+        try {
+          ask();
+          codes.push("sent");
+        } catch (error) {
+          codes.push(`${error.code}: ${error.message}`);
+        }
+      }
+      return codes.join("|");
+    };
+    const host = hostWith({ list: () => ({ rows: [{ id: "1", title: tries() }] }), run: () => ({ secret: tries() }) });
+    const refused = "permissionDenied: a source cannot open links or show notices";
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1", title: `${refused}|${refused}` }] });
+    assert.deepEqual(await host.runSource("vault", "1", "password"), { secret: `${refused}|${refused}` });
+    assert.deepEqual(host.notifications, []);
+    assert.deepEqual(host.opened, []);
+  });
+});
+
+describe("console", () => {
+  const fakeHost = new URL("../fake-host.mjs", import.meta.url).href;
+  const vault = { id: "dev.example.vault", contributes: { sources: [{ id: "vault", title: "vault.title", actions: [
+    { id: "username", kind: "text", title: "username.title", label: "username.label" },
+  ] }] } };
+
+  /**
+   * Runs `script` in a Node of its own, as an extension's test runs: the fake host is imported first, then the
+   * extension (`extension`, as ./extension.mjs), and the script ends by printing a report. Returns the report, and
+   * what the process wrote.
+   */
+  function isolated(extension, script) {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "yab-console-"));
     try {
-      await host.list("vault");
-      console.log("the test's own line, outside a call");
+      fs.writeFileSync(path.join(folder, "extension.mjs"), extension);
+      fs.writeFileSync(path.join(folder, "test.mjs"), [
+        `import { createFakeHost } from ${JSON.stringify(fakeHost)};`,
+        `import { sources } from "./extension.mjs";`,
+        `const manifest = ${JSON.stringify(vault)};`,
+        script,
+      ].join("\n"));
+      const child = spawnSync(process.execPath, [path.join(folder, "test.mjs")], { encoding: "utf8" });
+      assert.equal(child.status, 0, child.stderr);
+      const report = child.stdout.split("\n").find((line) => line.startsWith("REPORT "));
+      return { report: JSON.parse(report.slice("REPORT ".length)), stdout: child.stdout, stderr: child.stderr };
     } finally {
-      Object.assign(console, original);
+      fs.rmSync(folder, { recursive: true, force: true });
     }
-    assert.deepEqual(host.logs, ["listing {\"count\":1} 2", "done"]);
-    assert.equal(forwarded.length, 3, "every line still reaches the test's own console");
-    assert.equal(globalThis.console, realConsole, "the console is the test's own again once no call runs");
+  }
+  const report = (expression) => `process.stdout.write("REPORT " + JSON.stringify(${expression}) + "\\n");`;
+
+  test("lines written during a call go to host.logs and still reach the console", () => {
+    const { report: logs, stdout, stderr } = isolated(
+      `export const sources = { vault: { list() { console.log("listing", { count: 1 }, 2); console.error("done"); return { rows: [] }; } } };`,
+      `const host = createFakeHost({ manifest, sources });\nawait host.list("vault");\n${report("host.logs")}`);
+    assert.deepEqual(logs, ["listing {\"count\":1} 2", "done"]);
+    assert.match(stdout, /listing \{ count: 1 \} 2/);
+    assert.match(stderr, /done/);
+  });
+
+  test("a console method taken at load, and the module's own top level, are recorded", () => {
+    const { report: logs } = isolated([
+      `const { log } = console;`,
+      `console.info("loaded");`,
+      `export const sources = { vault: { list() { log("listing"); return { rows: [] }; } } };`,
+    ].join("\n"), `const host = createFakeHost({ manifest, sources });\nawait host.list("vault");\n${report("host.logs")}`);
+    assert.deepEqual(logs, ["loaded", "listing"]);
+  });
+
+  test("a line written outside a call reaches every host", () => {
+    const { report: logs } = isolated(
+      `export const sources = { vault: { list() { console.log("in a call"); return { rows: [] }; } } };`,
+      [
+        `const first = createFakeHost({ manifest, sources });`,
+        `const second = createFakeHost({ manifest, sources });`,
+        `await second.list("vault");`,
+        `console.warn("after the call");`,
+        report("[first.logs, second.logs]"),
+      ].join("\n"));
+    assert.deepEqual(logs, [["after the call"], ["in a call", "after the call"]]);
+  });
+
+  test("the console has the app's five methods only", () => {
+    const { report: seen } = isolated(`export const sources = {};`, [
+      `const failures = [];`,
+      `for (const method of ["table", "dir", "trace"]) {`,
+      `  try { console[method]("x"); failures.push(method + " ran"); } catch (error) { failures.push(error.constructor.name); }`,
+      `}`,
+      report("{ methods: Object.keys(console), failures }"),
+    ].join("\n"));
+    assert.deepEqual(seen, { methods: ["log", "info", "warn", "error", "debug"], failures: ["TypeError", "TypeError", "TypeError"] });
   });
 });
 

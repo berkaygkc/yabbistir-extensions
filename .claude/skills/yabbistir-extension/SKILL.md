@@ -73,7 +73,7 @@ test("doesTheThing", async () => {
 - Cover the main path, every message the person can see, and the expected failures.
 - Answer network calls with `http`, programs with `exec`, the model with `ai`, translation with `translate`.
 - Use `host.hint`, `host.validate`, `host.preview` and `host.capture` for calls that run without effects.
-- For a source, pass `sources` to `createFakeHost` and use `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)`; check that `host.logs` stays empty.
+- For a source, pass `sources` to `createFakeHost` and use `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)`; check that `host.logs` (console lines and the host's own notes) stays empty: never log a row or a value.
 - Run `npm test -- <id>` until it passes.
 
 ## 5. Build and check

@@ -209,7 +209,7 @@ const folder = new URL("..", import.meta.url);
 test("pastesThePassword", async () => {
   const host = createFakeHost({ folder, sources, exec: { "vault-cli": (args) => ({ exitCode: 0, stdout: `s3cret-for-${args.at(-1)}\n`, stderr: "" }) } });
   assert.deepEqual(await host.runSource("vault", "42", "password"), { secret: "s3cret-for-42" });
-  assert.deepEqual(host.logs, [], "nothing reaches the Development log");
+  assert.deepEqual(host.logs, [], "no console line and no note: nothing a log would show");
 });
 ```
 

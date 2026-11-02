@@ -87,7 +87,7 @@ An answer in any table can be an `Error` to make the call fail, and `yabError(co
 |---|---|
 | `host.calls` | Every `yab` call in order, as `{ api, args }`, such as `{ api: "exec", args: ["yt-dlp", [...]] }`. Callbacks and signals are left out, and so are `t` and plain reads (`storage.get`, `files.read`, `files.exists`, `image.info`). |
 | `host.results` | What each call returned; a source's answers are left out, as the app keeps no value. |
-| `host.logs` | The extension's Development log: each `console` line written during a call, and the host's own notes, such as a listing cut at 10,000 rows. The lines still reach your console too. |
+| `host.logs` | Console lines and the host's own notes: each `console` line written during the host's calls or outside any call (the module's top level, a timer), and notes such as a listing cut at 10,000 rows; what the app would write to the extension's Development log. The console is the app's from the moment the fake host is imported: `log`, `info`, `warn`, `error` and `debug`, while the rest (`table`, `dir`, `trace`, …) throw, as in the app. The lines still reach your console too. |
 | `host.notifications` | The `yab.notify` messages, cut to 200 characters. |
 | `host.opened` | The links `yab.open` got. |
 | `host.progress` | Each `yab.job.progress` as `{ fraction, message }`. |
