@@ -1,5 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { acceptsMatch, createFakeHost, yabError } from "../fake-host.mjs";
 
@@ -251,6 +255,257 @@ describe("calls", () => {
     assert.equal(at.text, `2001-02-03T04:05:06.000Z ${Date.UTC(2001, 1, 3, 4, 5, 6)}`);
     assert.notEqual(new Date().getUTCFullYear(), 2001);
     assert.equal((await host.run({ run: (item) => ({ text: item.copiedAt }) })).text, "2001-02-03T04:05:06.000Z");
+  });
+});
+
+describe("sources", () => {
+  // Synthetic data only: a vault, ornek.dev, deniz.k and s3cr3t-örnek.
+  const vault = {
+    id: "dev.example.vault",
+    defaultLocale: "en",
+    permissions: ["exec"],
+    requires: { tools: [{ name: "vault-cli", install: "brew install vault-cli" }] },
+    contributes: { sources: [{ id: "vault", title: "vault.title", sensitive: true, actions: [
+      { id: "password", kind: "secret", title: "password.title", label: "password.label" },
+      { id: "username", kind: "text", title: "username.title", label: "username.label" },
+    ] }] },
+  };
+  const tools = { "vault-cli": { exitCode: 0, stdout: "", stderr: "" } };
+  const hostWith = (source, options = {}) => createFakeHost({ manifest: vault, exec: tools, sources: { vault: source }, ...options });
+  const listing = (answer) => hostWith({ list: () => answer }).list("vault");
+
+  test("lists rows and the locked state", async () => {
+    const rows = { rows: [{ id: "1", title: "ornek.dev", subtitle: "deniz.k" }, { id: "2", title: "Kasa" }] };
+    assert.deepEqual(await listing(rows), rows);
+    assert.deepEqual(await listing({ locked: true, message: "Kasa kilitli", command: "vault-cli login" }),
+      { locked: true, message: "Kasa kilitli", command: "vault-cli login" });
+    assert.deepEqual(await listing({ locked: true, message: "Kasa kilitli", rows: rows.rows }), { locked: true, message: "Kasa kilitli" },
+      "locked wins over rows");
+    assert.deepEqual(await listing({ locked: true, message: " Kasa\tkilitli ", command: "  " }), { locked: true, message: "Kasa kilitli" },
+      "a blank command is none");
+    assert.deepEqual(await listing({ locked: true, message: "k".repeat(300), command: "vault-cli login\n" }),
+      { locked: true, message: "k".repeat(200), command: "vault-cli login" });
+  });
+
+  test("caps and cleans rows like the app", async () => {
+    const host = hostWith({ list: () => ({ rows: [
+      { id: "0", title: "a\tb\nc", subtitle: "  \n " },
+      { id: "1", title: "x".repeat(300), subtitle: " deniz.k\r\n" },
+      { id: " 4\t2 ", title: " ornek.dev\u0085", subtitle: null },
+      { id: "e\u0301".repeat(256), title: "👩‍💻".repeat(300) },
+      ...Array.from({ length: 9_997 }, (_, i) => ({ id: String(i + 4), title: "ornek.dev" })),
+    ] }) });
+    const { rows } = await host.list("vault");
+    assert.equal(rows.length, 10_000);
+    assert.deepEqual(rows[0], { id: "0", title: "a b c" });
+    assert.deepEqual(rows[1], { id: "1", title: "x".repeat(256), subtitle: "deniz.k" });
+    assert.deepEqual(rows[2], { id: " 4\t2 ", title: "ornek.dev" }, "the id goes back exactly as listed");
+    assert.deepEqual(rows[3], { id: "e\u0301".repeat(256), title: "👩‍💻".repeat(256) }, "lengths count characters as a person sees them");
+    assert.deepEqual(rows.at(-1), { id: "9999", title: "ornek.dev" });
+    assert.deepEqual(host.logs, ["list returned more than 10000 rows; kept the first 10000"], "one line, naming no row");
+  });
+
+  test("every other listing is a bad result, named by its shape", async () => {
+    const cases = [
+      ["ornek.dev", "list returned a string; expected {rows} or {locked}"],
+      [[], "list returned an array; expected {rows} or {locked}"],
+      [undefined, "list returned nothing; expected {rows} or {locked}"],
+      [{ items: [] }, "list returned an object of another shape; expected {rows} or {locked}"],
+      [{ locked: false, message: "Kasa kilitli" }, "list returned an object of another shape; expected {rows} or {locked}"],
+      [{ rows: "ornek.dev" }, "rows must be an array of {id, title, subtitle?}"],
+      [{ rows: undefined }, "rows must be an array of {id, title, subtitle?}"],
+      [{ rows: ["ornek.dev"] }, "rows[0] is a string; expected {id, title, subtitle?}"],
+      [{ rows: [{ id: "1", title: "ornek.dev" }, { id: 2, title: "ornek.dev" }] }, "rows[1].id must be a non-empty string"],
+      [{ rows: [{ id: "", title: "ornek.dev" }] }, "rows[0].id must be a non-empty string"],
+      [{ rows: [{ id: "x".repeat(257), title: "ornek.dev" }] }, "rows[0].id is longer than 256 characters"],
+      [{ rows: [{ id: "1", title: "ornek.dev" }, { id: "2", title: "deniz.k" }, { id: "1", title: "Kasa" }] }, "rows[2].id repeats an earlier row's id"],
+      [{ rows: [{ id: "1", title: " \n " }] }, "rows[0].title must be a non-empty string"],
+      [{ rows: [{ id: "1" }] }, "rows[0].title must be a non-empty string"],
+      [{ rows: [{ id: "1", title: "ornek.dev", subtitle: 7 }] }, "rows[0].subtitle must be a string"],
+      [{ locked: true }, "a locked listing needs a non-empty message"],
+      [{ locked: true, message: " " }, "a locked listing needs a non-empty message"],
+      [{ locked: true, message: "Kasa kilitli", command: ["vault-cli", "login"] }, "command must be a string"],
+    ];
+    for (const [answer, message] of cases) {
+      await assert.rejects(listing(answer), { code: "badResult", message }, JSON.stringify(answer) ?? String(answer));
+    }
+  });
+
+  test("a secret action must return a secret", async () => {
+    const run = (answer, action = "password") => hostWith({ run: () => answer }).runSource("vault", "42", action);
+    assert.deepEqual(await run({ secret: "s3cr3t-örnek", note: "extra keys are ignored" }), { secret: "s3cr3t-örnek" });
+    assert.deepEqual(await run({ text: "deniz.k" }, "username"), { text: "deniz.k" });
+    assert.deepEqual(await run({ secret: " s3cr3t-örnek\n" }), { secret: " s3cr3t-örnek\n" }, "kept exactly as given");
+    const cases = [
+      [{ text: "s3cr3t-örnek" }, "password", "run returned {text}; this action expects {secret}"],
+      [{ secret: "s3cr3t-örnek" }, "username", "run returned {secret}; this action expects {text}"],
+      ["s3cr3t-örnek", "password", "run returned a string; this action expects {secret}"],
+      [undefined, "username", "run returned nothing; this action expects {text}"],
+      [{ value: "s3cr3t-örnek" }, "password", "run returned an object of another shape; this action expects {secret}"],
+      [{ secret: ["s3cr3t-örnek"] }, "password", "secret must be a string"],
+      [{ text: { s3cr3t: 1 } }, "username", "text must be a string"],
+    ];
+    for (const [answer, action, message] of cases) {
+      const error = await run(answer, action).then(() => undefined, (failure) => failure);
+      assert.equal(error?.code, "badResult", message);
+      assert.equal(error.message, message);
+      assert.doesNotMatch(error.message, /s3cr3t/, "a reason names shapes, never the value");
+    }
+  });
+
+  test("a blank value is refused", async () => {
+    for (const [action, answer] of [["password", { secret: "  \n" }], ["username", { text: "" }], ["username", { text: " \t" }]]) {
+      await assert.rejects(hostWith({ run: () => answer }).runSource("vault", "42", action), { code: "badResult", message: "run returned an empty value" });
+    }
+  });
+
+  test("run receives row, action and a ctx with a signal", async () => {
+    let seen;
+    const host = hostWith({
+      list: (...args) => { seen = { list: args }; return { rows: [] }; },
+      run: (...args) => { seen = { run: args }; return { secret: "s3cr3t-örnek" }; },
+    }, { context: { language: "tr", variant: "audio", target: { bundleID: "com.apple.finder", name: "Finder", kind: "finder" } } });
+    await host.list("vault");
+    assert.equal(seen.list.length, 1, "list gets the context alone");
+    await host.runSource("vault", " 4\t2 ", "password", { language: "en" });
+    const [rowId, actionId, ctx] = seen.run;
+    assert.deepEqual([rowId, actionId], [" 4\t2 ", "password"]);
+    assert.equal(ctx.trigger, "source");
+    assert.equal(ctx.language, "en");
+    assert.equal(ctx.variant, null);
+    assert.equal(ctx.target, null, "a source's rows are the same wherever they go");
+    assert.ok(ctx.signal instanceof AbortSignal);
+    assert.equal(ctx.signal.aborted, false);
+  });
+
+  test("exec is allowed in a source call", async () => {
+    const host = hostWith({
+      async list(ctx) {
+        const result = await yab.exec("vault-cli", ["ls"], { signal: ctx.signal });
+        return { rows: [{ id: "1", title: result.stdout.trim() }] };
+      },
+      async run(rowId, actionId, ctx) {
+        const result = await yab.exec("vault-cli", ["show", "--", rowId], { signal: ctx.signal });
+        return { secret: result.stdout.replace(/\n$/, "") };
+      },
+    }, { exec: { "vault-cli": (args) => ({ exitCode: 0, stdout: args[0] === "ls" ? "ornek.dev\n" : "s3cr3t-örnek\n", stderr: "" }) } });
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1", title: "ornek.dev" }] });
+    assert.deepEqual(await host.runSource("vault", "1", "password"), { secret: "s3cr3t-örnek" });
+    assert.deepEqual(host.calls.map((call) => call.args.slice(0, 2)), [["vault-cli", ["ls"]], ["vault-cli", ["show", "--", "1"]]]);
+    // History stays out of reach: source calls are not runs of an action.
+    const history = hostWith({ list: async () => { await yab.history.recent(); return { rows: [] }; } },
+      { manifest: { ...vault, permissions: ["exec", "history"] } });
+    await assert.rejects(history.list("vault"), { code: "permissionDenied" });
+  });
+
+  test("a missing tool fails before the source runs, as in the app", async () => {
+    let called = false;
+    const host = createFakeHost({ manifest: vault, sources: { vault: { list: () => { called = true; return { rows: [] }; } } } });
+    await assert.rejects(host.list("vault"), { code: "toolMissing", message: "vault-cli is not installed. Install it with: brew install vault-cli" });
+    assert.equal(called, false);
+  });
+
+  test("an unknown source, action or export is not found", async () => {
+    const host = hostWith({ list: () => ({ rows: [] }) });
+    await assert.rejects(host.runSource("vault", "1", "password"), { code: "notFound", message: "sources.vault.run is not exported" });
+    await assert.rejects(host.runSource("vault", "1", "otp"), { code: "notFound", message: /otp/ });
+    await assert.rejects(host.list("other"), { code: "notFound", message: /other/ });
+    await assert.rejects(createFakeHost({ manifest: vault, exec: tools }).list("vault"), { code: "notFound", message: /sources\.vault\.list is not exported/ });
+  });
+
+  test("a source cannot open links or show notices", async () => {
+    const tries = () => {
+      const codes = [];
+      for (const ask of [() => yab.notify("s3cr3t-örnek"), () => yab.open("https://ornek.dev/?p=s3cr3t-örnek")]) {
+        try {
+          ask();
+          codes.push("sent");
+        } catch (error) {
+          codes.push(`${error.code}: ${error.message}`);
+        }
+      }
+      return codes.join("|");
+    };
+    const host = hostWith({ list: () => ({ rows: [{ id: "1", title: tries() }] }), run: () => ({ secret: tries() }) });
+    const refused = "permissionDenied: a source cannot open links or show notices";
+    assert.deepEqual(await host.list("vault"), { rows: [{ id: "1", title: `${refused}|${refused}` }] });
+    assert.deepEqual(await host.runSource("vault", "1", "password"), { secret: `${refused}|${refused}` });
+    assert.deepEqual(host.notifications, []);
+    assert.deepEqual(host.opened, []);
+  });
+});
+
+describe("console", () => {
+  const fakeHost = new URL("../fake-host.mjs", import.meta.url).href;
+  const vault = { id: "dev.example.vault", contributes: { sources: [{ id: "vault", title: "vault.title", actions: [
+    { id: "username", kind: "text", title: "username.title", label: "username.label" },
+  ] }] } };
+
+  /**
+   * Runs `script` in a Node of its own, as an extension's test runs: the fake host is imported first, then the
+   * extension (`extension`, as ./extension.mjs), and the script ends by printing a report. Returns the report, and
+   * what the process wrote.
+   */
+  function isolated(extension, script) {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), "yab-console-"));
+    try {
+      fs.writeFileSync(path.join(folder, "extension.mjs"), extension);
+      fs.writeFileSync(path.join(folder, "test.mjs"), [
+        `import { createFakeHost } from ${JSON.stringify(fakeHost)};`,
+        `import { sources } from "./extension.mjs";`,
+        `const manifest = ${JSON.stringify(vault)};`,
+        script,
+      ].join("\n"));
+      const child = spawnSync(process.execPath, [path.join(folder, "test.mjs")], { encoding: "utf8" });
+      assert.equal(child.status, 0, child.stderr);
+      const report = child.stdout.split("\n").find((line) => line.startsWith("REPORT "));
+      return { report: JSON.parse(report.slice("REPORT ".length)), stdout: child.stdout, stderr: child.stderr };
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
+  }
+  const report = (expression) => `process.stdout.write("REPORT " + JSON.stringify(${expression}) + "\\n");`;
+
+  test("lines written during a call go to host.logs and still reach the console", () => {
+    const { report: logs, stdout, stderr } = isolated(
+      `export const sources = { vault: { list() { console.log("listing", { count: 1 }, 2); console.error("done"); return { rows: [] }; } } };`,
+      `const host = createFakeHost({ manifest, sources });\nawait host.list("vault");\n${report("host.logs")}`);
+    assert.deepEqual(logs, ["listing {\"count\":1} 2", "done"]);
+    assert.match(stdout, /listing \{ count: 1 \} 2/);
+    assert.match(stderr, /done/);
+  });
+
+  test("a console method taken at load, and the module's own top level, are recorded", () => {
+    const { report: logs } = isolated([
+      `const { log } = console;`,
+      `console.info("loaded");`,
+      `export const sources = { vault: { list() { log("listing"); return { rows: [] }; } } };`,
+    ].join("\n"), `const host = createFakeHost({ manifest, sources });\nawait host.list("vault");\n${report("host.logs")}`);
+    assert.deepEqual(logs, ["loaded", "listing"]);
+  });
+
+  test("a line written outside a call reaches every host", () => {
+    const { report: logs } = isolated(
+      `export const sources = { vault: { list() { console.log("in a call"); return { rows: [] }; } } };`,
+      [
+        `const first = createFakeHost({ manifest, sources });`,
+        `const second = createFakeHost({ manifest, sources });`,
+        `await second.list("vault");`,
+        `console.warn("after the call");`,
+        report("[first.logs, second.logs]"),
+      ].join("\n"));
+    assert.deepEqual(logs, [["after the call"], ["in a call", "after the call"]]);
+  });
+
+  test("the console has the app's five methods only", () => {
+    const { report: seen } = isolated(`export const sources = {};`, [
+      `const failures = [];`,
+      `for (const method of ["table", "dir", "trace"]) {`,
+      `  try { console[method]("x"); failures.push(method + " ran"); } catch (error) { failures.push(error.constructor.name); }`,
+      `}`,
+      report("{ methods: Object.keys(console), failures }"),
+    ].join("\n"));
+    assert.deepEqual(seen, { methods: ["log", "info", "warn", "error", "debug"], failures: ["TypeError", "TypeError", "TypeError"] });
   });
 });
 

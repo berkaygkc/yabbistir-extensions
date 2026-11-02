@@ -44,6 +44,18 @@ describe("the schema checker", () => {
     assert.deepEqual(checkSchema(schema, { p: "aa", l: "ab", e: "y", c: 1, m: 1, list: ["a"], u: [1, 2] }), []);
     assert.deepEqual(fields(checkSchema(schema, { p: "ab", l: "a", e: "z", c: 2, m: 0, list: [], u: [1, 1] })), ["p", "l", "e", "c", "m", "list", "u"]);
     assert.deepEqual(fields(checkSchema(schema, { list: ["a", 2] })), ["list[1]"]);
+    const bounded = { type: "array", maxItems: 2 };
+    assert.deepEqual(checkSchema(bounded, [1, 2]), []);
+    assert.deepEqual(checkSchema(bounded, [1, 2, 3]).map((error) => [error.keyword, error.message]), [["maxItems", "must have at most 2 entries"]]);
+  });
+
+  test("a source's actions are one or two", () => {
+    const manifest = (actions) => ({ id: "dev.example.sample", version: "1.0.0", apiVersion: 1, defaultLocale: "en", name: "n", description: "d",
+      icon: "sf:x", author: "a", license: "MIT", contributes: { sources: [{ id: "vault", title: "t", actions }] } });
+    const action = (id) => ({ id, kind: "text", title: "t", label: "l" });
+    assert.deepEqual(checkSchema(manifestSchema, manifest([action("a"), action("b")])), []);
+    assert.deepEqual(fields(checkSchema(manifestSchema, manifest([]))), ["contributes.sources[0].actions"]);
+    assert.deepEqual(fields(checkSchema(manifestSchema, manifest([action("a"), action("b"), action("c")]))), ["contributes.sources[0].actions"]);
   });
 
   test("$ref and if/then", () => {
@@ -95,6 +107,7 @@ describe("the catalog schema", () => {
       icon: "https://berkaygkc.github.io/yabbistir-extensions/v1/icons/dev.example.icon.png" };
     assert.deepEqual(checkSchema(catalogSchema, catalog(entry(), second)), []);
     assert.deepEqual(checkSchema(catalogSchema, catalog()), []);
+    assert.deepEqual(checkSchema(catalogSchema, catalog({ ...entry(), sensitive: true })), [], "sensitive is optional");
   });
 
   test("it rejects what the app could not read", () => {
@@ -109,6 +122,7 @@ describe("the catalog schema", () => {
       "extensions[0].networkHosts[0]": { networkHosts: ["https://api.example.com"] },
       "extensions[0].permissions[0]": { permissions: ["teleport"] },
       "extensions[0].extra": { extra: true },
+      "extensions[0].sensitive": { sensitive: "yes" },
     };
     for (const [field, change] of Object.entries(cases)) {
       assert.deepEqual(fields(checkSchema(catalogSchema, catalog({ ...entry(), ...change }))), [field], JSON.stringify(change));

@@ -1,0 +1,11 @@
+{
+  "name": "{{name}}",
+  "description": "Hazır metinlerin panelde kendi sütununda, yapıştırmaya hazır.",
+  "snippets.title": "Hazır metinler, | ile ayrılmış",
+  "source.title": "Hazır metinler",
+  "paste.title": "Metni yapıştır",
+  "paste.label": "Metin",
+  "paste.copyTitle": "Metni kopyala",
+  "paste.copied": "Metin kopyalandı.",
+  "gone": "Bu metin artık Ayarlar’da yok."
+}

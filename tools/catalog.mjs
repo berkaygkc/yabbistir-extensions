@@ -120,6 +120,9 @@ async function entryFor(root, id, out) {
     permissions: manifest.permissions ?? [],
     networkHosts: manifest.network?.domains ?? [],
     tools: (manifest.requires?.tools ?? []).map((tool) => tool.name),
+    // A sensitive source's secrets get a consent sentence of their own, shown before the download; the app reads a
+    // missing field as false, so only true is written.
+    ...((manifest.contributes?.sources ?? []).some((source) => source?.sensitive === true) ? { sensitive: true } : {}),
     sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
     size: bytes.length,
     updatedAt,

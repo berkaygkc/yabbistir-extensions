@@ -1,0 +1,11 @@
+{
+  "name": "{{name}}",
+  "description": "Your snippets in a column of their own in the panel, ready to paste.",
+  "snippets.title": "Snippets, separated by |",
+  "source.title": "Snippets",
+  "paste.title": "Paste snippet",
+  "paste.label": "Snippet",
+  "paste.copyTitle": "Copy snippet",
+  "paste.copied": "Snippet copied.",
+  "gone": "This snippet is no longer in Settings."
+}

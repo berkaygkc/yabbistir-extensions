@@ -198,6 +198,6 @@ To share it, open a pull request: see [Publishing](publishing.md).
 
 ## Where next
 
-- [Concepts](concepts.md): items, actions, detectors, capture rules, jobs, and which one fits your idea.
+- [Concepts](concepts.md): items, actions, detectors, capture rules, sources, jobs, and which one fits your idea.
 - [Recipes](concepts.md#recipes): six small, complete extensions to start from.
 - [Design guidelines](design-guidelines.md): names, icons and words that fit the app.

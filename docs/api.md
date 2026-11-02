@@ -4,7 +4,7 @@
 
 @yabbistir/api — the extension API, version 1.
 
-An extension's index.ts exports `actions`, `detectors` and/or `captureRules`. yabbistir draws every piece of UI;
+An extension's index.ts exports `actions`, `detectors`, `captureRules` and/or `sources`. yabbistir draws every piece of UI;
 an extension only computes. The functions below run in JavaScriptCore (ES2022), not Node: there
 is no `require`, `process`, `fs` or `Buffer`. The web standards declared at the bottom are there.
 
@@ -14,7 +14,7 @@ Contents: [What an extension exports](#what-an-extension-exports) · [What a cal
 
 ## What an extension exports
 
-`src/index.ts` exports any of `actions`, `detectors` and `captureRules`, each an object keyed by the ids in manifest.json.
+`src/index.ts` exports any of `actions`, `detectors`, `captureRules` and `sources`, each an object keyed by the ids in manifest.json.
 
 ### Actions
 
@@ -91,6 +91,93 @@ export type CaptureResult =
   | { addToCategory: string };
 ```
 
+### Sources
+
+`exports.sources`, by each source's `id` in the manifest's `contributes.sources`.
+
+```ts snippet
+export type Sources = Record<string, Source>;
+```
+
+### Source
+
+A list the app shows as a column, with one or two row actions declared in the manifest under
+`contributes.sources`. Both functions get no item, and run as the person's own action, like an action's
+`run`: `yab.exec` works (with the `exec` permission), as do `yab.http` (with the `network` permission,
+which an extension with a `secret` action cannot ask for), `yab.ai` and `yab.translate`. `yab.history`
+rejects with "permissionDenied", and `yab.open` and `yab.notify` throw "permissionDenied": a link or a
+notice could carry a value out. `ctx.trigger` is "source".
+
+```ts snippet
+export interface Source {
+  /**
+   * The source's rows, or that it is locked. Called when the panel opens; the app shows the rows it already
+   * holds until the new ones come, then swaps them in quietly. `ctx.signal` aborts when the call is cancelled:
+   * pass it to `yab.exec` (`{ signal: ctx.signal }`) so the tool stops with it.
+   */
+  list(ctx: Context): SourceListing | Promise<SourceListing>;
+  /**
+   * A row's value for one action: `rowId` is a row's `id` exactly as listed, `actionId` the `id` of one of the
+   * source's actions in the manifest. `ctx` is as for `list`, with its own `signal`.
+   */
+  run(rowId: string, actionId: string, ctx: Context): SourceValue | Promise<SourceValue>;
+}
+```
+
+### SourceListing
+
+What `list` returns: the rows, or `locked` when the source needs the person to unlock it first (the app then
+drops the rows it held at once, and shows one calm row instead). `locked: true` wins over `rows` sent with
+it. `message` is required; `message` and `command` are cleaned like a row's title and cut to 200
+characters, and a blank `command` is none. `command` is a line the person runs to unlock the source
+(⌘C copies it); a line end in it becomes a space, so pasting it never runs it. Any other shape is a
+"badResult", whose reason in the Development log names shapes only.
+
+```ts snippet
+export type SourceListing =
+  | { rows: SourceRow[] }
+  | { locked: true; message: string; command?: string };
+```
+
+### SourceRow
+
+One row of a source, drawn by the app in its own category column. A listing keeps at most 10,000 rows: the
+rest are dropped, with one line in the Development log. Rows live in the app's memory only: never in history,
+the search index or on disk. A row that breaks a rule below fails the whole listing with "badResult".
+
+```ts snippet
+export interface SourceRow {
+  /**
+   * A non-empty string of at most 256 characters, its own to each row and the same each time it is listed.
+   * `run` gets it back exactly as listed: it is never cleaned or cut, so a longer one, or one an earlier row
+   * already has, fails the listing.
+   */
+  readonly id: string;
+  /**
+   * The row's first line. Tabs and line ends become spaces, the ends are trimmed and it is cut to 256
+   * characters; one that is empty after that fails the listing.
+   */
+  readonly title: string;
+  /**
+   * The second line, in the secondary color (a user name). Cleaned and cut like `title`; left out, null or
+   * blank, the row has none. Anything but a string fails the listing.
+   */
+  readonly subtitle?: string;
+}
+```
+
+### SourceValue
+
+What `run` returns: `{ secret }` for an action whose manifest `kind` is "secret" (of a `sensitive` source
+only), `{ text }` for a "text" one; the other shape, or any other value, is a "badResult". The string is
+kept exactly as given, so trim a tool's trailing newline yourself; an empty or whitespace-only one is a
+"badResult" too, and nothing is pasted or copied. Never log rows or values, and never put one in an error
+message: the app's own reasons name shapes only.
+
+```ts snippet
+export type SourceValue = { secret: string } | { text: string };
+```
+
 ## What a call gets
 
 ### Item
@@ -133,7 +220,7 @@ export interface Context {
   /** This extension's preferences (manifest defaults until the user changes them). */
   preferences: Record<string, unknown>;
   /** Where the call came from. */
-  trigger: "search" | "shiftPanel" | "commandK" | "detect" | "preview" | "capture";
+  trigger: "search" | "shiftPanel" | "commandK" | "detect" | "preview" | "capture" | "source";
   /** The variant the user chose, for actions with `variants`. */
   variant: string | null;
   /** The app the result is headed for, when known. */
@@ -191,7 +278,7 @@ export type PreviewSection =
 
 ## The yab object
 
-The global `yab` is the extension's way to the app. Each part says when it works: some need a permission, and some work only in a run the person started (not in hints, detectors, previews or capture rules).
+The global `yab` is the extension's way to the app. Each part says when it works: some need a permission, and some work only in a run the person started or a source's `list` and `run` (not in hints, detectors, previews or capture rules).
 
 ### yab.language
 
@@ -362,7 +449,8 @@ exists(path: string): boolean;
 Fetches a URL; needs the `network` permission and only reaches the manifest's `network.domains`
 (a host equals a domain or ends with ".domain"; redirects are held to the same list). Rejects with
 "permissionDenied" (host not allowed), "networkError" (failed, redirected outside the domains, or a text
-body over 10 MB without `toFile`) or "cancelled". Works only in a run the person started.
+body over 10 MB without `toFile`) or "cancelled". Works only in a run the person started or a source's
+`list` and `run`.
 Header names in the response are lowercased. With `toFile` the body streams into the work folder and
 `file` is its path (`true` names it after the URL's last path part, or "download"); a non-2xx answer is
 returned as `text` instead.
@@ -374,10 +462,10 @@ fetch(url: string, init?: HttpInit): Promise<HttpResponse>;
 ### yab.exec
 
 Runs a tool from the manifest's `requires.tools`; needs the `exec` permission and works only in a run
-the person started. No shell is involved: each argument reaches the tool as it is, so quoting,
-`;`, `$(…)` and `*` mean nothing special. The tool runs in `yab.files.workDir` with only PATH
-(the folders tools are looked for in, then /usr/bin:/bin:/usr/sbin:/sbin), HOME, TMPDIR, USER and LANG
-set. Resolves once it has exited and closed its output. Rejects with "permissionDenied" (no `exec`
+the person started or a source's `list` and `run`. No shell is involved: each argument reaches the tool
+as it is, so quoting, `;`, `$(…)` and `*` mean nothing special. The tool runs in `yab.files.workDir`
+with only PATH (the folders tools are looked for in, then /usr/bin:/bin:/usr/sbin:/sbin), HOME, TMPDIR,
+USER and LANG set. Resolves once it has exited and closed its output. Rejects with "permissionDenied" (no `exec`
 permission, or the tool is not in `requires.tools`), "toolMissing" (not installed; the message says how
 to install it), "badResult" (`args` is not an array of strings) or "cancelled". Cancelling the call or
 aborting `signal` sends SIGTERM to the tool and everything it started, and SIGKILL two seconds later.
@@ -389,9 +477,9 @@ exec(tool: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
 ### yab.notify
 
 Shows a calm notice titled with the extension's name. Works only in a run the person started (throws
-"permissionDenied" in hints, detectors, previews and capture rules); needs no permission. The message is
-cut to 200 characters, and an extension gets at most one notice every 3 seconds: more are dropped
-without an error. Returns at once; the app shows it.
+"permissionDenied" in hints, detectors, previews, capture rules and a source's `list` and `run`); needs
+no permission. The message is cut to 200 characters, and an extension gets at most one notice every 3
+seconds: more are dropped without an error. Returns at once; the app shows it.
 
 ```ts snippet
 notify(message: string): void;
@@ -400,8 +488,9 @@ notify(message: string): void;
 ### yab.open
 
 Opens a web link in the default browser. Only http and https links open; any other throws "badResult".
-Works only in a run the person started (throws "permissionDenied" in hints, detectors, previews and
-capture rules); needs no permission. Returns at once; the app opens it.
+Works only in a run the person started (throws "permissionDenied" in hints, detectors, previews, capture
+rules and a source's `list` and `run`, where a link's address could carry a value out); needs no
+permission. Returns at once; the app opens it.
 
 ```ts snippet
 open(url: string): void;

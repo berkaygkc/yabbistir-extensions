@@ -8,9 +8,11 @@
 //
 // It holds an extension to the app's rules: permissions come from the manifest, `yab.http.fetch` and `fetch` reach only
 // the manifest's domains and answer from `http`, `yab.exec` runs only the manifest's tools and answers from `exec`, and
-// hints, detectors, previews and capture rules get no network, programs, notices, AI or translation. What the app
-// would refuse is refused here with the same `code` ("permissionDenied", "networkError", "toolMissing", …). Nothing
-// reaches the network or runs a program; files live in memory.
+// hints, detectors, previews and capture rules get no network, programs, notices, AI or translation. A source's rows
+// and values are checked, cleaned and capped as the app does, and its calls open no link and show no notice. The
+// console is the app's (five methods) from the moment this module loads. What the app would refuse is refused here
+// with the same `code` ("permissionDenied", "networkError", "toolMissing", …). Nothing reaches the network or runs a
+// program; files live in memory.
 //
 // createFakeHost(options) → host
 //   folder       the extension's folder (a path or file: URL): reads manifest.json and locales/*.json
@@ -32,6 +34,7 @@
 //   storage      what yab.storage holds at the start
 //   now          a Date, ISO text or milliseconds: Date.now() and new Date() inside host.run() and the others, and
 //                the items' copiedAt
+//   sources      the extension's `sources` export, for host.list() and host.runSource()
 //
 // host
 //   yab                  the `yab` object; it is the global `yab` (and `fetch` the fake one) while a call below runs
@@ -40,6 +43,17 @@
 //   validate(detector, item?)               a detector's validate
 //   preview(detector, item?, context?)      a detector's preview
 //   capture(rule, item?, context?)          a capture rule
+//   list(sourceId, context?)                a source's list, called as the app calls it: as the person's own (effects
+//                                           allowed), with ctx.trigger "source" and no item, variant or target. Resolves to
+//                                           what the app keeps: { rows } cleaned and cut (titles to one line of 256
+//                                           characters, at most 10 000 rows, with a line in `logs` past that), or { locked:
+//                                           true, message, command? }. Anything else is a "badResult" whose message names
+//                                           shapes, never values.
+//   runSource(sourceId, rowId, actionId, context?)   a source's run(rowId, actionId, ctx): resolves to { secret } or
+//                                           { text }, the kind the manifest gives the action; the other shape, or a blank
+//                                           value, is a "badResult". Both calls first fail as the app's would: "notFound" for
+//                                           a source or action the manifest lacks, or an export missing from `sources`;
+//                                           "toolMissing" for a tool of requires.tools missing from `exec`.
 //   offers(item?, context?)                 the ids of the actions the app would offer on the item: `input: "item"` actions
 //                                           whose `accepts` takes it (see acceptsMatch), highest priority first, the
 //                                           target's own first, a `targetsOnly` one only for its targets
@@ -48,7 +62,13 @@
 //   calls                the yab calls in order, as { api, args } with callbacks and signals left out; t and plain
 //                        reads (storage.get, files.read, files.exists, image.info) are not listed
 //   notifications, opened, progress, results     what yab.notify, yab.open and yab.job.progress got, and what the
-//                                                calls above returned
+//                                                calls above returned (a source's answers are not kept: the app keeps
+//                                                no value)
+//   logs                 console lines and the host's own notes: each line written during this host's calls, or
+//                        outside any call (the module's top level, a timer), as the app writes it (text as it is,
+//                        objects as JSON, joined with spaces), and notes such as a listing cut at 10 000 rows. The
+//                        console has the app's five methods (log, info, warn, error, debug); the rest throw, as in
+//                        the app. Lines still reach the test's console too.
 //   files, storage       the fake disk (a Map of path → bytes) and the store
 //
 // acceptsMatch(accepts, item, { extensionID }?) → boolean
@@ -251,6 +271,177 @@ export function acceptsMatch(accepts, item, { extensionID } = {}) {
 const RESULT_SHAPES = "expected {text}, {html, text}, {image}, {link: {url, title}}, {file}, {files} or {none: true}";
 const CAPTURE_SHAPES = "expected {keep: true}, {ignore: true}, {replace: {text}}, {replace: {url}}, {addToCategory: name} or nothing";
 
+// ---- Sources ----
+// What a source's `list` and `run` may answer, held to the app's rules: the same limits, cleaning and reasons. A reason
+// names shapes and places only, never what a row or a value holds, since those may be secrets.
+
+const LISTING_SHAPES = "expected {rows} or {locked}";
+const ROW_SHAPE = "expected {id, title, subtitle?}";
+const SOURCE_KINDS = ["secret", "text"];
+const SOURCE_ROW_LIMIT = 10_000;
+const SOURCE_TEXT_LIMIT = 256;
+const LOCKED_TEXT_LIMIT = 200;
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const LINE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
+const EDGE_SPACE = /[\p{Z}\t\n\v\f\r\u0085]/u;
+
+/** The first `limit` characters of `text`, counted as a person sees them (grapheme clusters, as the app counts). */
+function firstCharacters(text, limit) {
+  if (text.length <= limit) return text;
+  let out = "";
+  let count = 0;
+  for (const { segment } of graphemes.segment(text)) {
+    if (count++ === limit) break;
+    out += segment;
+  }
+  return out;
+}
+
+/** Text as one short line, the app's way: each tab and line end becomes a space, the ends are trimmed, then it is cut. */
+function oneLine(text, limit) {
+  const spaced = text.replace(LINE_BREAKS, " ");
+  let start = 0;
+  let end = spaced.length;
+  while (start < end && EDGE_SPACE.test(spaced[start])) start++;
+  while (end > start && EDGE_SPACE.test(spaced[end - 1])) end--;
+  return firstCharacters(spaced.slice(start, end), limit);
+}
+
+/** Whether every character is white space (the empty text included), as the app decides a value is blank. */
+function isBlank(text) {
+  for (const { segment } of graphemes.segment(text)) if (!/^\p{White_Space}/u.test(segment)) return false;
+  return true;
+}
+
+/** A value as it reaches the app: where JSON has nothing (undefined, a function), the app reads null. */
+const asJSON = (value) => (value === undefined || ["function", "symbol", "bigint"].includes(typeof value) ? null : value);
+const isAnswerObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+/** What the app reads at `key`: undefined unless it is the object's own key, null where JSON has nothing. */
+const field = (object, key) => (Object.prototype.propertyIsEnumerable.call(object, key) ? asJSON(object[key]) : undefined);
+
+/** An answer's shape as the app names it in a reason. */
+function answerShape(value) {
+  const json = asJSON(value);
+  if (json === null) return "nothing";
+  if (Array.isArray(json)) return "an array";
+  return typeof json === "object" ? "an object" : `a ${typeof json}`;
+}
+
+/** An optional text as one line: undefined when it is missing, null or blank; `reason` when it is not text. */
+function optionalLine(value, limit, reason) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw yabError("badResult", reason);
+  const line = oneLine(value, limit);
+  return line === "" ? undefined : line;
+}
+
+function requiredLine(value, limit, reason) {
+  const line = optionalLine(value, limit, reason);
+  if (line === undefined) throw yabError("badResult", reason);
+  return line;
+}
+
+function checkRow(entry, place) {
+  if (!isAnswerObject(asJSON(entry))) throw yabError("badResult", `${place} is ${answerShape(entry)}; ${ROW_SHAPE}`);
+  const id = field(entry, "id");
+  if (typeof id !== "string" || id === "") throw yabError("badResult", `${place}.id must be a non-empty string`);
+  // The id goes back to run exactly as listed, so it is never cleaned or cut: one too long to carry is refused.
+  if (firstCharacters(id, SOURCE_TEXT_LIMIT) !== id) throw yabError("badResult", `${place}.id is longer than ${SOURCE_TEXT_LIMIT} characters`);
+  const title = requiredLine(field(entry, "title"), SOURCE_TEXT_LIMIT, `${place}.title must be a non-empty string`);
+  const subtitle = optionalLine(field(entry, "subtitle"), SOURCE_TEXT_LIMIT, `${place}.subtitle must be a string`);
+  return subtitle === undefined ? { id, title } : { id, title, subtitle };
+}
+
+/** A source's `list` answer as the app takes it: the rows, cleaned and capped, or the locked state. */
+function checkListing(value, log) {
+  if (!isAnswerObject(asJSON(value))) throw yabError("badResult", `list returned ${answerShape(value)}; ${LISTING_SHAPES}`);
+  if (field(value, "locked") === true) {
+    const message = requiredLine(field(value, "message"), LOCKED_TEXT_LIMIT, "a locked listing needs a non-empty message");
+    const command = optionalLine(field(value, "command"), LOCKED_TEXT_LIMIT, "command must be a string");
+    return command === undefined ? { locked: true, message } : { locked: true, message, command };
+  }
+  const rows = field(value, "rows");
+  if (rows === undefined) throw yabError("badResult", `list returned an object of another shape; ${LISTING_SHAPES}`);
+  if (!Array.isArray(rows)) throw yabError("badResult", "rows must be an array of {id, title, subtitle?}");
+  let count = rows.length;
+  if (count > SOURCE_ROW_LIMIT) {
+    log(`list returned more than ${SOURCE_ROW_LIMIT} rows; kept the first ${SOURCE_ROW_LIMIT}`);
+    count = SOURCE_ROW_LIMIT;
+  }
+  const listed = [];
+  const ids = new Set();
+  for (let index = 0; index < count; index++) {
+    const row = checkRow(rows[index], `rows[${index}]`);
+    // run gets only the id: with two rows behind one id, the person could pick one and get the other's value.
+    if (ids.has(row.id)) throw yabError("badResult", `rows[${index}].id repeats an earlier row's id`);
+    ids.add(row.id);
+    listed.push(row);
+  }
+  return { rows: listed };
+}
+
+/** A source's `run` answer for an action of `kind`: `{ secret }` or `{ text }`, not blank, kept exactly as given. */
+function checkValue(value, kind) {
+  const expects = `this action expects {${kind}}`;
+  if (!isAnswerObject(asJSON(value))) throw yabError("badResult", `run returned ${answerShape(value)}; ${expects}`);
+  const given = field(value, kind);
+  if (given === undefined) {
+    const other = SOURCE_KINDS.find((candidate) => candidate !== kind && field(value, candidate) !== undefined);
+    throw yabError("badResult", `run returned ${other ? `{${other}}` : "an object of another shape"}; ${expects}`);
+  }
+  if (typeof given !== "string") throw yabError("badResult", `${kind} must be a string`);
+  if (isBlank(given)) throw yabError("badResult", "run returned an empty value");
+  return { [kind]: given };
+}
+
+// ---- The console ----
+// The app gives an extension a console of five methods (log, info, warn, error, debug) and writes each line to the
+// extension's Development log. This console takes the global's place once, when this module loads (before the
+// extension's code, as tests import it), so a method taken from it at load (`const { log } = console`) is recorded
+// too. A line written while a call runs goes to that call's host's `logs`; one written outside a call (the module's
+// top level, a timer after a call) goes to every host's, and one written before any host exists to each host made
+// later. Every line still reaches the console it replaced. The app's console has no table, dir, trace or the rest, so
+// calling one throws here as it does there.
+
+const consoleSink = new AsyncLocalStorage();
+const LOG_LEVELS = ["log", "info", "warn", "error", "debug"];
+/** Lines written outside a call before any host was made: each host starts with them. */
+const beforeHosts = [];
+/** Every host's `logs`, once there is one: where a line written outside a call goes. */
+let hostLogs;
+
+/** A console argument as the app writes it: text as it is, an object as JSON, anything else as String() gives it. */
+function logText(value) {
+  if (typeof value === "string") return value;
+  if (value !== null && (typeof value === "object" || typeof value === "function")) {
+    try {
+      const json = JSON.stringify(value);
+      if (typeof json === "string") return json;
+    } catch {
+      // A cycle, say: written as String() writes it, as in the app.
+    }
+  }
+  return String(value);
+}
+
+{
+  const real = globalThis.console;
+  const recording = {};
+  for (const level of LOG_LEVELS) {
+    recording[level] = (...args) => {
+      const line = args.map(logText).join(" ");
+      const inCall = consoleSink.getStore();
+      if (inCall) inCall(line);
+      else if (hostLogs) for (const logs of hostLogs) logs.push(line);
+      else beforeHosts.push(line);
+      return real[level](...args);
+    };
+  }
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "console");
+  Object.defineProperty(globalThis, "console", { value: recording, writable: true, configurable: true, enumerable: previous?.enumerable ?? false });
+}
+
 export function createFakeHost(options = {}) {
   const fromFolder = options.folder ? readFolder(options.folder) : { manifest: {}, locales: {} };
   const manifest = { ...fromFolder.manifest, ...(options.manifest ?? {}) };
@@ -268,6 +459,8 @@ export function createFakeHost(options = {}) {
   const opened = [];
   const progress = [];
   const results = [];
+  const logs = [...beforeHosts];
+  (hostLogs ??= new Set()).add(logs);
   const files = new Map(Object.entries(options.files ?? {}).map(([file, data]) => [file, bytesOf(data)]));
   const storage = structuredClone(options.storage ?? {});
   const images = new Map();
@@ -313,6 +506,11 @@ export function createFakeHost(options = {}) {
     if (own.cancelled) throw cancelled();
     if (!own.effects) throw yabError("permissionDenied", `${name} is not available in hints, detectors and previews`);
     return own;
+  }
+  /** A source's list or run opens no link and shows no notice: either could carry a value out. */
+  function refuseSources() {
+    const { kind } = scope();
+    if (kind === "sourceList" || kind === "sourceRun") throw yabError("permissionDenied", "a source cannot open links or show notices");
   }
   function requirePermission(permission) {
     const own = requireEffects(permission);
@@ -683,12 +881,14 @@ export function createFakeHost(options = {}) {
     notify(message) {
       record("notify", [message]);
       requireEffects("yab.notify");
+      refuseSources();
       if (typeof message !== "string") throw yabError("badResult", "yab.notify takes a message");
       notifications.push([...message].slice(0, 200).join(""));
     },
     open(url) {
       record("open", [url]);
       requireEffects("yab.open");
+      refuseSources();
       let link;
       try {
         link = new URL(String(url));
@@ -763,7 +963,8 @@ export function createFakeHost(options = {}) {
     const normal = path.posix.normalize(file);
     if (!files.has(normal)) return undefined;
     if (normal.startsWith(`${own.workDir}/`)) return normal;
-    const item = own.item ?? options.item;
+    // A source call gets no item, so it may read no item's files.
+    const item = own.kind === "sourceList" || own.kind === "sourceRun" ? undefined : own.item ?? options.item;
     if ((item?.files ?? []).some((entry) => path.posix.normalize(String(entry.path)) === normal)) return normal;
     if (readableFolders.some((folder) => normal.startsWith(`${folder}/`))) return normal;
     return undefined;
@@ -809,13 +1010,13 @@ export function createFakeHost(options = {}) {
     const restoreGlobals = setGlobals();
     return withClock(clock, () => new Promise((resolve, reject) => {
       own.pending.add(() => reject(cancelled()));
-      current.run(own, () => {
+      consoleSink.run((line) => logs.push(line), () => current.run(own, () => {
         try {
           Promise.resolve(invoke(own)).then(resolve, reject);
         } catch (error) {
           reject(error);
         }
-      });
+      }));
     })).finally(() => {
       active.delete(own);
       restoreGlobals();
@@ -860,6 +1061,33 @@ export function createFakeHost(options = {}) {
     });
   }
 
+  // ---- Sources ----
+  const sourceSpecs = Array.isArray(manifest.contributes?.sources) ? manifest.contributes.sources : [];
+
+  /** What the app checks before it calls a source, in its order; returns the export to call and the action's kind. */
+  function sourceCall(sourceId, method, actionId) {
+    const spec = sourceSpecs.find((source) => isObject(source) && source.id === sourceId);
+    if (!spec) throw yabError("notFound", `the manifest has no source "${sourceId}" in contributes.sources`);
+    // A source call is the person's own: it needs every tool the extension requires, and fails in exec's words without one.
+    const missing = toolSpecs.find((tool) => !Object.hasOwn(options.exec ?? {}, tool?.name));
+    if (missing) throw yabError("toolMissing", `${missing.name} is not installed` + (missing.install ? `. Install it with: ${missing.install}` : ""));
+    let kind;
+    if (method === "run") {
+      const action = (Array.isArray(spec.actions) ? spec.actions : []).find((candidate) => isObject(candidate) && candidate.id === actionId);
+      if (!action) throw yabError("notFound", `the source "${sourceId}" has no action "${actionId}"`);
+      if (!SOURCE_KINDS.includes(action.kind)) throw yabError("notFound", `the action "${actionId}" has no kind the app knows ("secret" or "text")`);
+      kind = action.kind;
+    }
+    const source = options.sources?.[sourceId];
+    if (typeof source?.[method] !== "function") {
+      throw yabError("notFound", `sources.${sourceId}.${method} is not exported`
+        + (options.sources === undefined ? "; pass the extension's sources: createFakeHost({ sources })" : ""));
+    }
+    return { source, kind };
+  }
+  /** A source call's context: no variant and no target, since its rows are the same wherever they go. */
+  const sourceContext = (overrides, own) => contextFor({ ...(overrides ?? {}), trigger: "source", variant: null, target: null }, own, "source");
+
   const host = {
     yab,
     calls,
@@ -867,6 +1095,7 @@ export function createFakeHost(options = {}) {
     opened,
     progress,
     results,
+    logs,
     files,
     storage,
     /** A Context like the one a call gets. */
@@ -912,6 +1141,26 @@ export function createFakeHost(options = {}) {
         if (!ok) throw yabError("badResult", `a capture rule returned something else; ${CAPTURE_SHAPES}`);
         results.push(value ?? undefined);
         return value ?? undefined;
+      });
+    },
+    list(sourceId, overrides) {
+      return rejectWith(() => {
+        const { source } = sourceCall(sourceId, "list");
+        return call("sourceList", true, null, overrides, async (own) => {
+          const value = await source.list(sourceContext(overrides, own));
+          if (own.cancelled) throw cancelled();
+          return checkListing(value, (line) => logs.push(line));
+        });
+      });
+    },
+    runSource(sourceId, rowId, actionId, overrides) {
+      return rejectWith(() => {
+        const { source, kind } = sourceCall(sourceId, "run", actionId);
+        return call("sourceRun", true, null, overrides, async (own) => {
+          const value = await source.run(rowId, actionId, sourceContext(overrides, own));
+          if (own.cancelled) throw cancelled();
+          return checkValue(value, kind);
+        });
       });
     },
     offers(item, overrides = {}) {

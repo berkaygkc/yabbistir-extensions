@@ -9,12 +9,12 @@ Every coding agent works from this file; `CLAUDE.md` only imports it (`@AGENTS.m
 ```text
 extensions/<id>/             one extension per folder; <id> is its reverse-domain id
   manifest.json              what it is, its permissions, what it contributes
-  src/index.ts               exports actions, detectors and/or captureRules
+  src/index.ts               exports actions, detectors, captureRules and/or sources
   locales/en.json            English strings (required); locales/tr.json optional
   tests/*.test.mjs           node:test tests against the fake host
   README.md, CHANGELOG.md    required
   icon.png                   optional; most use an SF Symbol ("sf:<name>") instead
-templates/<kind>/            what `npm run new` copies: action, detector, capture-rule, job
+templates/<kind>/            what `npm run new` copies: action, detector, capture-rule, job, source
 packages/api/index.d.ts      the API's types, @yabbistir/api (copied from the app; do not edit)
 packages/api/fake-host.mjs   createFakeHost() for tests (its header lists every option)
 schema/                      manifest.schema.json (copied from the app; do not edit), catalog.schema.json
@@ -33,7 +33,7 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 
 | Command | When |
 |---|---|
-| `npm run new -- <id> --template <action\|detector\|capture-rule\|job> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
+| `npm run new -- <id> --template <action\|detector\|capture-rule\|job\|source> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
 | `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
@@ -51,7 +51,12 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 4. **English is required.** Every key the manifest uses is in `locales/en.json`. Every text a person reads is a locale key in the manifest and goes through `yab.t` in code. Other languages are optional.
 5. **Extensions never draw UI.** Return results, tags, preview sections, progress and messages; the app draws them in its calm grey look. No colors, no emoji decoration, no HTML layouts. See [docs/design-guidelines.md](docs/design-guidelines.md).
 6. **`exec` arguments are fixed or checked.** Item content goes after `--`; no shell; no options that run other programs.
-7. **No data leaves the Mac** except what the action is for, when the person runs it. Never log the item's content or a secret.
+7. **No data leaves the Mac** except what the action is for, when the person runs it. Never log the item's content, a secret, or a source's rows and values, and never put any of them, or a tool's output, in an error message.
+8. **Sources keep nothing.** ([docs/sources.md](docs/sources.md))
+   - A `secret` action goes in a `"sensitive": true` source, has no `copyTitle` or `copied`, and rules out the `network` permission.
+   - Cache rows only in a module variable with a short lifetime, dropped when the source answers `locked`. Never write rows to `yab.storage` or a file, and never cache values.
+   - Row ids are unique, stable and at most 256 characters; `run` gets them back unchanged, so check one before it reaches a tool.
+   - Return a value exactly as it should be pasted (trim a tool's trailing newline); throw a clear error instead of returning an empty one.
 
 ## Definition of done
 
@@ -123,15 +128,16 @@ test("upperCases", async () => {
 });
 ```
 
-- **Exports:** `actions[id].run(item, ctx)`, `detectors[id].validate(item)` / `.preview(item, ctx)`, `captureRules[id].run(item, ctx)`; each `id` matches the manifest.
+- **Exports:** `actions[id].run(item, ctx)`, `detectors[id].validate(item)` / `.preview(item, ctx)`, `captureRules[id].run(item, ctx)`, `sources[id].list(ctx)` / `.run(rowId, actionId, ctx)`; each `id` matches the manifest.
 - **Item:** `kind` (`text`, `code`, `link`, `color`, `image`, `file`), `text`, `url` (links; read `item.url ?? item.text`), `color`, `files`, `image`, `tags`, `copiedAt`. `item` is `null` for `"input": "none"`.
 - **Context:** `ctx.language`, `ctx.preferences`, `ctx.variant`, `ctx.target` (`kind`: `finder`, `terminal`, `browser`, `editor`, `other`), `ctx.signal`.
 - **Results:** `{ text }`, `{ html, text }`, `{ image }`, `{ link: { url, title? } }`, `{ file }`, `{ files }` (paths in `yab.files.workDir`), `{ none: true, message? }`. Declare it in `output`.
 - **Capture rule results:** `{ keep: true }` (or nothing), `{ replace: { text } }`, `{ replace: { url } }`, `{ addToCategory: name }`, `{ ignore: true }`.
+- **Source answers:** `list` returns `{ rows: [{ id, title, subtitle? }] }` or `{ locked: true, message, command? }`; `run` returns `{ secret }` or `{ text }`, as the action's `kind` says.
 - **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text, `(?i)` at the start to ignore case; the syntax the store accepts is in [docs/concepts.md#patterns](docs/concepts.md#patterns)), `tags`.
-- **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, job none.
+- **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, a source's `list` and `run` 10 s each, job none.
 - **No effects** (no network, `exec`, notify, open, AI, translate, history) in hints, detectors, previews and capture rules.
-- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
+- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)` with the `sources` option; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`, `sources`; records `host.calls`, `host.progress`, `host.notifications`, `host.logs`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
 
 ## Common mistakes
 
@@ -149,6 +155,10 @@ test("upperCases", async () => {
 | `permissionDenied` in a test | An effect in a hint or detector, a host outside `network.domains`, or a missing permission | Move the effect into `run` of an action, add the domain or the permission |
 | `run returned …; expected {text}, …` (`badResult`) | `run` returned a string, or a file outside the work folder | Return a result object; write files with `yab.files.write` |
 | `captureRuleTags` warning | `accepts.tags` on a capture rule | Remove it: rules see text and URLs only, never tags |
+| `run returned {text}; this action expects {secret}` (`badResult`) | A source's `run` answered in the other shape | Return `{ secret }` for a `"kind": "secret"` action, `{ text }` for a `"text"` one |
+| `run returned an empty value` (`badResult`) | A tool printed nothing, or only a newline | Throw an error that says the row has no value, with `yab.t` |
+| `rows[<i>].id repeats an earlier row's id` (`badResult`) | Two rows share an id | Give each row its own id, the same each time it is listed |
+| `sources.<id>.list is not exported` in a test | The fake host was not given the source | `createFakeHost({ folder, sources })`, with `sources` imported from `../src/index.ts` |
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |

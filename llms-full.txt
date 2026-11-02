@@ -18,12 +18,12 @@ Every coding agent works from this file; `CLAUDE.md` only imports it (`@AGENTS.m
 ```text
 extensions/<id>/             one extension per folder; <id> is its reverse-domain id
   manifest.json              what it is, its permissions, what it contributes
-  src/index.ts               exports actions, detectors and/or captureRules
+  src/index.ts               exports actions, detectors, captureRules and/or sources
   locales/en.json            English strings (required); locales/tr.json optional
   tests/*.test.mjs           node:test tests against the fake host
   README.md, CHANGELOG.md    required
   icon.png                   optional; most use an SF Symbol ("sf:<name>") instead
-templates/<kind>/            what `npm run new` copies: action, detector, capture-rule, job
+templates/<kind>/            what `npm run new` copies: action, detector, capture-rule, job, source
 packages/api/index.d.ts      the API's types, @yabbistir/api (copied from the app; do not edit)
 packages/api/fake-host.mjs   createFakeHost() for tests (its header lists every option)
 schema/                      manifest.schema.json (copied from the app; do not edit), catalog.schema.json
@@ -42,7 +42,7 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 
 | Command | When |
 |---|---|
-| `npm run new -- <id> --template <action\|detector\|capture-rule\|job> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
+| `npm run new -- <id> --template <action\|detector\|capture-rule\|job\|source> [--author <name>]` | To start an extension. Creates `extensions/<id>/`, which passes validate and test at once. `author` is how you want to be credited, your name or your GitHub user name; without `--author` it comes from `git config user.name`, and the output says so. |
 | `npm test -- <id>` | After every change to `src/` or `tests/`. Add `--test-name-pattern=<name>` for one test. |
 | `npm run validate -- <id>` | After every change to `manifest.json` or `locales/`. Prints file, field, problem and fix per line; exit 1 on errors. With a build newer than the source it checks that build too, `index.js` included; otherwise it notes "not built yet (or out of date)". |
 | `npm run build -- <id>` | Before you finish. Bundles into `dist/<id>/`, validates that folder, writes `dist/<id>-<version>.yabext`. Catches Node imports. |
@@ -60,7 +60,12 @@ Run every command from the repository's root. Node 24 (22.18 or later works); ru
 4. **English is required.** Every key the manifest uses is in `locales/en.json`. Every text a person reads is a locale key in the manifest and goes through `yab.t` in code. Other languages are optional.
 5. **Extensions never draw UI.** Return results, tags, preview sections, progress and messages; the app draws them in its calm grey look. No colors, no emoji decoration, no HTML layouts. See [docs/design-guidelines.md](docs/design-guidelines.md).
 6. **`exec` arguments are fixed or checked.** Item content goes after `--`; no shell; no options that run other programs.
-7. **No data leaves the Mac** except what the action is for, when the person runs it. Never log the item's content or a secret.
+7. **No data leaves the Mac** except what the action is for, when the person runs it. Never log the item's content, a secret, or a source's rows and values, and never put any of them, or a tool's output, in an error message.
+8. **Sources keep nothing.** ([docs/sources.md](docs/sources.md))
+   - A `secret` action goes in a `"sensitive": true` source, has no `copyTitle` or `copied`, and rules out the `network` permission.
+   - Cache rows only in a module variable with a short lifetime, dropped when the source answers `locked`. Never write rows to `yab.storage` or a file, and never cache values.
+   - Row ids are unique, stable and at most 256 characters; `run` gets them back unchanged, so check one before it reaches a tool.
+   - Return a value exactly as it should be pasted (trim a tool's trailing newline); throw a clear error instead of returning an empty one.
 
 ## Definition of done
 
@@ -132,15 +137,16 @@ test("upperCases", async () => {
 });
 ```
 
-- **Exports:** `actions[id].run(item, ctx)`, `detectors[id].validate(item)` / `.preview(item, ctx)`, `captureRules[id].run(item, ctx)`; each `id` matches the manifest.
+- **Exports:** `actions[id].run(item, ctx)`, `detectors[id].validate(item)` / `.preview(item, ctx)`, `captureRules[id].run(item, ctx)`, `sources[id].list(ctx)` / `.run(rowId, actionId, ctx)`; each `id` matches the manifest.
 - **Item:** `kind` (`text`, `code`, `link`, `color`, `image`, `file`), `text`, `url` (links; read `item.url ?? item.text`), `color`, `files`, `image`, `tags`, `copiedAt`. `item` is `null` for `"input": "none"`.
 - **Context:** `ctx.language`, `ctx.preferences`, `ctx.variant`, `ctx.target` (`kind`: `finder`, `terminal`, `browser`, `editor`, `other`), `ctx.signal`.
 - **Results:** `{ text }`, `{ html, text }`, `{ image }`, `{ link: { url, title? } }`, `{ file }`, `{ files }` (paths in `yab.files.workDir`), `{ none: true, message? }`. Declare it in `output`.
 - **Capture rule results:** `{ keep: true }` (or nothing), `{ replace: { text } }`, `{ replace: { url } }`, `{ addToCategory: name }`, `{ ignore: true }`.
+- **Source answers:** `list` returns `{ rows: [{ id, title, subtitle? }] }` or `{ locked: true, message, command? }`; `run` returns `{ secret }` or `{ text }`, as the action's `kind` says.
 - **`accepts`:** `kinds` (required), `pattern` (an ICU regular expression *searched for* in the text or URL after trimming; write `^…$` for the whole text, `(?i)` at the start to ignore case; the syntax the store accepts is in [docs/concepts.md#patterns](docs/concepts.md#patterns)), `tags`.
-- **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, job none.
+- **Limits:** hint and preview 500 ms, `validate` 50 ms and synchronous, capture rule 200 ms, action 10 s, a source's `list` and `run` 10 s each, job none.
 - **No effects** (no network, `exec`, notify, open, AI, translate, history) in hints, detectors, previews and capture rules.
-- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`; records `host.calls`, `host.progress`, `host.notifications`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
+- **Fake host:** `host.run`, `host.hint`, `host.validate`, `host.preview`, `host.capture`; `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)` with the `sources` option; `host.offers(item)` for which actions the manifest offers on an item, and `acceptsMatch(accepts, item)` for any `accepts` block; options `http`, `exec`, `ai`, `translate`, `history`, `secrets`, `preferences`, `context`, `now`, `sources`; records `host.calls`, `host.progress`, `host.notifications`, `host.logs`. Errors carry `code`: `await assert.rejects(p, { code: "permissionDenied" })`. See [docs/testing.md](docs/testing.md).
 
 ## Common mistakes
 
@@ -158,6 +164,10 @@ test("upperCases", async () => {
 | `permissionDenied` in a test | An effect in a hint or detector, a host outside `network.domains`, or a missing permission | Move the effect into `run` of an action, add the domain or the permission |
 | `run returned …; expected {text}, …` (`badResult`) | `run` returned a string, or a file outside the work folder | Return a result object; write files with `yab.files.write` |
 | `captureRuleTags` warning | `accepts.tags` on a capture rule | Remove it: rules see text and URLs only, never tags |
+| `run returned {text}; this action expects {secret}` (`badResult`) | A source's `run` answered in the other shape | Return `{ secret }` for a `"kind": "secret"` action, `{ text }` for a `"text"` one |
+| `run returned an empty value` (`badResult`) | A tool printed nothing, or only a newline | Throw an error that says the row has no value, with `yab.t` |
+| `rows[<i>].id repeats an earlier row's id` (`badResult`) | Two rows share an id | Give each row its own id, the same each time it is listed |
+| `sources.<id>.list is not exported` in a test | The fake host was not given the source | `createFakeHost({ folder, sources })`, with `sources` imported from `../src/index.ts` |
 | The extension turns itself off in the app | Three failures in a row (thrown errors count in actions) | Return `{ none: true, message }` for expected cases; `validate` returns `false`, never throws |
 | A `yab.ai` or `yab.translate` call fails in a hint | Hints run without effects | No `hint` on such actions; long ones are jobs |
 | The action never appears in the panel | `accepts` does not match the item, or `keywords` do not start with what was typed | Check `kinds` and `pattern`; for a link, use the `link` kind |
@@ -194,7 +204,7 @@ Until then, build an extension here (`npm run build -- <id>`) and install `dist/
 You need macOS 26 or later on Apple silicon with yabbistir, and Node 24 (22.18 or later works).
 
 1. Clone this repository and run `npm install`.
-2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule` or `job`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
+2. `npm run new -- dev.yourname.tool --template action --author <name>` creates `extensions/dev.yourname.tool/` from a template (`action`, `detector`, `capture-rule`, `job` or `source`). `--author` is how you want to be credited, your name or your GitHub user name; without it, your git user name is used and printed.
 3. Edit `manifest.json`, `src/index.ts` and `locales/en.json`, and the tests in `tests/`. Only English is required: the template's `locales/tr.json` holds Turkish for its sample, so translate it or delete it.
 4. `npm test -- dev.yourname.tool`, then `npm run build -- dev.yourname.tool`, then `npm run validate -- dev.yourname.tool` check it.
 5. `npm run dev -- dev.yourname.tool` links it into yabbistir and rebuilds on every change. When it is ready, open a pull request.
@@ -204,7 +214,7 @@ Read next:
 - [Getting started](docs/getting-started.md): a first extension, step by step.
 - [Concepts](docs/concepts.md): what an extension can do, and which kind fits your idea.
 - [Manifest](docs/manifest.md) and [API](docs/api.md) references, [Permissions](docs/permissions.md), [Errors](docs/errors.md).
-- Guides: [jobs](docs/jobs.md), [results and targets](docs/results-and-targets.md), [detectors and previews](docs/detectors-and-previews.md), [capture rules](docs/capture-rules.md), [localization](docs/localization.md), [testing](docs/testing.md), [design guidelines](docs/design-guidelines.md).
+- Guides: [jobs](docs/jobs.md), [results and targets](docs/results-and-targets.md), [detectors and previews](docs/detectors-and-previews.md), [capture rules](docs/capture-rules.md), [sources](docs/sources.md), [localization](docs/localization.md), [testing](docs/testing.md), [design guidelines](docs/design-guidelines.md).
 - [Recipes](docs/concepts.md#recipes): six small, complete extensions.
 - [Publishing](docs/publishing.md) and the [review checklist](docs/review-checklist.md).
 
@@ -435,7 +445,7 @@ To share it, open a pull request: see [Publishing](publishing.md).
 
 ## Where next
 
-- [Concepts](concepts.md): items, actions, detectors, capture rules, jobs, and which one fits your idea.
+- [Concepts](concepts.md): items, actions, detectors, capture rules, sources, jobs, and which one fits your idea.
 - [Recipes](concepts.md#recipes): six small, complete extensions to start from.
 - [Design guidelines](design-guidelines.md): names, icons and words that fit the app.
 
@@ -528,9 +538,13 @@ A **detector** tags items as they are copied: a JWT, an issue key, a timestamp. 
 
 A **capture rule** sees each new copy before it is stored and decides: keep it, store a cleaned version instead, put it in a category too, or do not store it at all. Rules need the `capture` permission, see text and URLs only (never tags or pixels), and have 200 ms. See [Capture rules](capture-rules.md).
 
+## Sources
+
+A **source** is a list the app shows in a column of its own in the panel: snippets, a team's canned replies, a vault's entries. `sources[id].list(ctx)` returns the rows, or that the source is locked; `sources[id].run(rowId, actionId, ctx)` returns the value one of the source's one or two actions pastes, as `{ text }` or, for a `sensitive` source, `{ secret }`. Rows and values stay in the app's memory, never in the history or on disk. See [Sources](sources.md).
+
 ## Calls with effects and calls without
 
-Some calls happen because the person chose something: running an action or a job. Those may use the network, run programs, show notices, open links, ask the on-device model or translate, as far as the extension's permissions allow.
+Some calls happen because the person chose something: running an action or a job, and a source's `list` and `run`. Those may use the network, run programs, show notices, open links, ask the on-device model or translate, as far as the extension's permissions allow.
 
 Other calls happen on their own: hints, detector checks, previews and capture rules. They run without effects: `yab.http.fetch`, `fetch`, `yab.exec`, `yab.notify`, `yab.open`, `yab.ai`, `yab.translate` and `yab.history` reject or throw `permissionDenied` there. They can still read the item, the preferences, secrets and storage, and use pure functions such as `yab.t`.
 
@@ -542,6 +556,7 @@ Other calls happen on their own: hints, detector checks, previews and capture ru
 | Detector `validate` | 50 ms, no promises |
 | Capture rule | 200 ms (then it is skipped and the copy is stored as it is) |
 | Action | 10 seconds |
+| A source's `list` and `run` | 10 seconds each |
 | Job | none; the person can cancel it |
 
 A call that runs over is cut off.
@@ -549,7 +564,7 @@ A call that runs over is cut off.
 ## When something goes wrong
 
 - A `run` that throws fails: the app shows "Extension failed" with the extension's name and the error's message. Write messages for people, with `yab.t`.
-- Three failures in a row turn the extension off; Settings shows it as off and the person is told. Failures that are not the extension's fault do not count: `cancelled`, `interrupted`, `toolMissing`, `networkError` and `permissionDenied`. A job's thrown error does not count either; only a broken result (`badResult`, `notFound`, `syntax`) does.
+- Three failures in a row turn the extension off; Settings shows it as off and the person is told. A source's failures never count. Failures that are not the extension's fault do not count either: `cancelled`, `interrupted`, `toolMissing`, `networkError` and `permissionDenied`. A job's thrown error does not count either; only a broken result (`badResult`, `notFound`, `syntax`) does.
 - So an expected situation (nothing to do, input of the wrong shape) returns `{ none: true, message }` rather than throwing, and a detector's `validate` returns `false` rather than throwing.
 
 Every error code is in [errors](errors.md#runtime-errors).
@@ -576,6 +591,8 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Run a command-line program | An action or job with the `exec` permission | `--template job` |
 | Summarize, rewrite or translate on the Mac | `yab.ai.generate`, `yab.translate` (no permission) | [Translate and summarize](recipes/translate-and-summarize.md) |
 | Work with earlier copies | `yab.history` (the `history` permission) | [Permissions](permissions.md#history) |
+| A list of the extension's own in the panel (snippets, canned replies), a row's text pasted on ↵ | A source | `--template source`, [Sources](sources.md) |
+| Paste passwords or tokens from a command-line vault | A `sensitive` source with a `secret` action and the `exec` permission | [Sources](sources.md#secrets) |
 
 **A capture rule cannot show a tag or a chip.** Only detectors tag items, and they run after the copy is stored, so a rule never sees tags or adds them. To change copies and mark them too, put a rule and a detector in one extension.
 
@@ -583,9 +600,9 @@ Not possible: drawing your own interface, running in the background on a timer, 
 
 ## Several contributions in one extension
 
-One extension can add any mix of actions, detectors and capture rules. Scaffold with the template nearest to the main thing it does, then add the others by hand:
+One extension can add any mix of actions, detectors, capture rules and sources. Scaffold with the template nearest to the main thing it does, then add the others by hand:
 
-1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
+1. In `manifest.json`, add the other lists under `contributes` (`actions`, `detectors`, `captureRules`, `sources`), each entry with its own id. Copy an entry's shape from the [manifest reference](manifest.md) or from the template that has it.
 2. In `src/index.ts`, export the matching objects, keyed by those ids: `export const detectors: Detectors = { … }` next to `export const actions: Actions = { … }`.
 3. Add every new string key to `locales/en.json`, and tests for each part.
 
@@ -615,7 +632,7 @@ File: docs/manifest.md
 
 Every text a person reads (names, titles, keywords, tags) is a key into `locales/<language>.json`, never the text itself; see [Localization](localization.md). Run `npm run validate -- <id>` after each change: it names the field, what was expected and how to fix it ([every message](errors.md)).
 
-Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requires) · [`requires.tools[]`](#requirestools) · [`preferences[]`](#preferences) · [`preferences[].options[]`](#preferencesoptions) · [`contributes`](#contributes) · [`contributes.actions[]`](#contributesactions) · [`accepts`](#accepts) · [`contributes.actions[].variants[]`](#contributesactionsvariants) · [`contributes.detectors[]`](#contributesdetectors) · [`contributes.captureRules[]`](#contributescapturerules) · [Rules beyond the schema](#rules-beyond-the-schema) · [A complete example](#a-complete-example)
+Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requires) · [`requires.tools[]`](#requirestools) · [`preferences[]`](#preferences) · [`preferences[].options[]`](#preferencesoptions) · [`contributes`](#contributes) · [`contributes.actions[]`](#contributesactions) · [`accepts`](#accepts) · [`contributes.actions[].variants[]`](#contributesactionsvariants) · [`contributes.detectors[]`](#contributesdetectors) · [`contributes.captureRules[]`](#contributescapturerules) · [`contributes.sources[]`](#contributessources) · [`contributes.sources[].actions[]`](#contributessourcesactions) · [Rules beyond the schema](#rules-beyond-the-schema) · [A complete example](#a-complete-example)
 
 ## Top level
 
@@ -636,7 +653,7 @@ Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requ
 | `network` | object, see [`network`](#network) |  | With the `network` permission: the hosts the extension may reach. An empty list, or no `network` at all, means any host, and the person is told so. |
 | `requires` | object, see [`requires`](#requires) |  | With the `exec` permission: the programs the extension runs with `yab.exec`. |
 | `preferences` | list of objects, see [`preferences[]`](#preferences) |  | Settings the app draws for the extension. Their values reach `yab.preferences` and `ctx.preferences`, except secrets, which only `yab.secrets.get` reads. |
-| `contributes` | object, see [`contributes`](#contributes) |  | What the extension adds. Each id here is a key of the matching export of `src/index.ts`: `actions`, `detectors` or `captureRules`. |
+| `contributes` | object, see [`contributes`](#contributes) |  | What the extension adds. Each id here is a key of the matching export of `src/index.ts`: `actions`, `detectors`, `captureRules` or `sources`. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -692,6 +709,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `actions` | list of objects, see [`contributes.actions[]`](#contributesactions) |  | Transforms and generators; see [Concepts](concepts.md#actions). |
 | `detectors` | list of objects, see [`contributes.detectors[]`](#contributesdetectors) |  | See [Detectors and previews](detectors-and-previews.md). |
 | `captureRules` | list of objects, see [`contributes.captureRules[]`](#contributescapturerules) |  | Needs the "capture" permission. See [Capture rules](capture-rules.md). |
+| `sources` | list of objects, see [`contributes.sources[]`](#contributessources) |  | Lists the app draws in its own column. A secret action rules out the "network" permission. See [Sources](sources.md). |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -764,6 +782,30 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
+## `contributes.sources[]`
+
+| Field | Type | Required | What it does |
+|---|---|---|---|
+| `id` | string matching `^[A-Za-z0-9._-]+$` | yes | The key of `sources` in `src/index.ts`. |
+| `title` | [locale key](localization.md) | yes | The column's name in the panel. |
+| `sensitive` | boolean |  | Required for a source with a "secret" action. `true` when the source's values are secrets, such as passwords. Before install the person reads that the extension can read and paste secrets. See [Secrets](sources.md#secrets). |
+| `actions` | list of objects, see [`contributes.sources[].actions[]`](#contributessourcesactions) | yes | One or two: ↵ runs the first, ⇧↵ the second. ⌘C runs the first `text` action that has a `copyTitle`. |
+
+No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
+
+## `contributes.sources[].actions[]`
+
+| Field | Type | Required | What it does |
+|---|---|---|---|
+| `id` | string matching `^[A-Za-z0-9._-]+$` | yes | What `run` gets as `actionId`. |
+| `kind` | one of `"secret"`, `"text"` | yes | What `run` returns: `{ secret }` for `secret`, `{ text }` for `text`. A `secret` action belongs to a `sensitive` source, has no `copyTitle` or `copied`, and rules out the `network` permission. |
+| `title` | [locale key](localization.md) | yes | The paste label ("Paste password"). Shown for ↵ or ⇧↵ on a row, in ⌘K and on the panel's bar. |
+| `label` | [locale key](localization.md) | yes | The value's short name ("Password"). Shown on the panel's bar and in the row's preview. |
+| `copyTitle` | [locale key](localization.md) |  | Text actions only. The ⌘C row's title, such as "Copy username". With it, ⌘C copies this action's value. |
+| `copied` | [locale key](localization.md) |  | Text actions only. The notice after ⌘C, such as "Username copied." |
+
+No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
+
 ## Rules beyond the schema
 
 `npm run validate` also checks what a schema cannot say:
@@ -772,9 +814,10 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 - `locales/<defaultLocale>.json` exists and holds every key the manifest uses; `locales/en.json` exists and holds them all too.
 - A `keywords` key's value is a list of strings in the locale file: `"reverse.keywords": ["reverse", "flip"]`.
 - `captureRules` need the `capture` permission; `exec` needs `requires.tools`, and `requires.tools` needs `exec`.
-- Ids are unique within their list (actions, variants of one action, detectors, capture rules, preferences).
+- Ids are unique within their list (actions, variants of one action, detectors, capture rules, sources, actions of one source, preferences).
 - A `secret` preference has no `default`; a `folder` default starts with `~`; a `choice` has `options`.
 - `targetsOnly` needs at least one entry in `targets`.
+- A source has one or two actions. A `secret` action needs `"sensitive": true` on its source and has no `copyTitle` or `copied`, and an extension with one cannot ask for `network`.
 - `accepts.pattern` compiles as an ICU regular expression, the kind the app uses.
 - README.md and CHANGELOG.md exist, and, once built, so does `index.js`.
 
@@ -837,7 +880,7 @@ File: docs/api.md
 
 @yabbistir/api — the extension API, version 1.
 
-An extension's index.ts exports `actions`, `detectors` and/or `captureRules`. yabbistir draws every piece of UI;
+An extension's index.ts exports `actions`, `detectors`, `captureRules` and/or `sources`. yabbistir draws every piece of UI;
 an extension only computes. The functions below run in JavaScriptCore (ES2022), not Node: there
 is no `require`, `process`, `fs` or `Buffer`. The web standards declared at the bottom are there.
 
@@ -847,7 +890,7 @@ Contents: [What an extension exports](#what-an-extension-exports) · [What a cal
 
 ## What an extension exports
 
-`src/index.ts` exports any of `actions`, `detectors` and `captureRules`, each an object keyed by the ids in manifest.json.
+`src/index.ts` exports any of `actions`, `detectors`, `captureRules` and `sources`, each an object keyed by the ids in manifest.json.
 
 ### Actions
 
@@ -924,6 +967,93 @@ export type CaptureResult =
   | { addToCategory: string };
 ```
 
+### Sources
+
+`exports.sources`, by each source's `id` in the manifest's `contributes.sources`.
+
+```ts snippet
+export type Sources = Record<string, Source>;
+```
+
+### Source
+
+A list the app shows as a column, with one or two row actions declared in the manifest under
+`contributes.sources`. Both functions get no item, and run as the person's own action, like an action's
+`run`: `yab.exec` works (with the `exec` permission), as do `yab.http` (with the `network` permission,
+which an extension with a `secret` action cannot ask for), `yab.ai` and `yab.translate`. `yab.history`
+rejects with "permissionDenied", and `yab.open` and `yab.notify` throw "permissionDenied": a link or a
+notice could carry a value out. `ctx.trigger` is "source".
+
+```ts snippet
+export interface Source {
+  /**
+   * The source's rows, or that it is locked. Called when the panel opens; the app shows the rows it already
+   * holds until the new ones come, then swaps them in quietly. `ctx.signal` aborts when the call is cancelled:
+   * pass it to `yab.exec` (`{ signal: ctx.signal }`) so the tool stops with it.
+   */
+  list(ctx: Context): SourceListing | Promise<SourceListing>;
+  /**
+   * A row's value for one action: `rowId` is a row's `id` exactly as listed, `actionId` the `id` of one of the
+   * source's actions in the manifest. `ctx` is as for `list`, with its own `signal`.
+   */
+  run(rowId: string, actionId: string, ctx: Context): SourceValue | Promise<SourceValue>;
+}
+```
+
+### SourceListing
+
+What `list` returns: the rows, or `locked` when the source needs the person to unlock it first (the app then
+drops the rows it held at once, and shows one calm row instead). `locked: true` wins over `rows` sent with
+it. `message` is required; `message` and `command` are cleaned like a row's title and cut to 200
+characters, and a blank `command` is none. `command` is a line the person runs to unlock the source
+(⌘C copies it); a line end in it becomes a space, so pasting it never runs it. Any other shape is a
+"badResult", whose reason in the Development log names shapes only.
+
+```ts snippet
+export type SourceListing =
+  | { rows: SourceRow[] }
+  | { locked: true; message: string; command?: string };
+```
+
+### SourceRow
+
+One row of a source, drawn by the app in its own category column. A listing keeps at most 10,000 rows: the
+rest are dropped, with one line in the Development log. Rows live in the app's memory only: never in history,
+the search index or on disk. A row that breaks a rule below fails the whole listing with "badResult".
+
+```ts snippet
+export interface SourceRow {
+  /**
+   * A non-empty string of at most 256 characters, its own to each row and the same each time it is listed.
+   * `run` gets it back exactly as listed: it is never cleaned or cut, so a longer one, or one an earlier row
+   * already has, fails the listing.
+   */
+  readonly id: string;
+  /**
+   * The row's first line. Tabs and line ends become spaces, the ends are trimmed and it is cut to 256
+   * characters; one that is empty after that fails the listing.
+   */
+  readonly title: string;
+  /**
+   * The second line, in the secondary color (a user name). Cleaned and cut like `title`; left out, null or
+   * blank, the row has none. Anything but a string fails the listing.
+   */
+  readonly subtitle?: string;
+}
+```
+
+### SourceValue
+
+What `run` returns: `{ secret }` for an action whose manifest `kind` is "secret" (of a `sensitive` source
+only), `{ text }` for a "text" one; the other shape, or any other value, is a "badResult". The string is
+kept exactly as given, so trim a tool's trailing newline yourself; an empty or whitespace-only one is a
+"badResult" too, and nothing is pasted or copied. Never log rows or values, and never put one in an error
+message: the app's own reasons name shapes only.
+
+```ts snippet
+export type SourceValue = { secret: string } | { text: string };
+```
+
 ## What a call gets
 
 ### Item
@@ -966,7 +1096,7 @@ export interface Context {
   /** This extension's preferences (manifest defaults until the user changes them). */
   preferences: Record<string, unknown>;
   /** Where the call came from. */
-  trigger: "search" | "shiftPanel" | "commandK" | "detect" | "preview" | "capture";
+  trigger: "search" | "shiftPanel" | "commandK" | "detect" | "preview" | "capture" | "source";
   /** The variant the user chose, for actions with `variants`. */
   variant: string | null;
   /** The app the result is headed for, when known. */
@@ -1024,7 +1154,7 @@ export type PreviewSection =
 
 ## The yab object
 
-The global `yab` is the extension's way to the app. Each part says when it works: some need a permission, and some work only in a run the person started (not in hints, detectors, previews or capture rules).
+The global `yab` is the extension's way to the app. Each part says when it works: some need a permission, and some work only in a run the person started or a source's `list` and `run` (not in hints, detectors, previews or capture rules).
 
 ### yab.language
 
@@ -1195,7 +1325,8 @@ exists(path: string): boolean;
 Fetches a URL; needs the `network` permission and only reaches the manifest's `network.domains`
 (a host equals a domain or ends with ".domain"; redirects are held to the same list). Rejects with
 "permissionDenied" (host not allowed), "networkError" (failed, redirected outside the domains, or a text
-body over 10 MB without `toFile`) or "cancelled". Works only in a run the person started.
+body over 10 MB without `toFile`) or "cancelled". Works only in a run the person started or a source's
+`list` and `run`.
 Header names in the response are lowercased. With `toFile` the body streams into the work folder and
 `file` is its path (`true` names it after the URL's last path part, or "download"); a non-2xx answer is
 returned as `text` instead.
@@ -1207,10 +1338,10 @@ fetch(url: string, init?: HttpInit): Promise<HttpResponse>;
 ### yab.exec
 
 Runs a tool from the manifest's `requires.tools`; needs the `exec` permission and works only in a run
-the person started. No shell is involved: each argument reaches the tool as it is, so quoting,
-`;`, `$(…)` and `*` mean nothing special. The tool runs in `yab.files.workDir` with only PATH
-(the folders tools are looked for in, then /usr/bin:/bin:/usr/sbin:/sbin), HOME, TMPDIR, USER and LANG
-set. Resolves once it has exited and closed its output. Rejects with "permissionDenied" (no `exec`
+the person started or a source's `list` and `run`. No shell is involved: each argument reaches the tool
+as it is, so quoting, `;`, `$(…)` and `*` mean nothing special. The tool runs in `yab.files.workDir`
+with only PATH (the folders tools are looked for in, then /usr/bin:/bin:/usr/sbin:/sbin), HOME, TMPDIR,
+USER and LANG set. Resolves once it has exited and closed its output. Rejects with "permissionDenied" (no `exec`
 permission, or the tool is not in `requires.tools`), "toolMissing" (not installed; the message says how
 to install it), "badResult" (`args` is not an array of strings) or "cancelled". Cancelling the call or
 aborting `signal` sends SIGTERM to the tool and everything it started, and SIGKILL two seconds later.
@@ -1222,9 +1353,9 @@ exec(tool: string, args: string[], options?: ExecOptions): Promise<ExecResult>;
 ### yab.notify
 
 Shows a calm notice titled with the extension's name. Works only in a run the person started (throws
-"permissionDenied" in hints, detectors, previews and capture rules); needs no permission. The message is
-cut to 200 characters, and an extension gets at most one notice every 3 seconds: more are dropped
-without an error. Returns at once; the app shows it.
+"permissionDenied" in hints, detectors, previews, capture rules and a source's `list` and `run`); needs
+no permission. The message is cut to 200 characters, and an extension gets at most one notice every 3
+seconds: more are dropped without an error. Returns at once; the app shows it.
 
 ```ts snippet
 notify(message: string): void;
@@ -1233,8 +1364,9 @@ notify(message: string): void;
 ### yab.open
 
 Opens a web link in the default browser. Only http and https links open; any other throws "badResult".
-Works only in a run the person started (throws "permissionDenied" in hints, detectors, previews and
-capture rules); needs no permission. Returns at once; the app opens it.
+Works only in a run the person started (throws "permissionDenied" in hints, detectors, previews, capture
+rules and a source's `list` and `run`, where a link's address could carry a value out); needs no
+permission. Returns at once; the app opens it.
 
 ```ts snippet
 open(url: string): void;
@@ -1647,6 +1779,8 @@ Four things need a permission, listed in the manifest's `permissions`. Before th
 | [`capture`](#capture) | Seeing each new copy, to run capture rules | "Can see everything you copy" |
 | [`history`](#history) | Reading earlier copies | "Can read your whole history" |
 
+A source marked `sensitive` adds one more sentence, though it is not a permission: "Can read and paste secrets such as passwords. They’re never written to history or disk." An extension with a secret source action cannot ask for `network` at all; see [Sources](sources.md#secrets).
+
 **Ask for as little as you can.** Every permission is a sentence the person has to accept and a reason a reviewer reads your code more closely. List the hosts you need rather than any host, run one program rather than a shell, and prefer `yab.ai` and `yab.translate` to a web service when they can do the job. Each permission you keep needs a reason in the pull request and in the README.
 
 ## network
@@ -1659,7 +1793,7 @@ Four things need a permission, listed in the manifest's `permissions`. Before th
 ```
 
 - `yab.http.fetch(url, init)` and the web `fetch` both work, held to the same rules.
-- Only in a run the person started (an action or a job). Hints, detectors, previews and capture rules get `permissionDenied`.
+- Only in a run the person started (an action or a job) and in a source's `list` and `run`. Hints, detectors, previews and capture rules get `permissionDenied`.
 - Only to the listed hosts: a host matches a domain when it is the domain or ends with `.` and the domain, so `example.com` covers `www.example.com`. Redirects must stay inside the list. Leaving the list empty, or leaving `network` out, allows any host, and the consent sentence says "Can reach any website".
 - `http` and `https` only. Response header names arrive lowercased. A text body over 10 MB fails unless it is streamed to a file with `toFile`.
 - Failures reject with `networkError`, a host outside the list with `permissionDenied`, a cancelled job with `cancelled`.
@@ -1684,7 +1818,7 @@ See [Call an API with a key](recipes/call-an-api-with-a-key.md).
 - The program is looked for in `/opt/homebrew/bin`, then `/usr/local/bin`, then the system's folders. If it is not installed, the call fails with `toolMissing` and a message that says how to install it, and Settings shows the `install` command for the person to copy.
 - **No shell.** `args` is a list of strings, and each reaches the program as it is: quotes, `;`, `$(…)` and `*` mean nothing special. Never run a shell (`sh -c …`) to get around that.
 - The program runs in the call's work folder (`yab.files.workDir`) with only `PATH`, `HOME`, `TMPDIR`, `USER` and `LANG` set. Its exit code comes back in `exitCode` and is not an error by itself: check it. `onLine` hears its output line by line; `input` is written to its standard input.
-- Only in a run the person started. Cancelling the job, or aborting `signal`, stops the program and everything it started.
+- Only in a run the person started and in a source's `list` and `run`. Cancelling the job, or aborting `signal`, stops the program and everything it started.
 
 The program can do anything the person can, so a reviewer checks every argument. **Arguments are fixed or checked by the extension.** Put anything that comes from the item after `--`, so a link such as `--exec=…` can never be read as an option, and never pass options that make the program run other programs. See the [review checklist](review-checklist.md#exec) and [Download with yt-dlp](recipes/download-with-yt-dlp.md).
 
@@ -1851,7 +1985,7 @@ The quoted text is the message; `<…>` stands for what the validator fills in.
 
 ### `notAnObject`
 
-`a tool must be an object`, `a preference must be an object`, `an action must be an object`, `a variant must be an object`, `a capture rule must be an object`, `a detector must be an object`, or `"accepts" must be an object`. **Fix:** write that entry as `{ … }` with its fields.
+`a tool must be an object`, `a preference must be an object`, `an action must be an object`, `a variant must be an object`, `a capture rule must be an object`, `a source must be an object`, `a source action must be an object`, `a detector must be an object`, or `"accepts" must be an object`. **Fix:** write that entry as `{ … }` with its fields.
 
 ### `invalidToolName`
 
@@ -1859,11 +1993,11 @@ The quoted text is the message; `<…>` stands for what the validator fills in.
 
 ### `invalidMemberID`
 
-`"<id>" is not a usable <action, variant, preference, capture rule, detector> id`. **Fix:** use only letters, digits, `.`, `_` and `-`.
+`"<id>" is not a usable <action, variant, preference, capture rule, source, source action, detector> id`. **Fix:** use only letters, digits, `.`, `_` and `-`.
 
 ### `duplicateID`
 
-`the <action, variant, preference, capture rule, detector> id "<id>" is used twice`. **Fix:** give each its own id within its list.
+`the <action, variant, preference, capture rule, source, source action, detector> id "<id>" is used twice`. **Fix:** give each its own id within its list.
 
 ### `unknownPreferenceType`
 
@@ -1922,6 +2056,26 @@ The second message means the pattern uses something the store cannot check again
 ### `captureRuleTags`
 
 A warning: `capture rules never see tags; this rule would never run`. A rule's `accepts` lists `tags`, but rules run before detectors tag anything, so it would never match. **Fix:** remove `tags`; filter on `kinds` and `pattern`.
+
+### `sourceActionCount`
+
+`a source needs one or two actions, not <n>`. **Fix:** list one action, or two: ↵ runs the first and ⇧↵ the second ([Sources](sources.md#the-manifest)).
+
+### `unknownSourceActionKind`
+
+`"<kind>" is not a source action kind`. **Fix:** use `secret` for a value that is pasted and never kept, or `text`.
+
+### `sourceSecretNeedsSensitive`
+
+`a source with a secret action must be sensitive`. **Fix:** add `"sensitive": true` to the source; the person is then told before install that the extension can read and paste secrets ([Secrets](sources.md#secrets)).
+
+### `sourceSecretWithNetwork`
+
+`an extension with a secret source action cannot ask for "network"`. Reported once, at `permissions`. **Fix:** remove `network` from `permissions` (and the `network` field), or make the actions `"kind": "text"`.
+
+### `sourceCopyNeedsText`
+
+`a secret action has no "<copyTitle, copied>"; secrets are never copied to be kept`. Reported once for each of the two keys. **Fix:** remove the key, or make the action `"kind": "text"`.
 
 ### `indexMissing`
 
@@ -2026,15 +2180,15 @@ The extension threw. **Cause:** your code, a failed check of your own, or a `yab
 
 ### `timeout`
 
-The call ran past its limit: 500 ms for a hint or a preview, 50 ms for `validate`, 200 ms for a capture rule, 10 seconds for an action. **Fix:** make it a [job](jobs.md) if it is slow by nature; otherwise do less, or narrow `accepts` so it runs less often.
+The call ran past its limit: 500 ms for a hint or a preview, 50 ms for `validate`, 200 ms for a capture rule, 10 seconds for an action or a source's `list` and `run`. **Fix:** make it a [job](jobs.md) if it is slow by nature; otherwise do less, or narrow `accepts` so it runs less often.
 
 ### `notFound`
 
-The app called an action, detector or rule the code does not export. **Fix:** the ids in the manifest and the keys of `actions`, `detectors` and `captureRules` in `src/index.ts` must match exactly.
+The app called an action, detector, rule or source the code does not export (`sources.<id>.list is not exported`). **Fix:** the ids in the manifest and the keys of `actions`, `detectors`, `captureRules` and `sources` in `src/index.ts` must match exactly.
 
 ### `badResult`
 
-What the call returned is not a result the app accepts, or a `yab` call got arguments it cannot use. Examples: `run` returned a string instead of `{ text }`, a file result outside `yab.files.workDir`, a preview section of an unknown `type`, `yab.exec` with arguments that are not strings, `yab.files.write` with `..` in the name, `yab.job.progress` with a fraction that is not a number. The app logs the reason to the Development log. **Fix:** return one of the [result shapes](results-and-targets.md); the fake host reports the same reason in tests.
+What the call returned is not a result the app accepts, or a `yab` call got arguments it cannot use. Examples: `run` returned a string instead of `{ text }`, a file result outside `yab.files.workDir`, a preview section of an unknown `type`, a source's `run` that returned `{ text }` for a `secret` action or an empty value, a listing with two rows of one `id`, `yab.exec` with arguments that are not strings, `yab.files.write` with `..` in the name, `yab.job.progress` with a fraction that is not a number. The app logs the reason to the Development log. **Fix:** return one of the [result shapes](results-and-targets.md); the fake host reports the same reason in tests.
 
 ### `unavailable`
 
@@ -2070,6 +2224,7 @@ Three failures in a row turn an extension off; Settings shows it as off and a no
 
 - **Never counted:** `cancelled`, `interrupted`, `toolMissing`, `networkError`, `permissionDenied`.
 - **In a job,** only a broken extension counts: `badResult`, `notFound`, `syntax`. A job's own thrown errors are reported to the person, not counted.
+- **In a source's `list` and `run`,** nothing counts, a timeout included: a source never turns its extension off.
 - **Everywhere else** (actions, hints, detectors, previews, rules), any other failure counts, `script` and `timeout` included.
 - A load that fails (`index.js could not load`) counts too.
 
@@ -2085,6 +2240,8 @@ Messages the fake host gives in `npm test`:
 - `<tool> is not in the extension's required tools` (`permissionDenied`): add it to `requires.tools`.
 - `the fake host has no AI answer; pass createFakeHost({ ai })` (`unavailable`), and the same for `translate` and `vision`.
 - `run returned … ; expected {text}, {html, text}, …` (`badResult`): return a result shape.
+- `run returned {text}; this action expects {secret}`, `rows[<i>].id repeats an earlier row's id` and the other reasons of a source (`badResult`): the answer breaks a rule of [Sources](sources.md#list-and-run); the reason names the shape and the place, never the value.
+- `sources.<id>.list is not exported; pass the extension's sources: createFakeHost({ sources })` (`notFound`): give the fake host the extension's `sources` export.
 - `… is not available in hints, detectors and previews` (`permissionDenied`): an effect in a call without effects.
 - `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`, or a TypeScript import that Node cannot load: use `import type` for `@yabbistir/api`, import your files with `.ts`, avoid `enum` and `namespace`, and use Node 22.18 or later ([Testing](testing.md)).
 
@@ -2516,6 +2673,230 @@ The [capture-rule template](../templates/capture-rule) (`npm run new -- <id> --t
 
 
 ================================================================================
+File: docs/sources.md
+================================================================================
+
+# Sources
+
+A **source** is a list the app shows in a column of its own in the panel, next to the history's categories: saved snippets, a team's canned replies, the entries of a password vault. The extension lists the rows; the app draws the column, searches it, and runs one of the source's actions on the row the person picks, which usually pastes a value.
+
+- ↵ on a row runs the source's first action, and ⇧↵ its second.
+- ⌘C runs the first `text` action that has a `copyTitle`: it copies the value and shows that action's `copied` notice. A source without one has no ⌘C.
+- Search filters the rows by title and subtitle, the way it filters the history.
+- Rows live in the app's memory only. They never enter the history, the search index or the disk. The app forgets them when the Mac locks or sleeps, when the source answers that it is locked, when the extension is removed or turned off, and when the app quits.
+- A value the app pastes or copies never enters the history either.
+
+`npm run new -- <id> --template source` makes a working source that lists snippets from its settings.
+
+## The manifest
+
+Sources need yabbistir 0.3.0 or later: set `minAppVersion` to `0.3.0`.
+
+A source with a secret action and a text action, as a password vault would have:
+
+```json
+{
+  "permissions": ["exec"],
+  "requires": { "tools": [{ "name": "vault-cli", "install": "brew install vault-cli" }] },
+  "contributes": {
+    "sources": [
+      {
+        "id": "vault",
+        "title": "vault.title",
+        "sensitive": true,
+        "actions": [
+          { "id": "password", "kind": "secret", "title": "password.title", "label": "password.label" },
+          { "id": "username", "kind": "text", "title": "username.title", "label": "username.label",
+            "copyTitle": "username.copyTitle", "copied": "username.copied" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "vault.title": "Vault",
+  "password.title": "Paste password",
+  "password.label": "Password",
+  "username.title": "Paste username",
+  "username.label": "Username",
+  "username.copyTitle": "Copy username",
+  "username.copied": "Username copied."
+}
+```
+
+- `id` is the key of `sources` in `src/index.ts`; `title` is the column's name.
+- `actions` holds one or two: ↵ runs the first, ⇧↵ the second. An action's `title` is its label for ↵, ⇧↵ and ⌘K ("Paste password"); its `label` is the value's short name on the panel's bar and in the row's preview ("Password").
+- `kind` says what `run` returns for the action: `{ text }` for `"text"`, `{ secret }` for `"secret"`. A secret is pasted and never kept; see [Secrets](#secrets).
+- `copyTitle` and `copied` belong to `text` actions only: the ⌘C row's title and the notice after it.
+- `"sensitive": true` marks a source whose values are secrets. A `secret` action needs it. Before install, the person reads: "Can read and paste secrets such as passwords. They’re never written to history or disk."
+
+Every field is in the [manifest reference](manifest.md#contributessources).
+
+## `list` and `run`
+
+`src/index.ts` exports `sources`, keyed by each source's `id`, each with a `list` and a `run`:
+
+```ts
+import type { SourceRow, Sources } from "@yabbistir/api";
+
+/** One row per line of `vault-cli list`: id, name and user name, separated by tabs. */
+function rowsOf(output: string): SourceRow[] {
+  return output.split("\n").filter((line) => line !== "").map((line) => {
+    const [id = "", title = "", user = ""] = line.split("\t");
+    return { id, title, subtitle: user || undefined };
+  });
+}
+
+export const sources: Sources = {
+  vault: {
+    async list(ctx) {
+      const result = await yab.exec("vault-cli", ["list", "--format=tsv"], { signal: ctx.signal });
+      if (result.exitCode !== 0) throw new Error(yab.t("listFailed"));
+      return { rows: rowsOf(result.stdout) };
+    },
+    async run(rowId, actionId, ctx) {
+      const field = actionId === "password" ? "--password" : "--username";
+      const result = await yab.exec("vault-cli", ["show", field, "--", rowId], { signal: ctx.signal });
+      if (result.exitCode !== 0) throw new Error(yab.t("showFailed"));
+      const value = result.stdout.replace(/\n$/, "");
+      if (value.trim() === "") throw new Error(yab.t(actionId === "password" ? "noPassword" : "noUsername"));
+      return actionId === "password" ? { secret: value } : { text: value };
+    },
+  },
+};
+```
+
+**`list(ctx)`** returns `{ rows }`. The app calls it each time the panel opens. It shows the rows it already holds at once, or "Loading…" the first time, and swaps the new rows in quietly when they come, keeping the person's selection on the same row.
+
+- `id`: a non-empty string of at most 256 characters, its own to each row, and the same each time the row is listed. It comes back to `run` exactly as listed: it is never cleaned or cut.
+- `title`: the row's first line. `subtitle`, optional: a quieter second line, such as a user name.
+- Tabs and line ends in `title` and `subtitle` become spaces, the ends are trimmed, and each is cut to 256 characters. A title that is empty after that fails the listing; an empty subtitle is none.
+- A row that breaks a rule, or an id that an earlier row already has, fails the whole listing with `badResult`. When `list` fails, the app keeps the rows it had; with none, the column shows one calm line saying the list could not be read.
+
+**`run(rowId, actionId, ctx)`** gets a row's `id` and the `id` of one of the source's actions, and returns `{ secret }` or `{ text }`, as the action's `kind` says.
+
+- The string is used exactly as given: trim a tool's trailing newline yourself.
+- An empty or whitespace-only value is a `badResult`, and nothing is pasted or copied. When a row has no value for an action, throw an error that says so, as above.
+- A `run` that throws shows a notice with the extension's name and the error's message, so write the message for people, with `yab.t`.
+
+**Both** get no item, and run as the person's own calls: `yab.exec` and `yab.http` work as far as the permissions allow, and so do `yab.notify`, `yab.open`, `yab.ai` and `yab.translate`. `yab.history` rejects with `permissionDenied`. `ctx.trigger` is `"source"`, `ctx.variant` and `ctx.target` are `null`, and `ctx.signal` aborts when the call is cancelled or runs out of time: pass it to `yab.exec` so the tool stops too.
+
+## Locked sources
+
+A source that needs the person to unlock it first, such as a vault behind a sign-in, answers `locked` instead of rows:
+
+```ts
+import type { SourceListing } from "@yabbistir/api";
+
+export function lockedListing(): SourceListing {
+  return { locked: true, message: yab.t("locked"), command: "vault-cli login" };
+}
+```
+
+- The app drops the rows it held at once, and shows one calm row with `message`, which is required.
+- `command`, optional, is a line the person runs in a terminal to unlock the source. ↵ or ⌘C on the locked row copies it.
+- Both are cleaned like a title and cut to 200 characters. A line end becomes a space, so pasting the command never runs it; a blank command is none.
+- `locked: true` wins over any `rows` sent with it.
+
+## Secrets
+
+A `secret` action returns something that must not be kept or seen: a password, a token, a recovery code. The rules, which `npm run validate` checks:
+
+- A `secret` action belongs to a `sensitive` source ([`sourceSecretNeedsSensitive`](errors.md#sourcesecretneedssensitive)).
+- An extension with a `secret` action cannot ask for `network` ([`sourceSecretWithNetwork`](errors.md#sourcesecretwithnetwork)), so it cannot reach the network itself. In a source's `list` and `run`, `yab.open` and `yab.notify` throw `permissionDenied` too: a link or a notice could carry a value out. The programs it runs with `yab.exec` can still reach the internet, so reviewers check what each tool does with what it is given.
+- A `secret` action has no `copyTitle` or `copied` ([`sourceCopyNeedsText`](errors.md#sourcecopyneedstext)): ⌘C never copies a secret.
+
+The app pastes a secret as one item for this Mac only, marked so that clipboard managers, its own history included, skip it, and gives the clipboard back a moment after the paste. When it cannot paste, without Accessibility access for example, it leaves the secret on the clipboard for 30 seconds and says so.
+
+The rest is the extension's to keep:
+
+- **Never log a row or a value.** `console.*` lines go to the Development log, which a person may share when asking for help.
+- **Never put a value, a row or a tool's output in an error message.** Messages reach notices and the log. Say what failed in your own words, with `yab.t`, and leave `stdout` and `stderr` out.
+- **Never keep a value.** Not in `yab.storage`, not in a file, not in a module variable: a value lives for its `run` call only.
+
+## Caching
+
+`list` runs each time the panel opens. When the tool behind it is slow, keep the last rows for a short while:
+
+- Only in a module variable, with a lifetime of a few minutes. A module variable lives in the helper's memory until the app quits or the extension changes.
+- Drop it when the source answers `locked`, so rows never outlive a lock.
+- Never write rows to `yab.storage` or a file: both are kept on disk. Never cache values.
+
+```ts
+import type { SourceRow, Sources } from "@yabbistir/api";
+
+const LIFETIME = 5 * 60_000;
+let cached: { at: number; rows: SourceRow[] } | undefined;
+
+async function readRows(signal: AbortSignal): Promise<SourceRow[]> {
+  const result = await yab.exec("vault-cli", ["list", "--format=tsv"], { signal });
+  if (result.exitCode !== 0) throw new Error(yab.t("listFailed"));
+  return result.stdout.split("\n").filter((line) => line !== "").map((line) => {
+    const [id = "", title = ""] = line.split("\t");
+    return { id, title };
+  });
+}
+
+export const sources: Sources = {
+  vault: {
+    async list(ctx) {
+      const status = await yab.exec("vault-cli", ["status"], { signal: ctx.signal });
+      if (status.exitCode !== 0) {
+        cached = undefined;
+        return { locked: true, message: yab.t("locked"), command: "vault-cli login" };
+      }
+      if (cached === undefined || Date.now() - cached.at > LIFETIME) cached = { at: Date.now(), rows: await readRows(ctx.signal) };
+      return { rows: cached.rows };
+    },
+    async run(rowId, actionId, ctx) {
+      const result = await yab.exec("vault-cli", ["show", "--password", "--", rowId], { signal: ctx.signal });
+      if (result.exitCode !== 0) throw new Error(yab.t("showFailed"));
+      const secret = result.stdout.replace(/\n$/, "");
+      if (secret.trim() === "") throw new Error(yab.t("noPassword"));
+      return { secret };
+    },
+  },
+};
+```
+
+## Limits
+
+| What | Limit |
+|---|---|
+| Rows in a listing | 10,000; the rest are dropped, with one line in the Development log |
+| A row's `id` | 256 characters; a longer one fails the listing |
+| A row's `title` and `subtitle` | cut to 256 characters, on one line |
+| A locked listing's `message` and `command` | cut to 200 characters, on one line |
+| `list` and `run` | 10 seconds each; then the call is cancelled and its `ctx.signal` aborts |
+
+Characters are counted as a person sees them: an accented letter or an emoji is one. A source's failures never count toward [turning the extension off](errors.md#turned-off-after-repeated-errors), a timeout included.
+
+## Testing
+
+The fake host calls a source the way the app does and holds its answers to the same rules. Pass the extension's `sources` export to `createFakeHost`, then use `host.list(sourceId)` and `host.runSource(sourceId, rowId, actionId)`:
+
+```js
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createFakeHost } from "@yabbistir/api/fake-host";
+import { sources } from "../src/index.ts";
+
+const folder = new URL("..", import.meta.url);
+
+test("pastesThePassword", async () => {
+  const host = createFakeHost({ folder, sources, exec: { "vault-cli": (args) => ({ exitCode: 0, stdout: `s3cret-for-${args.at(-1)}\n`, stderr: "" }) } });
+  assert.deepEqual(await host.runSource("vault", "42", "password"), { secret: "s3cret-for-42" });
+  assert.deepEqual(host.logs, [], "no console line and no note: nothing a log would show");
+});
+```
+
+`host.list` resolves to the rows as the app keeps them, cleaned and cut, or to the locked state; `host.runSource` to `{ secret }` or `{ text }`. Any other answer rejects with `badResult` and the app's reason. See [Testing](testing.md#sources).
+
+
+================================================================================
 File: docs/localization.md
 ================================================================================
 
@@ -2644,6 +3025,8 @@ An item needs only what matters to the test: the host fills in `id`, `tags: []` 
 | `host.validate(detector, item?)` | `detector.validate(item)` | Resolves to a boolean; a promise is refused. |
 | `host.preview(detector, item?, context?)` | `detector.preview(item, ctx)` | No effects; the sections are checked. |
 | `host.capture(rule, item?, context?)` | `rule.run(item, ctx)` | No effects; the result is checked. |
+| `host.list(sourceId, context?)` | `sources[sourceId].list(ctx)` | A source's list, as the app calls it: effects allowed, no item. Resolves to the rows the app keeps, or the locked state ([Sources](#sources)). |
+| `host.runSource(sourceId, rowId, actionId, context?)` | `sources[sourceId].run(rowId, actionId, ctx)` | The same, for one action; resolves to `{ secret }` or `{ text }`. |
 
 `context` sets parts of `ctx` for that call: `{ language: "tr", variant: "audio", target: { bundleID: "com.apple.finder", name: "Finder", kind: "finder" } }`. Pass `null` as the item for a generator.
 
@@ -2674,6 +3057,7 @@ await assert.rejects(host.run(actions.broken, { text: "x" }), { code: "badResult
 | `files` | `{ path: text or Uint8Array }`: files on the fake disk, such as an item's own files. |
 | `storage` | What `yab.storage` holds at the start. |
 | `now` | A `Date`, ISO text or milliseconds: `Date.now()` and `new Date()` during calls, and items' `copiedAt`. |
+| `sources` | The extension's `sources` export, for `host.list` and `host.runSource`. |
 
 An answer in any table can be an `Error` to make the call fail, and `yabError(code, message)` makes one with a `code`, the way the app's errors have one.
 
@@ -2682,7 +3066,8 @@ An answer in any table can be an `Error` to make the call fail, and `yabError(co
 | Field | Holds |
 |---|---|
 | `host.calls` | Every `yab` call in order, as `{ api, args }`, such as `{ api: "exec", args: ["yt-dlp", [...]] }`. Callbacks and signals are left out, and so are `t` and plain reads (`storage.get`, `files.read`, `files.exists`, `image.info`). |
-| `host.results` | What each call returned. |
+| `host.results` | What each call returned; a source's answers are left out, as the app keeps no value. |
+| `host.logs` | Console lines and the host's own notes: each `console` line written during the host's calls or outside any call (the module's top level, a timer), and notes such as a listing cut at 10,000 rows; what the app would write to the extension's Development log. The console is the app's from the moment the fake host is imported: `log`, `info`, `warn`, `error` and `debug`, while the rest (`table`, `dir`, `trace`, …) throw, as in the app. The lines still reach your console too. |
 | `host.notifications` | The `yab.notify` messages, cut to 200 characters. |
 | `host.opened` | The links `yab.open` got. |
 | `host.progress` | Each `yab.job.progress` as `{ fraction, message }`. |
@@ -2761,6 +3146,32 @@ assert.equal(acceptsMatch(manifest.contributes.detectors[0].accepts, { kind: "te
 ```
 
 Both check the kind (a single image file counts for `image`), the tags, and the [pattern](concepts.md#patterns), searched for in the trimmed text or URL. The app matches patterns with ICU; the helpers use JavaScript's `RegExp` with the `u` flag, after turning a leading `(?i)`, `(?s)` or `(?m)` into flags, `\d` into any decimal digit, and a bare script name such as `\p{Greek}` into `\p{Script=Greek}`. That is close to the app, not identical: `\w` and `\s` differ slightly, and ICU-only syntax (`a++`, `(?>…)`, `(?x)`, a flag group after the start, sets with `&&` or `--`, `[[:alpha:]]`, `\Q…\E`, block properties) throws an error that says so. `npm run validate` remains the judge of whether a pattern is valid ICU, and `npm run dev` shows the app's real matching.
+
+## Sources
+
+`host.list` and `host.runSource` call a source the way the app does: as the person's own call, so `yab.exec` works with the `exec` permission, with `ctx.trigger` `"source"`, and with no item, variant or target. Pass the extension's `sources` export when you make the host:
+
+```js
+import { sources } from "../src/index.ts";
+
+const host = createFakeHost({
+  folder,
+  sources,
+  exec: { "vault-cli": (args) => ({ exitCode: 0, stdout: args[0] === "list" ? "42\texample.com\tada\n" : "s3cret\n", stderr: "" }) },
+});
+assert.deepEqual(await host.list("vault"), { rows: [{ id: "42", title: "example.com", subtitle: "ada" }] });
+assert.deepEqual(await host.runSource("vault", "42", "password"), { secret: "s3cret" });
+assert.deepEqual(host.logs, []);
+```
+
+What they resolve to is what the app keeps:
+
+- `host.list` gives `{ rows }` with each title and subtitle on one line and cut to 256 characters, at most 10,000 rows (and a line in `host.logs` past that), or `{ locked: true, message, command? }`.
+- `host.runSource` gives `{ secret }` or `{ text }`, whichever the manifest's `kind` for the action says.
+- Anything else rejects with `badResult` and the app's reason: a value of the other kind, an empty value, a row without a title, two rows with one id. The reason names shapes and places, never a value.
+- Before calling, both fail as the app would: `notFound` for a source or action the manifest does not have, or an export missing from `sources`, and `toolMissing` for a tool of `requires.tools` missing from `exec`.
+
+Test the locked answer, an empty value, a failing tool, and that nothing reaches `host.logs`. The rules are in [Sources](sources.md).
 
 ## Everything else
 
@@ -4108,6 +4519,16 @@ Every pull request is read against this list before it is merged. Authors: go th
 - [ ] No shell (`sh`, `bash`, `zsh`, `osascript`) as a tool.
 - [ ] The exit code is checked; output is parsed, not trusted.
 - [ ] Cancelling stops the tool: `ctx.signal` is passed to `yab.exec`.
+
+## Sources
+
+- [ ] Rows and values are never logged, never put in an error message, and never written to `yab.storage` or a file. A tool's output stays out of messages.
+- [ ] Rows are cached, if at all, only in a module variable with a short lifetime, dropped when the source answers `locked`. Values are never cached.
+- [ ] `sensitive` is set only when the values are secrets, and every `secret` action is in such a source; an extension with one has no `network`.
+- [ ] Row ids are stable and come back to `run` unchanged; `run` checks them before passing them to a tool.
+- [ ] A `sensitive` source passes no row or value to a tool argument other than the row's id.
+- [ ] A `sensitive` source's tools cannot send its data elsewhere: they talk only to the service the source is for, with no option that uploads, syncs or shares.
+- [ ] An empty value is a clear error, never pasted.
 
 ## Download Video and browser cookies
 

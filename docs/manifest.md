@@ -6,7 +6,7 @@
 
 Every text a person reads (names, titles, keywords, tags) is a key into `locales/<language>.json`, never the text itself; see [Localization](localization.md). Run `npm run validate -- <id>` after each change: it names the field, what was expected and how to fix it ([every message](errors.md)).
 
-Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requires) · [`requires.tools[]`](#requirestools) · [`preferences[]`](#preferences) · [`preferences[].options[]`](#preferencesoptions) · [`contributes`](#contributes) · [`contributes.actions[]`](#contributesactions) · [`accepts`](#accepts) · [`contributes.actions[].variants[]`](#contributesactionsvariants) · [`contributes.detectors[]`](#contributesdetectors) · [`contributes.captureRules[]`](#contributescapturerules) · [Rules beyond the schema](#rules-beyond-the-schema) · [A complete example](#a-complete-example)
+Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requires) · [`requires.tools[]`](#requirestools) · [`preferences[]`](#preferences) · [`preferences[].options[]`](#preferencesoptions) · [`contributes`](#contributes) · [`contributes.actions[]`](#contributesactions) · [`accepts`](#accepts) · [`contributes.actions[].variants[]`](#contributesactionsvariants) · [`contributes.detectors[]`](#contributesdetectors) · [`contributes.captureRules[]`](#contributescapturerules) · [`contributes.sources[]`](#contributessources) · [`contributes.sources[].actions[]`](#contributessourcesactions) · [Rules beyond the schema](#rules-beyond-the-schema) · [A complete example](#a-complete-example)
 
 ## Top level
 
@@ -27,7 +27,7 @@ Sections: [Top level](#top-level) · [`network`](#network) · [`requires`](#requ
 | `network` | object, see [`network`](#network) |  | With the `network` permission: the hosts the extension may reach. An empty list, or no `network` at all, means any host, and the person is told so. |
 | `requires` | object, see [`requires`](#requires) |  | With the `exec` permission: the programs the extension runs with `yab.exec`. |
 | `preferences` | list of objects, see [`preferences[]`](#preferences) |  | Settings the app draws for the extension. Their values reach `yab.preferences` and `ctx.preferences`, except secrets, which only `yab.secrets.get` reads. |
-| `contributes` | object, see [`contributes`](#contributes) |  | What the extension adds. Each id here is a key of the matching export of `src/index.ts`: `actions`, `detectors` or `captureRules`. |
+| `contributes` | object, see [`contributes`](#contributes) |  | What the extension adds. Each id here is a key of the matching export of `src/index.ts`: `actions`, `detectors`, `captureRules` or `sources`. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -83,6 +83,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `actions` | list of objects, see [`contributes.actions[]`](#contributesactions) |  | Transforms and generators; see [Concepts](concepts.md#actions). |
 | `detectors` | list of objects, see [`contributes.detectors[]`](#contributesdetectors) |  | See [Detectors and previews](detectors-and-previews.md). |
 | `captureRules` | list of objects, see [`contributes.captureRules[]`](#contributescapturerules) |  | Needs the "capture" permission. See [Capture rules](capture-rules.md). |
+| `sources` | list of objects, see [`contributes.sources[]`](#contributessources) |  | Lists the app draws in its own column. A secret action rules out the "network" permission. See [Sources](sources.md). |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -155,6 +156,30 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
+## `contributes.sources[]`
+
+| Field | Type | Required | What it does |
+|---|---|---|---|
+| `id` | string matching `^[A-Za-z0-9._-]+$` | yes | The key of `sources` in `src/index.ts`. |
+| `title` | [locale key](localization.md) | yes | The column's name in the panel. |
+| `sensitive` | boolean |  | Required for a source with a "secret" action. `true` when the source's values are secrets, such as passwords. Before install the person reads that the extension can read and paste secrets. See [Secrets](sources.md#secrets). |
+| `actions` | list of objects, see [`contributes.sources[].actions[]`](#contributessourcesactions) | yes | One or two: ↵ runs the first, ⇧↵ the second. ⌘C runs the first `text` action that has a `copyTitle`. |
+
+No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
+
+## `contributes.sources[].actions[]`
+
+| Field | Type | Required | What it does |
+|---|---|---|---|
+| `id` | string matching `^[A-Za-z0-9._-]+$` | yes | What `run` gets as `actionId`. |
+| `kind` | one of `"secret"`, `"text"` | yes | What `run` returns: `{ secret }` for `secret`, `{ text }` for `text`. A `secret` action belongs to a `sensitive` source, has no `copyTitle` or `copied`, and rules out the `network` permission. |
+| `title` | [locale key](localization.md) | yes | The paste label ("Paste password"). Shown for ↵ or ⇧↵ on a row, in ⌘K and on the panel's bar. |
+| `label` | [locale key](localization.md) | yes | The value's short name ("Password"). Shown on the panel's bar and in the row's preview. |
+| `copyTitle` | [locale key](localization.md) |  | Text actions only. The ⌘C row's title, such as "Copy username". With it, ⌘C copies this action's value. |
+| `copied` | [locale key](localization.md) |  | Text actions only. The notice after ⌘C, such as "Username copied." |
+
+No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
+
 ## Rules beyond the schema
 
 `npm run validate` also checks what a schema cannot say:
@@ -163,9 +188,10 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 - `locales/<defaultLocale>.json` exists and holds every key the manifest uses; `locales/en.json` exists and holds them all too.
 - A `keywords` key's value is a list of strings in the locale file: `"reverse.keywords": ["reverse", "flip"]`.
 - `captureRules` need the `capture` permission; `exec` needs `requires.tools`, and `requires.tools` needs `exec`.
-- Ids are unique within their list (actions, variants of one action, detectors, capture rules, preferences).
+- Ids are unique within their list (actions, variants of one action, detectors, capture rules, sources, actions of one source, preferences).
 - A `secret` preference has no `default`; a `folder` default starts with `~`; a `choice` has `options`.
 - `targetsOnly` needs at least one entry in `targets`.
+- A source has one or two actions. A `secret` action needs `"sensitive": true` on its source and has no `copyTitle` or `copied`, and an extension with one cannot ask for `network`.
 - `accepts.pattern` compiles as an ICU regular expression, the kind the app uses.
 - README.md and CHANGELOG.md exist, and, once built, so does `index.js`.
 

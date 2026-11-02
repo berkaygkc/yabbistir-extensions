@@ -4,7 +4,7 @@
 
 const ANNOTATIONS = new Set(["$schema", "$id", "$comment", "title", "description", "examples", "default", "format"]);
 const KEYWORDS = new Set([
-  "type", "enum", "const", "pattern", "minLength", "minimum", "items", "minItems", "uniqueItems",
+  "type", "enum", "const", "pattern", "minLength", "minimum", "items", "minItems", "maxItems", "uniqueItems",
   "required", "properties", "additionalProperties", "propertyNames", "minProperties", "$ref", "$defs", "if", "then",
 ]);
 const SCHEMA_MAPS = new Set(["properties", "$defs"]);
@@ -105,6 +105,9 @@ function check(schema, value, field, root, errors) {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
       fail("minItems", schema.minItems === 1 ? "must not be empty" : `must have at least ${schema.minItems} entries`);
+    }
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      fail("maxItems", `must have at most ${schema.maxItems} ${schema.maxItems === 1 ? "entry" : "entries"}`);
     }
     if (schema.uniqueItems && value.some((item, index) => value.findIndex((other) => equal(other, item)) !== index)) {
       fail("uniqueItems", "has the same entry twice");
