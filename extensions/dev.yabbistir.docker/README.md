@@ -21,10 +21,12 @@ There is no network permission, and nothing is written to disk. The extension ke
 
 ## When Docker is not running
 
-The column shows *Docker isn’t running* when `docker` cannot reach its engine (the app is closed, or Colima is stopped). Start it and open the panel again. If `docker` itself is missing, yabbistir tells you which tool to install.
+The column shows *Docker isn’t running* when `docker` cannot reach its engine (the app is closed, or Colima is stopped). Start it and open the panel again. The messages `docker` prints when it cannot reach the engine (*Cannot connect to the Docker daemon*, *error during connect*, a missing `docker.sock`) are what the extension recognizes; any other failure is reported as a plain error without docker's text. When the engine answers *permission denied* (your user may not use the socket, for example outside the `docker` group), the column says *Docker refused access* instead. If `docker` itself is missing, yabbistir tells you which tool to install.
 
 ## Limits
 
+- Listing has a time limit of 10 seconds. While Docker Desktop is still starting, `docker ps` can take longer, and the list is cancelled without a row; open the panel again once Docker is up.
+- A container name is limited to 128 characters; a longer one is not listed.
 - The pasted exec command opens `sh`. A container without `sh` (a distroless image) needs another command.
 - A container's name is its row's identity, so renaming a container shows it as a new row.
 - Link aliases (`webapp/db`) are not shown; the container's own name is.

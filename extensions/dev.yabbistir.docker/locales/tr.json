@@ -10,7 +10,8 @@
   "exec.title": "Exec komutunu yapıştır",
   "exec.label": "Exec komutu",
   "locked": "Docker çalışmıyor",
-  "listFailed": "docker konteynerları listeleyemedi.",
+  "denied": "Docker erişimi reddetti",
+  "listFailed": "Docker konteynerları listeleyemedi.",
   "badRow": "Bu konteyner kullanılamıyor.",
   "morePorts": "+{count}"
 }

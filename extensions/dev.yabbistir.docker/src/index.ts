@@ -5,9 +5,9 @@ import type { SourceRow, Sources } from "@yabbistir/api";
 // position in the list. Nothing is cached and nothing is stored; docker's output never reaches a message.
 
 /** One JSON object per line, one line per container. */
-const PS_ARGS = ["ps", "--no-trunc", "--format", "{{json .}}"];
+const PS_ARGS = ["ps", "--format", "{{json .}}"];
 /** What docker allows in a container name; it is also what keeps a pasted `docker exec` line free of shell syntax. */
-const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 /** Ports shown in a subtitle before "+N". */
 const MAX_PORTS = 3;
 /** Port lists are short; this keeps a hostile one from costing time. */
@@ -18,10 +18,11 @@ const DAEMON_DOWN = [
   "is the docker daemon running",
   "error during connect",
   "error response from daemon: dial unix",
-  "permission denied while trying to connect",
   "docker.sock",
   "docker daemon is not running",
 ];
+/** The user is not allowed to use the socket (not in the docker group): the daemon may well be running. */
+const DENIED = "permission denied while trying to connect";
 
 /** A container's real name: `Names` may add link aliases such as "webapp/db", which are not names of it. */
 function nameOf(names: unknown): string | undefined {
@@ -94,6 +95,7 @@ export const sources: Sources = {
       });
       if (result.exitCode !== 0) {
         const said = `${stderr}\n${result.stderr}`.toLowerCase();
+        if (said.includes(DENIED)) return { locked: true, message: yab.t("denied") };
         if (DAEMON_DOWN.some((text) => said.includes(text))) return { locked: true, message: yab.t("locked") };
         throw new Error(yab.t("listFailed"));
       }

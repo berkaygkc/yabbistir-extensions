@@ -132,7 +132,6 @@ describe("failures", () => {
   const DOWN = [
     "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
     "error during connect: Get \"http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.47/containers/json\": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.",
-    "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.47/containers/json\"",
     "Cannot connect to the Docker daemon at unix:///Users/ornek/.colima/default/docker.sock. Is the docker daemon running?",
   ];
   for (const stderr of DOWN) {
@@ -142,6 +141,12 @@ describe("failures", () => {
     });
   }
 
+  test("no access to the socket says so, not that docker is off", async () => {
+    const stderr = "permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock: Get \"http://%2Fvar%2Frun%2Fdocker.sock/v1.47/containers/json\"";
+    assert.deepEqual(await hostWith(fakeDocker({ exitCode: 1, stderr })).list("containers"), { locked: true, message: "Docker refused access" });
+    assert.equal((await hostWith(fakeDocker({ exitCode: 1, stderr }), {}, "tr").list("containers")).message, "Docker erişimi reddetti");
+  });
+
   test("the locked message is Turkish when the app is", async () => {
     const listing = await hostWith(fakeDocker({ exitCode: 1, stderr: DOWN[0] }), {}, "tr").list("containers");
     assert.equal(listing.message, "Docker çalışmıyor");
@@ -150,7 +155,7 @@ describe("failures", () => {
   test("another failure says so without docker's text", async () => {
     const secret = "gh" + "p_" + "a".repeat(36);
     await assert.rejects(hostWith(fakeDocker({ exitCode: 125, stderr: `unknown flag ${secret}` })).list("containers"), (error) => {
-      assert.equal(error.message, "docker could not list the containers.");
+      assert.equal(error.message, "Docker could not list the containers.");
       return true;
     });
   });
@@ -160,10 +165,22 @@ describe("failures", () => {
     await assert.rejects(host.list("containers"), { code: "toolMissing" });
   });
 
-  test("a cancelled list rejects and nothing is logged", async () => {
-    const host = createFakeHost({ folder, sources, exec: { docker: () => new Error("aborted") } });
+  test("a failing docker rejects and nothing is logged", async () => {
+    const host = createFakeHost({ folder, sources, exec: { docker: () => new Error("boom") } });
     await assert.rejects(host.list("containers"));
     assert.deepEqual(host.logs, []);
+  });
+
+  test("a docker that never answers ends when the list is cancelled", async () => {
+    const host = createFakeHost({ folder, sources, exec: { docker: () => new Promise(() => {}) } });
+    const running = host.list("containers");
+    setTimeout(() => host.cancel(), 10);
+    await assert.rejects(running, { code: "cancelled" });
+    assert.deepEqual(host.logs, []);
+  });
+
+  test("a name over 128 characters is skipped, not a failed listing", () => {
+    assert.deepEqual(rowsOf([line({ Names: "a".repeat(129) }), line({ Names: "a".repeat(128) })]).map((row) => row.id.length), [128]);
   });
 });
 
@@ -197,9 +214,11 @@ describe("actions", () => {
 });
 
 describe("nothing leaks", () => {
-  test("rows, titles and logs hold only synthetic names, never docker's stderr", async () => {
-    const host = hostWith(fakeDocker());
-    await host.list("containers");
+  test("a listing writes no log or notification and no row carries docker's stderr", async () => {
+    const secret = "gh" + "p_" + "a".repeat(36);
+    const host = hostWith(fakeDocker({ stderr: secret }));
+    const { rows } = await host.list("containers");
+    assert.ok(!JSON.stringify(rows).includes(secret));
     assert.deepEqual(host.logs, []);
     assert.deepEqual(host.notifications, []);
   });

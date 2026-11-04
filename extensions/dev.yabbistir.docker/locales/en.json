@@ -10,7 +10,8 @@
   "exec.title": "Paste exec command",
   "exec.label": "Exec command",
   "locked": "Docker isn’t running",
-  "listFailed": "docker could not list the containers.",
+  "denied": "Docker refused access",
+  "listFailed": "Docker could not list the containers.",
   "badRow": "This container can’t be used.",
   "morePorts": "+{count}"
 }
