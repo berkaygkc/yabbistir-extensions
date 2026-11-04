@@ -1,0 +1,38 @@
+{
+  "id": "dev.yabbistir.homebrew",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:shippingbox",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "brew", "install": "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"" }
+    ]
+  },
+  "contributes": {
+    "actions": [
+      { "id": "install", "title": "install.title", "subtitle": "install.subtitle", "keywords": "install.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^(?:[$%][ \\t]+)?brew[ \\t]+install(?:(?:[ \\t]+|[ \\t]*\\\\\\r?\\n[ \\t]*)(?:--cask|(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?))+$" },
+        "output": "none", "job": true, "verb": "install.verb", "failTitle": "install.fail" },
+      { "id": "installName", "title": "install.title", "subtitle": "install.subtitle", "keywords": "install.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?(?=[0-9+_-]*[a-z])[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?$" },
+        "output": "none", "job": true, "verb": "install.verb", "failTitle": "install.fail" },
+      { "id": "upgradeAll", "title": "upgradeAll.title", "subtitle": "upgradeAll.subtitle", "keywords": "upgradeAll.keywords", "input": "none",
+        "output": "none", "job": true, "verb": "upgradeAll.verb", "failTitle": "upgradeAll.fail" }
+    ],
+    "sources": [
+      { "id": "outdated", "title": "source.title", "actions": [
+        { "id": "upgrade", "kind": "text", "title": "upgrade.title", "label": "upgrade.label",
+          "copyTitle": "upgrade.copyTitle", "copied": "upgrade.copied" },
+        { "id": "homepage", "kind": "text", "title": "homepage.title", "label": "homepage.label" }
+      ] }
+    ]
+  }
+}
