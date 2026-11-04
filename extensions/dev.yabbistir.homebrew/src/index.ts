@@ -1,7 +1,7 @@
 import type { Actions, Context, Result, SourceListing, SourceRow, Sources, YabError } from "@yabbistir/api";
 import {
-  MAX_NAMES, alreadyInstalled, failureOf, homepageOf, infoArguments, installArguments, isBareName, packageOfRow, parseInstallCommand,
-  parseOutdated, phaseOf, rowID, shortName, upgradeCommand,
+  MAX_NAMES, failureOf, homepageOf, infoArguments, installArguments, isBareName, isCaveats, leftAlone, packageOfRow,
+  parseInstallCommand, parseOutdated, phaseOf, rowID, shortName, upgradeCommand,
 } from "./brew.ts";
 import type { Failure, InstallCommand, Outdated, Phase } from "./brew.ts";
 
@@ -16,14 +16,25 @@ const LIFETIME = 5 * 60_000;
  * first once a day, which usually takes a few seconds; when it takes longer, the column says so instead of failing.
  */
 const LIST_BUDGET = 8_000;
-/** The most "Warning: …" lines kept from one install, to tell which packages were already there. */
-const MAX_WARNINGS = 1_000;
+/**
+ * How long the column keeps saying brew is slow without starting it again. Each slow answer stops brew's own update
+ * before it is done, and brew starts it afresh next time: asking on every panel open would stop it every time.
+ */
+const SLOW_PAUSE = 60_000;
+/** The most "Warning: …" and "Error: …" lines kept from one install, to tell which packages brew left as they were. */
+const MAX_NOTES = 1_000;
+/** Up to this many names, the notice after an install with notes spells out the `brew info` command. */
+const MAX_INFO_NAMES = 3;
 
-// The helper's memory only, never yab.storage or a file: the last listing, for a few minutes. Dropped when the column
-// answers locked, and after every install or upgrade, which change what is outdated.
-let cached: { at: number; rows: SourceRow[] } | undefined;
+// The helper's memory only, never yab.storage or a file: the last list of outdated packages, for a few minutes, and
+// when brew was last too slow. The rows are built from the packages on each call, in the app's language of the moment.
+// Both are dropped when the column answers locked, and after every install or upgrade, which change what is outdated
+// and bring Homebrew up to date on the way.
+let cached: { at: number; packages: Outdated[] } | undefined;
+let slowAt: number | undefined;
 const forget = () => {
   cached = undefined;
+  slowAt = undefined;
 };
 
 const t = (key: string, args?: Record<string, string | number>) => yab.t(key, args);
@@ -78,14 +89,16 @@ async function install(command: InstallCommand, ctx: Context): Promise<Result> {
     return { none: true, message };
   }
   const report = reporter();
-  report(null, t("installing"));
-  const warnings: string[] = [];
+  report(null, t("starting"));
+  const notes: string[] = [];
+  let caveats = false;
   try {
     // yab errors (toolMissing, cancelled…) reject out of here untouched.
     const result = await yab.exec("brew", installArguments(command), {
       signal: ctx.signal,
       onLine(line) {
-        if (line.startsWith("Warning:") && warnings.length < MAX_WARNINGS) warnings.push(line);
+        if ((line.startsWith("Warning:") || line.startsWith("Error:")) && notes.length < MAX_NOTES) notes.push(line);
+        if (isCaveats(line)) caveats = true;
         const phase = phaseOf(line);
         if (phase !== null) report(null, phaseText(phase));
       },
@@ -98,11 +111,18 @@ async function install(command: InstallCommand, ctx: Context): Promise<Result> {
     // An install can upgrade an outdated package, and a cancelled one may have finished some.
     forget();
   }
-  const already = alreadyInstalled(warnings, command.names);
-  const installed = command.names.filter((name) => !already.has(name));
+  const { already, held } = leftAlone(notes, command.names);
+  const installed = command.names.filter((name) => !already.has(name) && !held.has(name));
   const parts: string[] = [];
   if (installed.length > 0) parts.push(t("installed", { names: namesText(installed, ctx.language) }));
-  if (already.size > 0) parts.push(t("already", { names: namesText([...already], ctx.language) }));
+  if (already.size > 0) parts.push(t("already", { names: namesText(command.names.filter((name) => already.has(name)), ctx.language) }));
+  if (held.size > 0) parts.push(t("held", { names: namesText(command.names.filter((name) => held.has(name)), ctx.language) }));
+  if (caveats) {
+    // Only that brew printed notes is said, never what they say: `brew info` shows them in Terminal.
+    const about = installed.length > 0 ? installed : command.names;
+    const info = ["brew", "info", ...(command.cask ? ["--cask"] : []), ...about].join(" ");
+    parts.push(about.length <= MAX_INFO_NAMES ? t("caveats", { command: info }) : t("caveatsMany"));
+  }
   return { none: true, message: parts.join(" ") };
 }
 
@@ -131,23 +151,30 @@ function subtitleOf(pkg: Outdated): string {
   return parts.join(" · ");
 }
 
-/** One row per package, by name; a formula and a cask of the same name each keep their own. */
-function rowsOf(packages: Outdated[]): SourceRow[] {
+/**
+ * One row per package, by name; a formula and a cask of the same name each keep their own. Nothing outdated is no
+ * rows: the app then says the column is empty, in its own words.
+ */
+function listingOf(packages: Outdated[]): SourceListing {
   const sorted = [...packages].sort((a, b) => (a.name === b.name ? (a.kind < b.kind ? 1 : -1) : a.name < b.name ? -1 : 1));
-  const ids = new Set<string>();
+  const seen = new Set<string>();
   const rows: SourceRow[] = [];
   for (const pkg of sorted) {
-    const id = rowID(pkg);
-    if (ids.has(id)) continue;
-    ids.add(id);
-    rows.push({ id, title: pkg.name, subtitle: subtitleOf(pkg) });
+    const key = `${pkg.kind}:${pkg.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ id: rowID(pkg), title: pkg.name, subtitle: subtitleOf(pkg) });
   }
-  return rows;
+  return { rows };
 }
 
-/** The rows, or one calm line when nothing is outdated. */
-function listingOf(rows: SourceRow[]): SourceListing {
-  return rows.length === 0 ? { locked: true, message: t("upToDate") } : { rows };
+/** brew was too slow: a line that says so, with the command that brings Homebrew up to date in Terminal. */
+const slowListing = (): SourceListing => ({ locked: true, message: t("slow"), command: "brew update" });
+
+/** How long ago `at` was; Infinity when it never was or the clock went back. */
+function since(at: number | undefined): number {
+  const age = at === undefined ? Infinity : Date.now() - at;
+  return age >= 0 ? age : Infinity;
 }
 
 export const actions: Actions = {
@@ -187,7 +214,7 @@ export const actions: Actions = {
           spellings.set(pkg.name, pkg.name);
           left.set(pkg.name, (left.get(pkg.name) ?? 0) + 1);
         }
-        let started = 0;
+        const upgraded: string[] = [];
         const result = await yab.exec("brew", ["upgrade"], {
           signal: ctx.signal,
           onLine(line) {
@@ -198,17 +225,23 @@ export const actions: Actions = {
               const count = name === undefined ? 0 : left.get(name) ?? 0;
               if (name === undefined || count === 0) return;
               left.set(name, count - 1);
-              started++;
-              report((started - 1) / total, t("step", { done: started, total, name }));
-            } else if (started === 0) {
+              upgraded.push(name);
+              report((upgraded.length - 1) / total, t("step", { done: upgraded.length, total, name }));
+            } else if (upgraded.length === 0) {
               // State words only until the first package starts, so the bar never jumps back.
               report(null, phaseText(phase));
             }
           },
         });
         if (result.exitCode !== 0) throw new Error(failureMessage(failureOf(result.stderr), t("upgradeFailed", { code: result.exitCode })));
-        report(1, t("stepsDone", { done: total, total }));
-        return { none: true, message: t("upgraded", { names: namesText(waiting.map((pkg) => pkg.name), ctx.language) }) };
+        // The notice says what brew started, not what was outdated: brew can leave a package out without failing (a
+        // cask it skips, one upgraded meanwhile).
+        const skipped = [...left].flatMap(([name, count]) => Array.from({ length: count }, () => name));
+        if (skipped.length === 0) report(1, t("stepsDone", { done: total, total }));
+        const parts: string[] = [];
+        if (upgraded.length > 0) parts.push(t("upgraded", { names: namesText(upgraded, ctx.language) }));
+        if (skipped.length > 0) parts.push(t("notUpgraded", { names: namesText(skipped, ctx.language) }));
+        return { none: true, message: parts.join(" ") };
       } finally {
         forget();
       }
@@ -219,8 +252,8 @@ export const actions: Actions = {
 export const sources: Sources = {
   outdated: {
     async list(ctx) {
-      const age = cached === undefined ? Infinity : Date.now() - cached.at;
-      if (cached !== undefined && age >= 0 && age <= LIFETIME) return listingOf(cached.rows);
+      if (since(slowAt) < SLOW_PAUSE) return slowListing();
+      if (cached !== undefined && since(cached.at) <= LIFETIME) return listingOf(cached.packages);
 
       // A deadline of its own, a little inside the call's, so a slow auto-update gets a useful line instead of a failure.
       const budget = new AbortController();
@@ -234,20 +267,20 @@ export const sources: Sources = {
       } catch (error) {
         if (isCancel(error) && budget.signal.aborted && !ctx.signal.aborted) {
           forget();
-          return { locked: true, message: t("slow"), command: "brew update" };
+          slowAt = Date.now();
+          return slowListing();
         }
         throw error;
       } finally {
         clearTimeout(timer);
         ctx.signal.removeEventListener("abort", follow);
       }
-      // "Nothing outdated" is kept too: it holds no row that could outlive anything.
-      cached = { at: Date.now(), rows: rowsOf(packages) };
-      return listingOf(cached.rows);
+      cached = { at: Date.now(), packages };
+      return listingOf(packages);
     },
 
     async run(rowId, actionId, ctx) {
-      // Ids are this extension's own ("formula:wget"): anything else never reaches brew.
+      // Ids are this extension's own ("formula:wget", "pinned-cask:firefox"): anything else never reaches brew.
       const pkg = packageOfRow(rowId);
       if (pkg === undefined || (actionId !== "upgrade" && actionId !== "homepage")) throw new Error(t("badRow"));
       if (actionId === "upgrade") return { text: upgradeCommand(pkg) };

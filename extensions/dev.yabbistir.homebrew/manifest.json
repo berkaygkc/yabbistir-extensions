@@ -19,10 +19,11 @@
   "contributes": {
     "actions": [
       { "id": "install", "title": "install.title", "subtitle": "install.subtitle", "keywords": "install.keywords", "input": "item",
-        "accepts": { "kinds": ["text", "code"], "pattern": "^(?:[$%][ \\t]+)?brew[ \\t]+install(?:(?:[ \\t]+|[ \\t]*\\\\\\r?\\n[ \\t]*)(?:--cask|(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?))+$" },
+        "accepts": { "kinds": ["text", "code"], "pattern": "^(?:[$%][ \\t]+)?brew[ \\t]+install(?:(?:[ \\t]+|[ \\t]*\\\\\\r?\\n[ \\t]*)--cask)*(?:[ \\t]+|[ \\t]*\\\\\\r?\\n[ \\t]*)(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?(?:(?:[ \\t]+|[ \\t]*\\\\\\r?\\n[ \\t]*)(?:--cask|(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?))*$" },
         "output": "none", "job": true, "verb": "install.verb", "failTitle": "install.fail" },
       { "id": "installName", "title": "install.title", "subtitle": "install.subtitle", "keywords": "install.keywords", "input": "item",
         "accepts": { "kinds": ["text", "code"], "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9][A-Za-z0-9_-]*/)?(?=[0-9+_-]*[a-z])[a-z0-9][a-z0-9+_-]*(?:@[a-z0-9][a-z0-9+_-]*(?:\\.[0-9][a-z0-9+_-]*)*)?$" },
+        "targets": ["terminal"], "targetsOnly": true,
         "output": "none", "job": true, "verb": "install.verb", "failTitle": "install.fail" },
       { "id": "upgradeAll", "title": "upgradeAll.title", "subtitle": "upgradeAll.subtitle", "keywords": "upgradeAll.keywords", "input": "none",
         "output": "none", "job": true, "verb": "upgradeAll.verb", "failTitle": "upgradeAll.fail" }

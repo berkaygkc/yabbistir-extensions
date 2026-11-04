@@ -2,11 +2,14 @@ import { describe, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { createFakeHost } from "@yabbistir/api/fake-host";
 
-import { homepageOf, packageOfRow, parseOutdated } from "../src/brew.ts";
+import { homepageOf, packageOfRow, parseOutdated, rowID } from "../src/brew.ts";
 import { AUTO_UPDATE, OUTDATED, ROWS, TOKEN, cask, fakeBrew, folder, formula, hostWith, infoJSON, newHelper, ok, outdatedJSON } from "./fixtures.mjs";
 
 const START = Date.parse("2026-11-01T09:00:00Z");
 const FIVE_MINUTES = 5 * 60_000;
+/** How long the column keeps saying brew is slow before it asks brew again. */
+const PAUSE = 60_000;
+const SLOW = { locked: true, message: "Homebrew is taking too long", command: "brew update" };
 const listings = (brew) => brew.runs.filter((args) => args[0] === "outdated").length;
 /** Lets the call reach its first await, so a mocked timer it set can be ticked. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -87,12 +90,11 @@ describe("the outdated column", () => {
     ] });
   });
 
-  test("nothing outdated is one calm line, without a command", async () => {
+  test("nothing outdated is no rows, never a locked line", async () => {
+    // The app says an empty column is empty in its own words; a locked row would draw a lock beside "up to date".
     const exports = await newHelper();
     const host = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON()) }));
-    assert.deepEqual(await host.list("outdated"), { locked: true, message: "Everything is up to date" });
-    const tr = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON()) }), { language: "tr" });
-    assert.deepEqual(await tr.list("outdated"), { locked: true, message: "Her şey güncel" });
+    assert.deepEqual(await host.list("outdated"), { rows: [] });
   });
 
   test("brew missing is the app's toolMissing, which the column names", async () => {
@@ -169,8 +171,48 @@ describe("a slow brew", () => {
     assert.equal((await listing).locked, true);
     t.mock.timers.reset();
     slow = false;
-    assert.deepEqual(await hostWith(exports, brew, { now: START + FIVE_MINUTES + 2 }).list("outdated"), { rows: ROWS });
+    assert.deepEqual(await hostWith(exports, brew, { now: START + FIVE_MINUTES + 1 + PAUSE }).list("outdated"), { rows: ROWS });
     assert.equal(listings(brew), 3);
+  });
+
+  /** A helper whose last listing was too slow, at `at`. */
+  async function slowAt(t, at) {
+    const exports = await newHelper();
+    let slow = true;
+    const brew = fakeBrew({ outdated: () => (slow ? new Promise(() => {}) : ok(outdatedJSON(OUTDATED))), install: ok() });
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const listing = hostWith(exports, brew, { now: at }).list("outdated");
+    await settle();
+    t.mock.timers.tick(8_000);
+    assert.deepEqual(await listing, SLOW);
+    t.mock.timers.reset();
+    slow = false;
+    return { exports, brew };
+  }
+
+  test("for a minute after, the column says so again without starting brew", async (t) => {
+    // Each slow answer stops brew's own update; asking on every panel open would stop it every time.
+    const { exports, brew } = await slowAt(t, START);
+    for (const at of [START, START + 1, START + PAUSE - 1]) {
+      assert.deepEqual(await hostWith(exports, brew, { now: at }).list("outdated"), SLOW, String(at - START));
+    }
+    assert.equal(listings(brew), 1);
+    assert.deepEqual(await hostWith(exports, brew, { now: START + PAUSE }).list("outdated"), { rows: ROWS });
+    assert.equal(listings(brew), 2);
+  });
+
+  test("a clock that went back ends the pause", async (t) => {
+    const { exports, brew } = await slowAt(t, START);
+    assert.deepEqual(await hostWith(exports, brew, { now: START - 1 }).list("outdated"), { rows: ROWS });
+    assert.equal(listings(brew), 2);
+  });
+
+  test("an install ends the pause: it brought Homebrew up to date on the way", async (t) => {
+    const { exports, brew } = await slowAt(t, START);
+    const host = hostWith(exports, brew, { now: START + 1 });
+    await host.run(exports.actions.install, { kind: "text", text: "brew install wget" });
+    assert.deepEqual(await host.list("outdated"), { rows: ROWS });
+    assert.equal(listings(brew), 2);
   });
 });
 
@@ -202,7 +244,18 @@ describe("caching", () => {
     const exports = await newHelper();
     const brew = fakeBrew({ outdated: ok(outdatedJSON()) });
     await hostWith(exports, brew, { now: START }).list("outdated");
-    assert.deepEqual(await hostWith(exports, brew, { now: START + 60_000 }).list("outdated"), { locked: true, message: "Everything is up to date" });
+    assert.deepEqual(await hostWith(exports, brew, { now: START + 60_000 }).list("outdated"), { rows: [] });
+    assert.equal(listings(brew), 1);
+  });
+
+  test("reused rows speak the app's language of the moment", async () => {
+    const exports = await newHelper();
+    const brew = fakeBrew({ outdated: ok(outdatedJSON(OUTDATED)) });
+    assert.deepEqual(await hostWith(exports, brew, { now: START }).list("outdated"), { rows: ROWS });
+    const { rows } = await hostWith(exports, brew, { now: START + 60_000, language: "tr" }).list("outdated");
+    assert.equal(rows.find((row) => row.id === "formula:node").subtitle, "22.11.0 → 23.3.0 · formül");
+    assert.equal(rows.find((row) => row.id === "pinned-formula:python@3.12").subtitle, "3.12.7 → 3.12.8 · formül · sabitlenmiş");
+    assert.deepEqual(await hostWith(exports, brew, { now: START + 120_000 }).list("outdated"), { rows: ROWS }, "and back");
     assert.equal(listings(brew), 1);
   });
 
@@ -258,6 +311,26 @@ describe("a row's actions", () => {
     assert.deepEqual(brew.runs, [], "the command needs no brew run");
   });
 
+  test("↵ on a pinned package unpins it first, as brew suggests: brew upgrade refuses a pinned one", async () => {
+    const exports = await newHelper();
+    const brew = fakeBrew({ outdated: ok(outdatedJSON(OUTDATED)) });
+    const host = hostWith(exports, brew);
+    const { rows } = await host.list("outdated");
+    const pinned = rows.find((row) => row.title === "python@3.12");
+    assert.deepEqual(await host.runSource("outdated", pinned.id, "upgrade"), { text: "brew unpin python@3.12 && brew upgrade python@3.12" });
+    assert.deepEqual(await host.runSource("outdated", "pinned-cask:firefox", "upgrade"), { text: "brew unpin --cask firefox && brew upgrade --cask firefox" });
+    assert.deepEqual(await host.runSource("outdated", "pinned-formula:ornek/tap/aracim", "upgrade"), { text: "brew unpin ornek/tap/aracim && brew upgrade ornek/tap/aracim" });
+    assert.deepEqual(brew.runs, [["outdated", "--json=v2"]]);
+  });
+
+  test("a pinned row's homepage is read like any other", async () => {
+    const exports = await newHelper();
+    const brew = fakeBrew(infoFor("https://www.python.org/"));
+    const host = hostWith(exports, brew);
+    assert.deepEqual(await host.runSource("outdated", "pinned-formula:python@3.12", "homepage"), { text: "https://www.python.org/" });
+    assert.deepEqual(brew.runs, [["info", "--json=v2", "--formula", "--", "python@3.12"]]);
+  });
+
   test("⇧↵ pastes the package's homepage, read from brew info", async () => {
     const exports = await newHelper();
     const brew = fakeBrew(infoFor("https://nodejs.org/"));
@@ -297,7 +370,8 @@ describe("a row's actions", () => {
     const exports = await newHelper();
     const brew = fakeBrew(infoFor("https://example.com"));
     const host = hostWith(exports, brew);
-    for (const id of ["node", "formula:", "formula:--HEAD", "cask:../x.rb", "tap:node", "formula:node; rm -rf ~", "formula:node --cask", ":node", "FORMULA:node"]) {
+    for (const id of ["node", "formula:", "formula:--HEAD", "cask:../x.rb", "tap:node", "formula:node; rm -rf ~", "formula:node --cask", ":node", "FORMULA:node",
+      "pinned-:node", "pinned:node", "pinned-pinned-formula:node", "pinnedformula:node", "pinned-tap:node", "pinned-formula:node && rm -rf ~"]) {
       for (const action of ["upgrade", "homepage"]) {
         await assert.rejects(host.runSource("outdated", id, action), { message: "This package isn’t in the list anymore. Open the panel again." }, id);
       }
@@ -340,9 +414,13 @@ describe("reading brew's JSON", () => {
   });
 
   test("row ids", () => {
-    assert.deepEqual(packageOfRow("formula:node"), { kind: "formula", name: "node" });
-    assert.deepEqual(packageOfRow("cask:firefox@developer-edition"), { kind: "cask", name: "firefox@developer-edition" });
+    assert.deepEqual(packageOfRow("formula:node"), { kind: "formula", name: "node", pinned: false });
+    assert.deepEqual(packageOfRow("cask:firefox@developer-edition"), { kind: "cask", name: "firefox@developer-edition", pinned: false });
+    assert.deepEqual(packageOfRow("pinned-formula:python@3.12"), { kind: "formula", name: "python@3.12", pinned: true });
     assert.equal(packageOfRow("formula:node:extra"), undefined);
+    for (const pkg of [{ kind: "formula", name: "node", pinned: false }, { kind: "cask", name: "firefox", pinned: true }, { kind: "formula", name: "ornek/tap/aracim", pinned: true }]) {
+      assert.deepEqual(packageOfRow(rowID(pkg)), pkg);
+    }
   });
 
   test("the homepage of the package asked for", () => {

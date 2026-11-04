@@ -1,16 +1,16 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { AUTO_UPDATE, OUTDATED, TOKEN, UPGRADE_ALL, cask, fakeBrew, formula, hostWith, newHelper, ok, outdatedJSON, visibleTexts } from "./fixtures.mjs";
+import { AUTO_UPDATE, OUTDATED, TOKEN, UPGRADE_ALL, cask, fakeBrew, formula, hostWith, newHelper, ok, outdatedJSON, upgrading, visibleTexts } from "./fixtures.mjs";
 
 const upgradeOf = (host, exports) => host.run(exports.actions.upgradeAll, null);
 
 describe("upgrade all outdated packages", () => {
   test("checks what is outdated, runs brew upgrade, and names what it upgraded", async () => {
     const exports = await newHelper();
-    const brew = fakeBrew({ outdated: ok(outdatedJSON({ formulae: [formula("node", "22.11.0", "23.3.0"), formula("jq", "1.7", "1.7.1")], casks: [] })), upgrade: ok() });
+    const brew = fakeBrew({ outdated: ok(outdatedJSON({ formulae: [formula("node", "22.11.0", "23.3.0"), formula("jq", "1.7", "1.7.1")], casks: [] })), upgrade: ok(upgrading("jq", "node")) });
     const host = hostWith(exports, brew);
-    assert.deepEqual(await upgradeOf(host, exports), { none: true, message: "Upgraded node and jq." });
+    assert.deepEqual(await upgradeOf(host, exports), { none: true, message: "Upgraded jq and node." }, "in the order brew went");
     assert.deepEqual(brew.runs, [["outdated", "--json=v2"], ["upgrade"]]);
   });
 
@@ -68,8 +68,31 @@ describe("upgrade all outdated packages", () => {
     const host = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON(OUTDATED)), upgrade: ok(UPGRADE_ALL) }), { language: "tr" });
     assert.deepEqual(await upgradeOf(host, exports), { none: true, message: "5 paket güncellendi." });
     assert.equal(host.progress[0].message, "Güncellemeler denetleniyor");
-    const few = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON({ formulae: [formula("node", "1", "2"), formula("jq", "1", "2")] })), upgrade: ok() }), { language: "tr" });
+    const few = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON({ formulae: [formula("node", "1", "2"), formula("jq", "1", "2")] })), upgrade: ok(upgrading("node", "jq")) }), { language: "tr" });
     assert.deepEqual(await upgradeOf(few, exports), { none: true, message: "node ve jq güncellendi." });
+    const skipped = hostWith(exports, fakeBrew({ outdated: ok(outdatedJSON({ formulae: [formula("node", "1", "2"), formula("jq", "1", "2")] })), upgrade: ok(upgrading("node")) }), { language: "tr" });
+    assert.deepEqual(await upgradeOf(skipped, exports),
+      { none: true, message: "node güncellendi. Güncellenmedi: jq. Nedenini görmek için brew upgrade komutunu Terminal’de çalıştır." });
+  });
+
+  test("a package brew leaves out without failing is named as not upgraded", async () => {
+    // brew can skip a cask, or find one upgraded meanwhile, and still exit 0: the notice follows what it started.
+    const exports = await newHelper();
+    const outdated = ok(outdatedJSON({ formulae: [formula("node", "22.11.0", "23.3.0"), formula("jq", "1.7", "1.7.1")], casks: [cask("firefox", "133.0", "133.0.3")] }));
+    const host = hostWith(exports, fakeBrew({ outdated, upgrade: ok(upgrading("node", "jq"), `Warning: ${TOKEN}\n`) }));
+    assert.deepEqual(await upgradeOf(host, exports),
+      { none: true, message: "Upgraded node and jq. Not upgraded: firefox. Run brew upgrade in Terminal to see why." });
+    assert.deepEqual(host.progress.at(-1), { fraction: 1 / 3, message: "2 / 3 · jq" }, "the bar never claims the third");
+    assert.ok(!visibleTexts(host).some((line) => line.includes(TOKEN)));
+  });
+
+  test("brew upgrading none of them says so", async () => {
+    const exports = await newHelper();
+    const outdated = ok(outdatedJSON({ formulae: [formula("node", "22.11.0", "23.3.0")], casks: [cask("docker", "4.36.0", "4.37.0")] }));
+    const host = hostWith(exports, fakeBrew({ outdated, upgrade: ok("==> Upgrading 0 outdated packages:\n") }));
+    assert.deepEqual(await upgradeOf(host, exports),
+      { none: true, message: "Not upgraded: node and docker. Run brew upgrade in Terminal to see why." });
+    assert.deepEqual(host.progress, [{ fraction: null, message: "Checking for updates" }]);
   });
 });
 

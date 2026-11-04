@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createFakeHost, yabError } from "@yabbistir/api/fake-host";
 
-import { phaseOf, alreadyInstalled, failureOf } from "../src/brew.ts";
+import { failureOf, isCaveats, leftAlone, phaseOf } from "../src/brew.ts";
 import { AUTO_UPDATE, INSTALL_FIREFOX, INSTALL_WGET, OUTDATED, TOKEN, fakeBrew, folder, hostWith, newHelper, ok, outdatedJSON, visibleTexts } from "./fixtures.mjs";
 
 const text = (value) => ({ kind: "text", text: value });
@@ -62,11 +62,52 @@ describe("install a copied command", () => {
     assert.equal((await host.run(exports.actions.install, text("brew install wget"))).message, "Installed wget.");
   });
 
+  test("one installed but not linked was already there: brew installs nothing and only says how to link it", async () => {
+    const exports = await newHelper();
+    const stderr = "Warning: wget 1.25.0 is already installed, it's just not linked.\nTo link this version, run:\n  brew link wget\n";
+    const host = hostWith(exports, fakeBrew({ install: ok("", stderr) }));
+    assert.equal((await host.run(exports.actions.install, text("brew install wget"))).message, "Already installed: wget.");
+  });
+
+  test("an older version brew keeps (pinned, or no upgrades in brew.env) is not called installed", async () => {
+    // brew says it with onoe, which does not fail the run (Library/Homebrew/install/check.rb).
+    const exports = await newHelper();
+    const stderr = [
+      "Error: wget 1.24.5 is already installed",
+      "To upgrade to 1.25.0, run:",
+      "  brew unpin wget && brew upgrade wget",
+      "Error: ornek/tap/aracim 0.9.1 is already installed.",
+      "To upgrade to 1.0.0, run:",
+      "  brew upgrade ornek/tap/aracim",
+    ].join("\n") + "\n";
+    const host = hostWith(exports, fakeBrew({ install: ok(INSTALL_WGET.replaceAll("wget", "jq"), stderr) }));
+    assert.deepEqual(await host.run(exports.actions.install, text("brew install wget jq ornek/tap/aracim")),
+      { none: true, message: "Installed jq. Already installed, not upgraded: wget and ornek/tap/aracim." });
+    const tr = hostWith(exports, fakeBrew({ install: ok("", stderr) }), { language: "tr" });
+    assert.deepEqual(await tr.run(exports.actions.install, text("brew install wget")), { none: true, message: "Zaten kurulu, güncellenmedi: wget." });
+  });
+
+  test("notes brew printed after an install are pointed to, never repeated", async () => {
+    const exports = await newHelper();
+    const caveats = INSTALL_WGET + ["==> Caveats", `Add ${TOKEN} to your PATH:`, "  export PATH=/opt/homebrew/opt/wget/bin:$PATH"].join("\n") + "\n";
+    const host = hostWith(exports, fakeBrew({ install: ok(caveats) }));
+    assert.deepEqual(await host.run(exports.actions.install, text("brew install wget")),
+      { none: true, message: "Installed wget. Homebrew left notes; brew info wget shows them." });
+    assert.equal((await host.run(exports.actions.install, text("brew install wget jq fd"))).message,
+      "Installed wget, jq, and fd. Homebrew left notes; brew info wget jq fd shows them.");
+    assert.equal((await host.run(exports.actions.install, text("brew install wget jq fd bat"))).message,
+      "Installed 4 packages. Homebrew left notes; brew info shows them for each package.");
+    assert.ok(!visibleTexts(host).some((line) => line.includes(TOKEN) || line.includes("PATH")));
+    const tr = hostWith(exports, fakeBrew({ install: ok(caveats) }), { language: "tr" });
+    assert.equal((await tr.run(exports.actions.install, text("brew install --cask firefox"))).message,
+      "firefox kuruldu. Homebrew’un notları var; brew info --cask firefox ile görebilirsin.");
+  });
+
   test("steps show on the job card as state words, each once", async () => {
     const exports = await newHelper();
     const host = hostWith(exports, fakeBrew({ install: ok(INSTALL_WGET) }));
     await host.run(exports.actions.install, text("brew install wget"));
-    assert.deepEqual(messages(host), ["Installing", "Downloading", "Installing", "Installing libunistring", "Installing libidn2", "Installing wget", "Cleaning up"]);
+    assert.deepEqual(messages(host), ["Starting", "Downloading", "Installing", "Installing libunistring", "Installing libidn2", "Installing wget", "Cleaning up"]);
     assert.ok(host.progress.every((entry) => entry.fraction === null), "brew tells no fraction while it installs");
   });
 
@@ -74,21 +115,21 @@ describe("install a copied command", () => {
     const exports = await newHelper();
     const host = hostWith(exports, fakeBrew({ install: ok(INSTALL_FIREFOX) }));
     await host.run(exports.actions.install, text("brew install --cask firefox"));
-    assert.deepEqual(messages(host), ["Installing", "Downloading", "Installing firefox"]);
+    assert.deepEqual(messages(host), ["Starting", "Downloading", "Installing firefox"]);
   });
 
   test("brew's auto-update shows as its own step", async () => {
     const exports = await newHelper();
     const host = hostWith(exports, fakeBrew({ install: ok("", AUTO_UPDATE) }));
     await host.run(exports.actions.install, text("brew install wget"));
-    assert.deepEqual(messages(host), ["Installing", "Updating Homebrew"]);
+    assert.deepEqual(messages(host), ["Starting", "Updating Homebrew"]);
   });
 
   test("in Turkish", async () => {
     const exports = await newHelper();
     const host = hostWith(exports, fakeBrew({ install: ok(INSTALL_WGET) }), { language: "tr" });
     assert.deepEqual(await host.run(exports.actions.install, text("brew install wget jq fd")), { none: true, message: "wget, jq ve fd kuruldu." });
-    assert.deepEqual(messages(host).slice(0, 4), ["Kuruluyor", "İndiriliyor", "Kuruluyor", "libunistring kuruluyor"]);
+    assert.deepEqual(messages(host).slice(0, 4), ["Başlatılıyor", "İndiriliyor", "Kuruluyor", "libunistring kuruluyor"]);
   });
 
   test("a command it will not run is refused with a reason, and brew never runs", async () => {
@@ -242,15 +283,33 @@ describe("reading brew's output", () => {
 
   test("already installed", () => {
     const names = ["wget", "hashicorp/tap/terraform", "firefox"];
-    const found = alreadyInstalled([
+    const lines = [
       "Warning: wget 1.25.0 is already installed and up-to-date.",
       "Warning: hashicorp/tap/terraform 1.10.0 is already installed and up-to-date.",
       "Warning: firefox is already installed but outdated (so it will be upgraded).",
       "Warning: wgetx 1.0 is already installed and up-to-date.",
-    ], names);
-    assert.deepEqual([...found], ["wget", "hashicorp/tap/terraform"]);
-    assert.deepEqual([...alreadyInstalled(["Warning: terraform 1.10.0 is already installed and up-to-date."], names)], ["hashicorp/tap/terraform"]);
-    assert.deepEqual([...alreadyInstalled(["Error: wget is already installed"], names)], []);
+    ];
+    assert.deepEqual(leftAlone(lines, names), { already: new Set(["wget", "hashicorp/tap/terraform"]), held: new Set() });
+    assert.deepEqual([...leftAlone(["Warning: terraform 1.10.0 is already installed and up-to-date."], names).already], ["hashicorp/tap/terraform"]);
+    assert.deepEqual([...leftAlone(["Warning: Not upgrading firefox, the latest version is already installed"], names).already], ["firefox"]);
+    assert.deepEqual([...leftAlone(["Warning: wget 1.25.0 is already installed, it's just not linked."], names).already], ["wget"]);
+  });
+
+  test("kept at an older version", () => {
+    const names = ["wget", "hashicorp/tap/terraform"];
+    assert.deepEqual(leftAlone(["Error: wget 1.24.5 is already installed"], names), { already: new Set(), held: new Set(["wget"]) });
+    assert.deepEqual(leftAlone(["Error: hashicorp/tap/terraform 1.9.0 is already installed."], names).held, new Set(["hashicorp/tap/terraform"]));
+    assert.deepEqual(leftAlone(["Warning: wget 1.24.5 is already installed and up-to-date.", "Error: wget 1.24.5 is already installed"], names),
+      { already: new Set(), held: new Set(["wget"]) }, "kept wins");
+    for (const line of ["Error: wget failed to install", "Error: wgetx 1.0 is already installed", "To upgrade to 1.25.0, run:", "  brew unpin wget && brew upgrade wget", "wget is already installed"]) {
+      assert.deepEqual(leftAlone([line], names), { already: new Set(), held: new Set() }, line);
+    }
+  });
+
+  test("caveats", () => {
+    assert.equal(isCaveats("==> Caveats"), true);
+    assert.equal(isCaveats("==> Caveats  "), true);
+    for (const line of ["==> Caveats for wget", "Caveats", "==> wget: Caveats", ""]) assert.equal(isCaveats(line), false, line);
   });
 
   test("failures", () => {
@@ -267,7 +326,8 @@ describe("reading brew's output", () => {
     phaseOf(long);
     phaseOf("==> Installing " + "a ".repeat(50_000) + "dependency: b c");
     phaseOf("==> Upgrading " + "a".repeat(100_000) + " ");
-    alreadyInstalled(warnings, Array.from({ length: 50 }, (_, index) => `aracim${index}`));
+    leftAlone(warnings, Array.from({ length: 50 }, (_, index) => `aracim${index}`));
+    leftAlone(warnings.map((line) => line.replace("Warning:", "Error:")), Array.from({ length: 50 }, (_, index) => `aracim${index}`));
     failureOf("e".repeat(64 * 1024));
     const took = performance.now() - started;
     assert.ok(took < 250, `took ${took.toFixed(1)} ms`);

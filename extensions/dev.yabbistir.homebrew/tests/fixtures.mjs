@@ -45,7 +45,7 @@ export const ROWS = [
   { id: "cask:firefox", title: "firefox", subtitle: "133.0 → 133.0.3 · cask" },
   { id: "formula:node", title: "node", subtitle: "22.11.0 → 23.3.0 · formula" },
   { id: "formula:ornek/tap/aracim", title: "ornek/tap/aracim", subtitle: "0.9.0, 0.9.1 → 1.0.0 · formula" },
-  { id: "formula:python@3.12", title: "python@3.12", subtitle: "3.12.7 → 3.12.8 · formula · pinned" },
+  { id: "pinned-formula:python@3.12", title: "python@3.12", subtitle: "3.12.7 → 3.12.8 · formula · pinned" },
 ];
 
 /** What brew prints on standard error when it updates itself first (Library/Homebrew/cmd/update.sh). */
@@ -107,6 +107,11 @@ export const UPGRADE_ALL = [
   "==> Upgrading docker",
   "==> Running `brew cleanup`...",
 ].join("\n") + "\n";
+
+/** The line brew prints as it starts upgrading each package (`oh1` in upgrade.rb and cask/upgrade.rb). */
+export function upgrading(...names) {
+  return names.map((name) => `==> Upgrading ${name}\n  1.0 -> 2.0`).join("\n") + "\n";
+}
 
 /** `brew info --json=v2` for one package: the fields the extension reads, among others it ignores. */
 export function infoJSON({ formulae = [], casks = [] } = {}) {

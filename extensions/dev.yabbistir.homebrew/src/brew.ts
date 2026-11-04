@@ -108,22 +108,47 @@ export function phaseOf(line: string): Phase | null {
   return null;
 }
 
+/** Whether a line of brew's output opens its notes after an install ("caveats"), which are never shown here. */
+export function isCaveats(line: string): boolean {
+  return line.trimEnd() === "==> Caveats";
+}
+
+/** The names of a command that brew left as they were, from its "Warning: …" and "Error: …" lines. */
+export interface LeftAlone {
+  /** Installed already, at the latest version or just not linked: brew installed nothing. */
+  already: Set<string>;
+  /** Installed already at an older version that brew kept, because the package is pinned or brew.env says so. */
+  held: Set<string>;
+}
+
 /**
- * The names among `names` that brew said were already installed: a "Warning: …" line that says "already installed"
- * and names the package, such as "wget 1.25.0 is already installed and up-to-date." or "Not upgrading firefox, the
- * latest version is already installed". A package brew upgrades instead ("already installed but outdated") or only
- * links does not count.
+ * The names among `names` that brew said were already installed (Library/Homebrew/install/check.rb,
+ * cask/upgrade.rb):
+ *
+ * - "Warning: wget 1.25.0 is already installed and up-to-date.", "Warning: wget 1.25.0 is already installed, it's just
+ *   not linked." or "Warning: Not upgrading firefox, the latest version is already installed": already there;
+ * - "Error: wget 1.24.5 is already installed" followed by "To upgrade to 1.25.0, run: …": an older version brew keeps
+ *   (pinned, or HOMEBREW_NO_INSTALL_UPGRADE). brew says it with `onoe`, which does not fail the run.
+ *
+ * A package brew upgrades instead ("is already installed but outdated (so it will be upgraded)") counts as installed.
  */
-export function alreadyInstalled(warnings: string[], names: string[]): Set<string> {
-  const found = new Set<string>();
-  for (const line of warnings) {
+export function leftAlone(lines: string[], names: string[]): LeftAlone {
+  const already = new Set<string>();
+  const held = new Set<string>();
+  for (const line of lines) {
     const lower = line.toLowerCase();
-    if (!lower.startsWith("warning:") || !lower.includes("already installed")) continue;
-    if (lower.includes("outdated") || lower.includes("will be upgraded") || lower.includes("not linked")) continue;
+    const error = lower.startsWith("error:");
+    if ((!error && !lower.startsWith("warning:")) || !lower.includes("already installed")) continue;
+    if (lower.includes("outdated") || lower.includes("will be upgraded")) continue;
     const words = new Set(line.split(/[\s,;:'"`()]+/));
-    for (const name of names) if (words.has(name) || words.has(shortName(name))) found.add(name);
+    for (const name of names) {
+      if (!words.has(name) && !words.has(shortName(name))) continue;
+      if (error) held.add(name);
+      else already.add(name);
+    }
   }
-  return found;
+  for (const name of held) already.delete(name);
+  return { already, held };
 }
 
 /** Why a brew run failed, read from what it wrote to standard error; never shown as it is. */
@@ -196,24 +221,42 @@ export function parseOutdated(text: string): Outdated[] | undefined {
   return packages;
 }
 
-/** A row's id: the package's kind and name, so `run` can tell a formula from a cask of the same name. */
-export function rowID(pkg: { kind: "formula" | "cask"; name: string }): string {
-  return `${pkg.kind}:${pkg.name}`;
+/** The package a row is about: enough for `run` to build its command without asking brew again. */
+export interface RowPackage {
+  kind: "formula" | "cask";
+  name: string;
+  pinned: boolean;
+}
+
+/**
+ * A row's id: the package's kind and name, so `run` can tell a formula from a cask of the same name, with `pinned-`
+ * before the kind for a pinned package (`pinned-formula:python@3.12`), whose upgrade needs an unpin first.
+ */
+export function rowID(pkg: RowPackage): string {
+  return `${pkg.pinned ? "pinned-" : ""}${pkg.kind}:${pkg.name}`;
 }
 
 /** The package a row's id names; undefined for any id this extension did not list. */
-export function packageOfRow(id: string): { kind: "formula" | "cask"; name: string } | undefined {
+export function packageOfRow(id: string): RowPackage | undefined {
   const colon = id.indexOf(":");
   if (colon < 0) return undefined;
-  const kind = id.slice(0, colon);
+  const prefix = id.slice(0, colon);
+  const pinned = prefix.startsWith("pinned-");
+  const kind = pinned ? prefix.slice("pinned-".length) : prefix;
   const name = id.slice(colon + 1);
   if ((kind !== "formula" && kind !== "cask") || !isPackageName(name)) return undefined;
-  return { kind, name };
+  return { kind, name, pinned };
 }
 
-/** What ↵ pastes: the command that upgrades just this package, with `--cask` for a cask so a formula of the same name is never meant. */
-export function upgradeCommand(pkg: { kind: "formula" | "cask"; name: string }): string {
-  return pkg.kind === "cask" ? `brew upgrade --cask ${pkg.name}` : `brew upgrade ${pkg.name}`;
+/**
+ * What ↵ pastes: the command that upgrades just this package, with `--cask` for a cask so a formula of the same name is
+ * never meant. A pinned package is unpinned first, the command brew itself suggests: `brew upgrade` refuses a pinned
+ * one. It is only pasted, never run, so the person sees the unpin before pressing return.
+ */
+export function upgradeCommand(pkg: RowPackage): string {
+  const cask = pkg.kind === "cask" ? "--cask " : "";
+  const upgrade = `brew upgrade ${cask}${pkg.name}`;
+  return pkg.pinned ? `brew unpin ${cask}${pkg.name} && ${upgrade}` : upgrade;
 }
 
 /** brew's arguments for one package's details, which hold its homepage. */

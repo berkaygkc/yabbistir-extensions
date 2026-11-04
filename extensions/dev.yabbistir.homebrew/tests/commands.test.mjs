@@ -10,7 +10,9 @@ const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.m
 const accepts = Object.fromEntries(manifest.contributes.actions.filter((action) => action.accepts).map((action) => [action.id, action.accepts]));
 const host = createFakeHost({ folder });
 const text = (value) => ({ kind: "text", text: value });
-const offers = (value, kind = "text") => host.offers({ kind, text: value });
+const TERMINAL = { bundleID: "com.apple.Terminal", name: "Terminal", kind: "terminal" };
+const BROWSER = { bundleID: "com.apple.Safari", name: "Safari", kind: "browser" };
+const offers = (value, kind = "text", target = null) => host.offers({ kind, text: value }, { target });
 
 describe("parseInstallCommand", () => {
   const allowed = [
@@ -141,18 +143,35 @@ describe("where the actions are offered", () => {
       "brew install hashicorp/tap/terraform",
       "brew install python@3.12",
       "brew install \\\n  wget \\\n  jq",
-      "brew install --cask",
+      "brew install --cask --cask firefox",
+      "brew install --cask \\\n  firefox",
     ]) {
-      assert.deepEqual(offers(command), ["install"], JSON.stringify(command));
+      for (const target of [null, TERMINAL, BROWSER]) assert.deepEqual(offers(command, "text", target), ["install"], JSON.stringify(command));
     }
     assert.deepEqual(offers("brew install wget", "code"), ["install"]);
   });
 
-  test("a bare package name gets the name action", () => {
-    for (const name of ["wget", "python@3.12", "firefox@developer-edition", "hashicorp/tap/terraform", "1password"]) {
-      assert.deepEqual(offers(name), ["installName"], name);
+  test("a command without a package name is not offered: it could only say there is nothing to install", () => {
+    for (const command of ["brew install --cask", "brew install --cask --cask", "$ brew install --cask \\\n  --cask", "brew install"]) {
+      assert.deepEqual(offers(command), [], JSON.stringify(command));
     }
-    assert.deepEqual(offers("  wget\n"), ["installName"], "surrounding whitespace is trimmed first");
+  });
+
+  test("a bare package name gets the name action in Terminal", () => {
+    for (const name of ["wget", "python@3.12", "firefox@developer-edition", "hashicorp/tap/terraform", "1password"]) {
+      assert.deepEqual(offers(name, "text", TERMINAL), ["installName"], name);
+      assert.deepEqual(offers(name, "code", TERMINAL), ["installName"], name);
+    }
+    assert.deepEqual(offers("  wget\n", "text", TERMINAL), ["installName"], "surrounding whitespace is trimmed first");
+  });
+
+  test("elsewhere a lone lowercase word is just a word", () => {
+    // Words, identifiers, slugs and branch names look like package names too: outside Terminal, none offers an install.
+    for (const value of ["wget", "hello", "tree", "make", "feature-login", "2f9a1c3", "my_variable"]) {
+      for (const target of [null, BROWSER, { bundleID: "com.example.editor", name: "Editor", kind: "editor" }]) {
+        assert.deepEqual(offers(value, "text", target), [], `${value} in ${target?.kind ?? "no target"}`);
+      }
+    }
   });
 
   test("anything else gets neither", () => {
@@ -178,13 +197,14 @@ describe("where the actions are offered", () => {
       "",
     ]) {
       assert.deepEqual(offers(value), [], JSON.stringify(value));
+      assert.deepEqual(offers(value, "text", TERMINAL), [], `${JSON.stringify(value)} in Terminal`);
     }
     assert.deepEqual(host.offers({ kind: "link", url: "https://brew.sh", text: "https://brew.sh" }), []);
   });
 
   test("what the install pattern takes, the parser runs", () => {
     // A seeded walk through commands made of brew's words and stray characters: whenever the pattern offers the
-    // action, the parser accepts the command (or says there is no name), so nothing offered is refused as unsupported.
+    // action, the parser runs the command, so nothing offered is refused as unsupported or as having no name.
     let seed = 7;
     const random = (n) => {
       seed = (seed * 1103515245 + 12345) % 2147483648;
@@ -198,7 +218,7 @@ describe("where the actions are offered", () => {
       if (!acceptsMatch(accepts.install, text(command))) continue;
       offered++;
       const parsed = parseInstallCommand(command);
-      assert.notDeepEqual(parsed, { problem: "unsupported" }, JSON.stringify(command));
+      assert.ok("names" in parsed, `${JSON.stringify(command)}: ${JSON.stringify(parsed)}`);
     }
     assert.ok(offered > 100, `only ${offered} commands were offered`);
   });
