@@ -357,7 +357,7 @@ describe("Paste safely", () => {
       "",
     ].join("\r\n");
     const result = await run(input);
-    assert.equal(result.text, "echo \u201chi there\u201d\n  ls --all\nprintf \u2018%s\u2019 x");
+    assert.equal(result.text, "echo \u201chi there\u201d\n  ls \u2011\u2011all\nprintf \u2018%s\u2019 x");
   });
   test("normalizesSpacesAndLeavesQuotesAlone", async () => {
     assert.equal((await run(`a${NBSP}b\u202fc\u2003d\u3000e`)).text, "a b c d e");
@@ -396,8 +396,23 @@ describe("Paste safely", () => {
     assert.equal((await run(text)).text, `Çalışıyor 👨${ZWJ}👩${ZWJ}👧 şimdi ✅`);
   });
 
-  test("optionDashesOnlyChangeWhereAnOptionStarts", async () => {
-    assert.equal((await run("ls \u2212la a\u2212b")).text, "ls -la a\u2212b");
+  test("dashesBeforeOptionsAreKeptAndMentionedInThePreview", async () => {
+    for (const dash of ["\u2013", "\u2014", "\u2212", "\u2011", "\u2010"]) {
+      const text = `ls ${dash}la`;
+      assert.equal((await run(text)).text, text, "the dash stays");
+    }
+    assert.equal((await run("sudo ls \u2013version\n")).text, "sudo ls \u2013version");
+    const row = [["Look-alike dash before an option", "A shell doesn\u2019t read it as an option"]];
+    assert.deepEqual(rowsOf(await host.preview(detectors.risky, item("sudo ls \u2013la")), "When pasted"), row);
+    assert.deepEqual(rowsOf(await host.preview(detectors.hidden, item(`ls \u2212la${ZWSP}`)), "When pasted"), row);
+    assert.deepEqual(rowsOf(await host.preview(detectors.lookalike, item("ls \u2014all p\u0430ypal")), "When pasted"), row);
+    assert.equal(rowsOf(await host.preview(detectors.risky, item("sudo ls a \u2013 b")), "When pasted"), undefined, "a dash in prose is not before an option");
+  });
+
+  test("curlyQuotesAreMentionedForLookAlikeCopiesToo", async () => {
+    const sections = await host.preview(detectors.lookalike, item("echo \u201cp\u0430ypal\u201d"));
+    assert.deepEqual(rowsOf(sections, "When pasted"), [["Curly quotes", "Shells don\u2019t treat them as quotes"]]);
+    assert.deepEqual(sections.map((x) => x.title), ["Look-alike letters", "When pasted", "Why it matters"]);
   });
 
   test("bidiTrojanSourceIsStripped", async () => {

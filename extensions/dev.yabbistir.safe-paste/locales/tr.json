@@ -96,5 +96,7 @@
   "char.180c": "Moğolca serbest değişke seçici",
   "char.180d": "Moğolca serbest değişke seçici",
   "paste.quotes": "Kıvrık tırnak",
-  "paste.quotes.value": "Kabuk bunları tırnak saymaz"
+  "paste.quotes.value": "Kabuk bunları tırnak saymaz",
+  "paste.dash": "Seçenekten önce benzer tire",
+  "paste.dash.value": "Kabuk bunu seçenek saymaz"
 }

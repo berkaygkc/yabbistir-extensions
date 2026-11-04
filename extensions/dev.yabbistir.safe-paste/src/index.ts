@@ -17,6 +17,16 @@ const textOf = (item: Item | null): string => item?.url ?? item?.text ?? "";
 
 /** Quotes that a word processor draws and a shell does not treat as quotes. */
 const CURLY_QUOTES = /[\u2018-\u201f]/;
+/** A dash that is not a hyphen, right where an option starts (`\u2013version`): a shell does not read it as an option. */
+const ODD_OPTION_DASH = /(^|[\s(])[\u2010-\u2015\u2212]+(?=[A-Za-z0-9])/m;
+
+/** Rows for the "When pasted" section about what a shell reads differently from what is shown. */
+function lookRows(text: string): [string, string][] {
+  const rows: [string, string][] = [];
+  if (CURLY_QUOTES.test(text)) rows.push([yab.t("paste.quotes"), yab.t("paste.quotes.value")]);
+  if (ODD_OPTION_DASH.test(text)) rows.push([yab.t("paste.dash"), yab.t("paste.dash.value")]);
+  return rows;
+}
 const WHERE_LIMIT = 5;
 const BIDI = new Set(["202a", "202b", "202c", "202d", "202e", "2066", "2067", "2068", "2069"]);
 /** Characters that share one row and one name, because they are many and alike. */
@@ -89,7 +99,8 @@ export const detectors: Detectors = {
         { type: "code", title: yab.t("preview.visible"), code: visible },
         { type: "text", title: yab.t("preview.why"), text: yab.t(hits.some((h) => BIDI.has(h.key)) ? "hidden.noteBidi" : "hidden.note") },
       ];
-      if (CURLY_QUOTES.test(text)) sections.splice(2, 0, { type: "keyValue", title: yab.t("preview.paste"), rows: [[yab.t("paste.quotes"), yab.t("paste.quotes.value")]] });
+      const look = lookRows(text);
+      if (look.length > 0) sections.splice(2, 0, { type: "keyValue", title: yab.t("preview.paste"), rows: look });
       return sections;
     },
   },
@@ -105,10 +116,11 @@ export const detectors: Detectors = {
         const letters = hit.letters.map((l) => `${l.ch} ${yab.t(`script.${l.script.toLowerCase()}`)} (U+${hex(l.cp)})`).join(", ");
         return [cut(hit.word, 40), `${letters} · ${where([locate(hit.index)], lines)}`];
       });
-      return [
-        { type: "keyValue", title: yab.t("preview.lookalike"), rows },
-        { type: "text", title: yab.t("preview.why"), text: yab.t("lookalike.note") },
-      ];
+      const sections: PreviewSection[] = [{ type: "keyValue", title: yab.t("preview.lookalike"), rows }];
+      const look = lookRows(text);
+      if (look.length > 0) sections.push({ type: "keyValue", title: yab.t("preview.paste"), rows: look });
+      sections.push({ type: "text", title: yab.t("preview.why"), text: yab.t("lookalike.note") });
+      return sections;
     },
   },
   risky: {
@@ -129,7 +141,7 @@ export const detectors: Detectors = {
       const paste: [string, string][] = [];
       if (trailingNewline) paste.push([yab.t("paste.newline"), yab.t("paste.newline.value")]);
       if (commandLines > 1) paste.push([yab.t("paste.lines"), yab.t("paste.lines.value", { n: commandLines })]);
-      if (CURLY_QUOTES.test(text)) paste.push([yab.t("paste.quotes"), yab.t("paste.quotes.value")]);
+      paste.push(...lookRows(text));
       if (paste.length > 0) sections.push({ type: "keyValue", title: yab.t("preview.paste"), rows: paste });
       sections.push({ type: "text", title: yab.t("preview.why"), text: yab.t("risky.note") });
       return sections;

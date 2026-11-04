@@ -95,5 +95,7 @@
   "char.180c": "Mongolian free variation selector",
   "char.180d": "Mongolian free variation selector",
   "paste.quotes": "Curly quotes",
-  "paste.quotes.value": "Shells don’t treat them as quotes"
+  "paste.quotes.value": "Shells don’t treat them as quotes",
+  "paste.dash": "Look-alike dash before an option",
+  "paste.dash.value": "A shell doesn’t read it as an option"
 }
