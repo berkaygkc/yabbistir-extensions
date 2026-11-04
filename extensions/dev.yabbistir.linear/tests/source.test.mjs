@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createFakeHost, yabError } from "@yabbistir/api/fake-host";
 
 import {
@@ -35,16 +36,12 @@ function assertKeyKept(host, ...values) {
   }
 }
 
-const LOCKED_NO_KEY = {
-  locked: true,
-  message: "Add a Linear API key in Settings → Extensions → Linear. Make one in Linear under Settings › Security & access.",
-  command: "open https://linear.app/settings/account/security",
-};
-const LOCKED_BAD_KEY = {
-  locked: true,
-  message: "Linear didn’t accept the API key. Paste a new one in Settings → Extensions → Linear.",
-  command: "open https://linear.app/settings/account/security",
-};
+// The locked row's message is one line of the column: short. The long messages are for notices.
+const LOCKED_NO_KEY = { locked: true, message: "Add your Linear API key in Settings", command: "open https://linear.app/settings/account/security" };
+const LOCKED_BAD_KEY = { locked: true, message: "Linear didn’t accept the API key", command: "open https://linear.app/settings/account/security" };
+const NO_KEY = "Add a Linear API key in Settings → Extensions → Linear. Make one in Linear under Settings › Account › Security & access.";
+const BAD_KEY = "Linear didn’t accept the API key. Paste a new one in Settings → Extensions → Linear.";
+const RATE_LIMITED_SOON = "Linear has had too many requests from your account. Try again in a few minutes.";
 
 describe("the column", () => {
   test("without a key it is locked, says where to make one, and sends nothing", async () => {
@@ -191,7 +188,7 @@ describe("the column", () => {
       const fake = fakeLinear({ answer: () => answer });
       assert.deepEqual(await hostWith(await newHelper(), fake).list("issues"), {
         locked: true,
-        message: "This API key can’t read your issues. Check its permissions in Linear under Settings › Security & access.",
+        message: "This API key can’t read issues",
         command: "open https://linear.app/settings/account/security",
       });
     }
@@ -211,13 +208,13 @@ describe("the column", () => {
     ];
     for (const [headers, ending] of cases) {
       const fake = fakeLinear({ answer: () => ({ status: 429, headers, json: RATE_LIMITED }) });
-      await assert.rejects(hostWith(await newHelper(), fake).list("issues"), { message: `Linear has had too many requests from this key. ${ending}` }, JSON.stringify(headers));
+      await assert.rejects(hostWith(await newHelper(), fake).list("issues"), { message: `Linear has had too many requests from your account. ${ending}` }, JSON.stringify(headers));
     }
   });
 
   test("a rate limit in the body alone counts too", async () => {
     const fake = fakeLinear({ answer: () => ({ status: 400, json: RATE_LIMITED }) });
-    await assert.rejects(hostWith(await newHelper(), fake).list("issues"), { message: "Linear has had too many requests from this key. Try again in a few minutes." });
+    await assert.rejects(hostWith(await newHelper(), fake).list("issues"), { message: RATE_LIMITED_SOON });
   });
 
   test("a server error says Linear didn't answer", async () => {
@@ -247,10 +244,78 @@ describe("the column", () => {
     });
   });
 
-  test("a failed listing is not cached", async () => {
+  test("a failed listing is said again for a minute without asking Linear, then asked for again", async () => {
     const module = await newHelper();
     const fake = fakeLinear({ answer: () => ({ status: 502, text: "" }) });
+    const failed = { message: "Linear didn’t answer (status 502). Try again later." };
+    await assert.rejects(hostWith(module, fake).list("issues"), failed);
+    fake.state.answer = undefined;
+    await assert.rejects(hostWith(module, fake, { now: START + 1000 }).list("issues"), failed);
+    await assert.rejects(hostWith(module, fake, { now: START + MINUTE - 1 }).list("issues"), failed);
+    assert.equal(fake.requests.length, 1, "within the minute nothing is sent");
+    assert.deepEqual(await hostWith(module, fake, { now: START + MINUTE }).list("issues"), { rows: ROWS });
+    assert.equal(fake.requests.length, 2);
+  });
+
+  test("an unreadable answer and a refusal without a reason are held for a minute too", async () => {
+    for (const [answer, message] of [
+      [{ text: "not json" }, "Linear’s answer couldn’t be read. Try again later."],
+      [{ json: { data: { viewer: null } } }, "Linear’s answer couldn’t be read. Try again later."],
+      [{ status: 400, json: errorBody("Odd", "INTERNAL", "internal error") }, "Linear couldn’t list your issues."],
+    ]) {
+      const module = await newHelper();
+      const fake = fakeLinear({ answer: () => answer });
+      await assert.rejects(hostWith(module, fake).list("issues"), { message }, JSON.stringify(answer));
+      await assert.rejects(hostWith(module, fake, { now: START + 30_000 }).list("issues"), { message }, JSON.stringify(answer));
+      assert.equal(fake.requests.length, 1, JSON.stringify(answer));
+    }
+  });
+
+  test("a rate limit is held until Linear takes requests again, the minutes counting down", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear({ answer: () => ({ status: 429, headers: { "Retry-After": "720" }, json: RATE_LIMITED }) });
+    await assert.rejects(hostWith(module, fake).list("issues"), { message: "Linear has had too many requests from your account. Try again in 12 min." });
+    fake.state.answer = undefined;
+    await assert.rejects(hostWith(module, fake, { now: START + 5 * MINUTE }).list("issues"), { message: "Linear has had too many requests from your account. Try again in 7 min." });
+    await assert.rejects(hostWith(module, fake, { now: START + 12 * MINUTE - 1 }).list("issues"), { message: "Linear has had too many requests from your account. Try again in 1 min." });
+    assert.equal(fake.requests.length, 1, "nothing is sent while Linear is limiting");
+    assert.deepEqual(await hostWith(module, fake, { now: START + 12 * MINUTE }).list("issues"), { rows: ROWS });
+    assert.equal(fake.requests.length, 2);
+  });
+
+  test("a rate limit whose headers say nothing is held for three minutes", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear({ answer: () => ({ status: 429, json: RATE_LIMITED }) });
+    await assert.rejects(hostWith(module, fake).list("issues"), { message: RATE_LIMITED_SOON });
+    fake.state.answer = undefined;
+    await assert.rejects(hostWith(module, fake, { now: START + 3 * MINUTE - 1 }).list("issues"), { message: RATE_LIMITED_SOON });
+    assert.equal(fake.requests.length, 1);
+    assert.deepEqual(await hostWith(module, fake, { now: START + 3 * MINUTE }).list("issues"), { rows: ROWS });
+  });
+
+  test("a hold belongs to its key, ends with a lock, and is gone after a good listing", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear({ answer: () => ({ status: 503, text: "" }) });
     await assert.rejects(hostWith(module, fake).list("issues"));
+    fake.state.answer = undefined;
+
+    fake.state.key = OTHER_KEY;
+    assert.deepEqual(await hostWith(module, fake, { key: OTHER_KEY, now: START + 1000 }).list("issues"), { rows: ROWS }, "a new key is asked for at once");
+    fake.state.key = KEY;
+    assert.deepEqual(await hostWith(module, fake, { now: START + 2000 }).list("issues"), { rows: ROWS }, "the good listing ended the hold");
+
+    fake.state.answer = () => ({ status: 503, text: "" });
+    await assert.rejects(hostWith(module, fake, { now: START + 2 * MINUTE }).list("issues"));
+    assert.deepEqual(await hostWith(module, fake, { key: undefined, now: START + 2 * MINUTE + 1 }).list("issues"), LOCKED_NO_KEY);
+    fake.state.answer = undefined;
+    assert.deepEqual(await hostWith(module, fake, { now: START + 2 * MINUTE + 2 }).list("issues"), { rows: ROWS }, "the lock ended the hold");
+    assert.equal(fake.requests.length, 5);
+  });
+
+  test("a failed connection is not held: nothing reached Linear", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear({ answer: () => yabError("networkError", "offline") });
+    await assert.rejects(hostWith(module, fake).list("issues"), { code: "networkError" });
     fake.state.answer = undefined;
     assert.deepEqual(await hostWith(module, fake, { now: START + 1000 }).list("issues"), { rows: ROWS });
   });
@@ -270,7 +335,7 @@ describe("the column", () => {
     const fake = fakeLinear();
     const module = await newHelper();
     const locked = await hostWith(module, fake, { key: undefined, language: "tr" }).list("issues");
-    assert.equal(locked.message, "Ayarlar → Uzantılar → Linear’a bir Linear API anahtarı ekle. Anahtarı Linear’da Settings › Security & access altında oluşturabilirsin.");
+    assert.equal(locked.message, "Linear API anahtarını Ayarlar’a ekle");
     const { rows } = await hostWith(module, fake, { language: "tr" }).list("issues");
     assert.deepEqual(rows.map((row) => row.subtitle), ["Todo · Engineering", "In Progress · Engineering · Yüksek", "Backlog · Tasarım · Düşük", "Triage · Engineering · Acil"]);
   });
@@ -321,7 +386,7 @@ describe("a row's actions", () => {
 
   test("without a key it says where to add one", async () => {
     const fake = fakeLinear();
-    await assert.rejects(hostWith(await newHelper(), fake, { key: undefined }).runSource("issues", uuid(1), "url"), { message: LOCKED_NO_KEY.message });
+    await assert.rejects(hostWith(await newHelper(), fake, { key: undefined }).runSource("issues", uuid(1), "url"), { message: NO_KEY });
     assert.equal(fake.requests.length, 0);
   });
 
@@ -332,7 +397,7 @@ describe("a row's actions", () => {
     fake.state.key = OTHER_KEY;
     const host = hostWith(module, fake, { now: START + 1000 });
     await assert.rejects(host.runSource("issues", uuid(1), "url"), (error) => {
-      assert.equal(error.message, LOCKED_BAD_KEY.message);
+      assert.equal(error.message, BAD_KEY);
       assertKeyKept(host, error);
       return true;
     });
@@ -343,7 +408,8 @@ describe("a row's actions", () => {
 
   test("a rate limit, a server error and an unreadable answer each say so", async () => {
     const cases = [
-      [{ status: 429, headers: { "retry-after": "120" }, json: RATE_LIMITED }, "Linear has had too many requests from this key. Try again in 2 min."],
+      [{ status: 429, headers: { "retry-after": "120" }, json: RATE_LIMITED }, "Linear has had too many requests from your account. Try again in 2 min."],
+      [{ status: 403, json: FORBIDDEN }, "This API key can’t read your issues. Check its permissions in Linear under Settings › Account › Security & access."],
       [{ status: 500, text: "" }, "Linear didn’t answer (status 500). Try again later."],
       [{ json: { data: { issue: { identifier: "ENG-101", title: "x", url: "javascript:alert(1)" } } } }, "Linear’s answer couldn’t be read. Try again later."],
       [{ json: { data: { issue: { identifier: "ENG-101", title: "x" } } } }, "Linear’s answer couldn’t be read. Try again later."],
@@ -368,5 +434,17 @@ describe("a row's actions", () => {
   test("the not-found answer Linear documents is recognised by its message", async () => {
     const fake = fakeLinear({ answer: () => ({ status: 400, json: NOT_FOUND }) });
     await assert.rejects(hostWith(await newHelper(), fake).runSource("issues", uuid(1), "url"), { message: "This issue is no longer in Linear, or the API key can’t see it." });
+  });
+});
+
+describe("the locked row", () => {
+  // The app draws the message on one line of a 360 pt column, about 45 characters: the whole sentence must show.
+  test("every locked message fits on its line, in every language", () => {
+    for (const language of ["en", "tr"]) {
+      const strings = JSON.parse(fs.readFileSync(new URL(`../locales/${language}.json`, import.meta.url), "utf8"));
+      const messages = Object.entries(strings).filter(([key]) => key.startsWith("locked."));
+      assert.equal(messages.length, 3, language);
+      for (const [key, message] of messages) assert.ok(Array.from(message).length <= 40, `${language} ${key}: ${message}`);
+    }
   });
 });

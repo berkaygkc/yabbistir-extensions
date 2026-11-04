@@ -40,7 +40,8 @@ function assertKeyKept(host, ...values) {
   }
 }
 
-const NO_KEY = "Add a Linear API key in Settings → Extensions → Linear. Make one in Linear under Settings › Security & access.";
+const NO_KEY = "Add a Linear API key in Settings → Extensions → Linear. Make one in Linear under Settings › Account › Security & access.";
+const PLAN_LIMIT = "This workspace’s Linear plan doesn’t allow that. Check its limits in Linear.";
 const BAD_KEY = "Linear didn’t accept the API key. Paste a new one in Settings → Extensions → Linear.";
 
 describe("where the actions are offered", () => {
@@ -136,9 +137,10 @@ describe("Paste as Linear link", () => {
     const cases = [
       [{ status: 401, json: AUTH_ERROR }, BAD_KEY],
       [{ status: 400, json: AUTH_ERROR }, BAD_KEY],
-      [{ status: 403, json: FORBIDDEN }, "This API key isn’t allowed to do that. Check its permissions in Linear."],
-      [{ status: 429, headers: { "retry-after": "180" }, json: RATE_LIMITED }, "Linear has had too many requests from this key. Try again in 3 min."],
-      [{ status: 429, json: RATE_LIMITED }, "Linear has had too many requests from this key. Try again in a few minutes."],
+      [{ status: 403, json: FORBIDDEN }, "This API key can’t read your issues. Check its permissions in Linear under Settings › Account › Security & access."],
+      [{ status: 400, json: errorBody("Feature not accessible", "FEATURE_NOT_ACCESSIBLE", "feature not accessible") }, PLAN_LIMIT],
+      [{ status: 429, headers: { "retry-after": "180" }, json: RATE_LIMITED }, "Linear has had too many requests from your account. Try again in 3 min."],
+      [{ status: 429, json: RATE_LIMITED }, "Linear has had too many requests from your account. Try again in a few minutes."],
       [{ status: 502, text: "Bad gateway" }, "Linear didn’t answer (status 502). Try again later."],
       [{ text: "<!doctype html>" }, "Linear’s answer couldn’t be read. Try again later."],
       [{ json: { data: { issue: { identifier: "ENG-101", title: "x", url: "not a url" } } } }, "Linear’s answer couldn’t be read. Try again later."],
@@ -259,6 +261,24 @@ describe("Create Linear issue from this", () => {
     }
   });
 
+  test("a failed look-up of the viewer's teams stops before creating", async () => {
+    const module = await newHelper();
+    for (const [answer, message] of [
+      [{ status: 401, json: AUTH_ERROR }, BAD_KEY],
+      [{ status: 403, json: FORBIDDEN }, "This API key isn’t allowed to do that. Check its permissions in Linear."],
+      [{ status: 429, headers: { "retry-after": "60" }, json: RATE_LIMITED }, "Linear has had too many requests from your account. Try again in 1 min."],
+      [{ status: 502, text: "" }, "Linear didn’t answer (status 502). Try again later."],
+      [{ json: { data: { viewer: { teams: null } } } }, "Linear’s answer couldn’t be read. Try again later."],
+      [{ status: 400, json: errorBody(`Odd ${KEY}`, "INTERNAL", "internal error") }, "Linear couldn’t find the team for new issues."],
+    ]) {
+      const fake = fakeLinear({ answer: () => answer });
+      const host = hostWith(module, fake, { team: undefined });
+      assert.deepEqual(await host.run(module.actions.create, text("Crash on launch")), { none: true, message }, JSON.stringify(answer));
+      assert.deepEqual(operations(fake), ["MyTeams"]);
+      assertKeyKept(host);
+    }
+  });
+
   test("a team key Linear doesn't have says so", async () => {
     const module = await newHelper();
     const fake = fakeLinear();
@@ -282,10 +302,28 @@ describe("Create Linear issue from this", () => {
   test("text with no word in it is not made into an issue", async () => {
     const module = await newHelper();
     const fake = fakeLinear();
-    for (const item of [text(""), text(" \n\t "), text("--- !!! ---"), null]) {
+    // The last one has a word, but past what is read for the title, which would be empty.
+    const unreadTitle = `${"\u0085\n".repeat(300)}word`;
+    for (const item of [text(""), text(" \n\t "), text("--- !!! ---"), null, text(unreadTitle)]) {
       assert.deepEqual(await hostWith(module, fake).run(module.actions.create, item), { none: true, message: "There is no text to make an issue from." });
     }
     assert.equal(fake.requests.length, 0);
+  });
+
+  test("a copy whose only words are on a fence line is titled by them, never with an empty title", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear();
+    await hostWith(module, fake).run(module.actions.create, text("```Error in prod"));
+    await hostWith(module, fake).run(module.actions.create, code("```js\n```"));
+    assert.deepEqual(fake.created.map((input) => input.title), ["Error in prod", "js"]);
+  });
+
+  test("a bug report with an indented list, or two lines with an arrow, stays prose", async () => {
+    const module = await newHelper();
+    const fake = fakeLinear();
+    await hostWith(module, fake).run(module.actions.create, text("Steps:\n  1. Open the panel\n  2. Press return"));
+    await hostWith(module, fake).run(module.actions.create, text("Go to Settings => Billing\nThe total is wrong"));
+    assert.deepEqual(fake.created.map((input) => input.description), ["Steps:\n  1. Open the panel\n  2. Press return", "Go to Settings => Billing\nThe total is wrong"]);
   });
 
   test("without a key it says where to add one, without a request", async () => {
@@ -305,7 +343,7 @@ describe("Create Linear issue from this", () => {
     const module = await newHelper();
     for (const [answer, message] of [
       [{ status: 401, json: AUTH_ERROR }, BAD_KEY],
-      [{ status: 429, headers: { "x-ratelimit-requests-remaining": "0", "x-ratelimit-requests-reset": String(START + 10 * 60_000) }, json: RATE_LIMITED }, "Linear has had too many requests from this key. Try again in 10 min."],
+      [{ status: 429, headers: { "x-ratelimit-requests-remaining": "0", "x-ratelimit-requests-reset": String(START + 10 * 60_000) }, json: RATE_LIMITED }, "Linear has had too many requests from your account. Try again in 10 min."],
       [{ status: 500, text: "" }, "Linear didn’t answer (status 500). Try again later."],
       [{ json: { data: { teams: null } } }, "Linear’s answer couldn’t be read. Try again later."],
       [{ status: 400, json: errorBody("Odd", "INTERNAL", "internal error") }, "Linear couldn’t find the team for new issues."],
@@ -329,6 +367,45 @@ describe("Create Linear issue from this", () => {
       assert.deepEqual(await host.run(module.actions.create, text("Crash")), { none: true, message: "Linear didn’t create the issue." }, JSON.stringify(answer));
       assert.deepEqual(host.notifications, []);
     }
+  });
+
+  test("an issue Linear made despite an error in its answer is pasted, so it isn't made twice", async () => {
+    const module = await newHelper();
+    const partial = {
+      data: { issueCreate: { success: true, issue: { id: uuid(600), identifier: "ENG-600", url: "https://linear.app/ornek/issue/ENG-600/new-issue" } } },
+      ...errorBody("Could not add the issue to its cycle", "INTERNAL", "internal error"),
+    };
+    const fake = fakeLinear({ answer: ({ body }) => (body.query.startsWith("mutation") ? { json: partial } : undefined) });
+    const host = hostWith(module, fake);
+    assert.deepEqual(await host.run(module.actions.create, text("Crash")), { text: "https://linear.app/ornek/issue/ENG-600/new-issue" });
+    assert.deepEqual(host.notifications, ["ENG-600 created in Linear."]);
+  });
+
+  test("an error that came with an answer saying nothing was made is still a message", async () => {
+    const module = await newHelper();
+    for (const [answer, message] of [
+      [{ json: { data: { issueCreate: { success: false, issue: null } }, ...errorBody("Odd", "INTERNAL", "internal error") } }, "Linear didn’t create the issue."],
+      [{ json: { data: { issueCreate: null }, ...RATE_LIMITED } }, "Linear has had too many requests from your account. Try again in a few minutes."],
+      // An answer with a failing status never counts as made, whatever its data says.
+      [{ status: 500, json: { data: { issueCreate: { success: true, issue: { identifier: "ENG-1", url: "https://linear.app/ornek/issue/ENG-1/x" } } } } }, "Linear didn’t answer (status 500). Try again later."],
+    ]) {
+      const fake = fakeLinear({ answer: ({ body }) => (body.query.startsWith("mutation") ? answer : undefined) });
+      const host = hostWith(module, fake);
+      assert.deepEqual(await host.run(module.actions.create, text("Crash")), { none: true, message }, JSON.stringify(answer));
+      assert.deepEqual(host.notifications, []);
+    }
+  });
+
+  test("a plan's limit says so", async () => {
+    const module = await newHelper();
+    for (const type of ["usage limit exceeded", "feature not accessible"]) {
+      const fake = fakeLinear({ answer: ({ body }) => (body.query.startsWith("mutation") ? { status: 400, json: errorBody("Usage limit exceeded", "INVALID_INPUT", type) } : undefined) });
+      assert.deepEqual(await hostWith(module, fake).run(module.actions.create, text("Crash")), { none: true, message: PLAN_LIMIT }, type);
+    }
+    const tr = fakeLinear({ answer: ({ body }) => (body.query.startsWith("mutation") ? { status: 400, json: errorBody("x", "INVALID_INPUT", "usage limit exceeded") } : undefined) });
+    assert.deepEqual(await hostWith(module, tr, { language: "tr" }).run(module.actions.create, text("Crash")), {
+      none: true, message: "Bu çalışma alanının Linear planı buna izin vermiyor. Sınırlarını Linear’da kontrol et.",
+    });
   });
 
   test("a new issue makes the column list again", async () => {
@@ -355,6 +432,7 @@ describe("Create Linear issue from this", () => {
     await hostWith(module, tr, { language: "tr" }).run(module.actions.create, code(long));
     assert.ok(tr.created[0].description.startsWith("```\n"));
     assert.ok(tr.created[0].description.endsWith(`${line}\n\`\`\`\n\n_İlk 50.000 karakter alındı._`));
+    assert.ok(tr.created[0].description.indexOf("\n\n_İlk") <= 50_000, "the code block, fences included, is within the limit");
   });
 
   test("no connection and a cancel are let through", async () => {
@@ -383,7 +461,6 @@ describe("every locale", () => {
     assert.deepEqual(Object.keys(tr).sort(), Object.keys(en).sort());
     const source = ["index.ts", "linear.ts", "text.ts"].map((name) => fs.readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8")).join("\n");
     const used = new Set([...source.matchAll(/yab\.t\("([^"]+)"/g)].map((match) => match[1]));
-    for (const name of ["noKey", "badKey", "cantRead"]) used.add(name);
     for (const priority of [1, 2, 3, 4]) used.add(`priority.${priority}`);
     for (const key of used) assert.ok(Object.hasOwn(en, key), key);
     for (const value of Object.values(en).filter((value) => typeof value === "string")) assert.ok(value.length <= 200, value);

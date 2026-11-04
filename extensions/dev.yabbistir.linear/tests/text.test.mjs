@@ -28,6 +28,7 @@ describe("issue keys", () => {
 describe("Markdown links", () => {
   test("escape what Markdown would read", () => {
     assert.equal(escapeMarkdown("a [b] *c* _d_ `e` <f> \\ g"), "a \\[b\\] \\*c\\* \\_d\\_ \\`e\\` \\<f\\> \\\\ g");
+    assert.equal(escapeMarkdown("~~struck~~"), "\\~\\~struck\\~\\~", "GitHub-flavoured strikethrough");
   });
 
   test("keep the title on one line and the address unbroken", () => {
@@ -44,6 +45,14 @@ describe("a new issue's title", () => {
     assert.equal(titleOf("2026-11-04T08:12"), "2026-11-04T08:12", "a stamp alone stays");
     assert.equal(titleOf("{\n}"), "{", "with no word anywhere, the first line");
     assert.equal(titleOf("  lots   of\tspace  "), "lots of space");
+  });
+
+  test("falls back to a fence line's words when only fence lines have any", () => {
+    assert.equal(titleOf("```Error in prod"), "Error in prod");
+    assert.equal(titleOf("```js\n```"), "js");
+    assert.equal(titleOf("~~~ Deploy failed\n~~~"), "Deploy failed");
+    assert.equal(titleOf("```js\nconst x = 1;\n```"), "const x = 1;", "a line outside the fence still wins");
+    assert.equal(titleOf("```\n```"), "", "nothing to show is empty, and the action says so before sending anything");
   });
 
   test("is cut to a hundred characters, counted as a person sees them", () => {
@@ -74,6 +83,10 @@ describe("telling code from prose", () => {
       "const x = 1;",
       "if (a && b) {",
       "#0 0x00007fff in main\n#1 0x00007ffe in start",
+      "TypeError: x is undefined\n    at f (app.js:1:2)",
+      "const a = 1;\nconst b = a => a + 1;",
+      "if ready:\n    start()",
+      "  config:\n    debug: true\n    port: 8080",
     ]) assert.equal(looksLikeCode(value), true, value);
   });
 
@@ -86,6 +99,11 @@ describe("telling code from prose", () => {
       "Steps:\n1. Open the panel\n2. Press return twice\n3. Nothing happens",
       "Hi team,\n\nThe export (CSV) is missing the date column.\nCould someone look?\n\nThanks",
       "Info: we meet at 3",
+      "Steps:\n  1. Open the panel\n  2. Press return",
+      "Notes:\n  - first\n  * second\n  + third\n  4) fourth",
+      "Go to Settings => Billing\nThe total is wrong",
+      "The button doesn't work;\nIt did yesterday",
+      "Two things:\n  - the header",
     ]) assert.equal(looksLikeCode(value), false, value);
   });
 
@@ -99,6 +117,20 @@ describe("a new issue's description", () => {
   test("drops blank lines at the ends and trailing spaces, keeps the rest", () => {
     assert.equal(descriptionOf("\n\n  indented\n\nlast   \n\n", false, note), "  indented\n\nlast");
     assert.equal(descriptionOf("a\r\nb\rc", true, note), "```\na\nb\nc\n```");
+  });
+
+  test("a code block, fences included, stays within the limit", () => {
+    const ticks = descriptionOf("`".repeat(50_000), true, note);
+    assert.ok(ticks.endsWith("\n\n_cut at 50000_"));
+    const block = ticks.slice(0, -"\n\n_cut at 50000_".length);
+    assert.ok(block.length <= 50_000, String(block.length));
+    assert.ok(block.startsWith(`${"`".repeat(32)}\n`) && block.endsWith(`\n${"`".repeat(32)}`), "the fence is at most 32 backticks");
+
+    const lines = descriptionOf(Array.from({ length: 1000 }, () => "x".repeat(99)).join("\n"), true, note);
+    assert.ok(lines.slice(0, lines.indexOf("\n\n_cut")).length <= 50_000);
+
+    const fits = "y".repeat(49_990);
+    assert.equal(descriptionOf(fits, true, note), `\`\`\`\n${fits}\n\`\`\``, "a copy that fits with its fences is whole");
   });
 
   test("never cuts inside a character", () => {

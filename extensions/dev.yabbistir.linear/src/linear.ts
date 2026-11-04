@@ -41,13 +41,19 @@ export const CREATE_ISSUE = `mutation CreateIssue($input: IssueCreateInput!) {
 export type Failure =
   | { kind: "badKey" }
   | { kind: "forbidden" }
+  | { kind: "planLimit" }
   | { kind: "rateLimited"; minutes: number | undefined }
   | { kind: "notFound" }
   | { kind: "server"; status: number }
   | { kind: "failed" }
   | { kind: "unreadable" };
 
-export type Answer = { data: Record<string, unknown> } | { failure: Failure };
+/**
+ * Data, or why there is none. A failure keeps the data Linear sent with a 2xx status: a mutation can succeed in part
+ * (https://linear.app/developers/graphql, "can partially succeed with a 200 HTTP status"), and only the caller knows
+ * whether the part it needs is there.
+ */
+export type Answer = { data: Record<string, unknown> } | { failure: Failure; data?: Record<string, unknown> };
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -61,11 +67,13 @@ export function apiKey(): string | undefined {
   return key === "" ? undefined : key;
 }
 
-type ErrorKind = "rateLimited" | "badKey" | "forbidden" | "notFound" | "other";
+type ErrorKind = "rateLimited" | "badKey" | "forbidden" | "planLimit" | "notFound" | "other";
 
 /**
  * What one GraphQL error is about, from its `extensions` (`code` such as "RATELIMITED", or `type` such as
  * "authentication error", as Linear's SDK reads it) or, for a missing entity, its message ("Entity not found: Issue").
+ * "usage limit exceeded" (a plan's cap, such as a free workspace's number of issues) and "feature not accessible" are
+ * the SDK's types for what the workspace's plan doesn't allow.
  */
 function errorKind(error: unknown): ErrorKind {
   if (!isRecord(error)) return "other";
@@ -76,6 +84,7 @@ function errorKind(error: unknown): ErrorKind {
   if (code === "RATELIMITED" || type === "ratelimited") return "rateLimited";
   if (code === "AUTHENTICATION_ERROR" || type === "authentication error") return "badKey";
   if (code === "FORBIDDEN" || type === "forbidden") return "forbidden";
+  if (type === "usage limit exceeded" || type === "feature not accessible") return "planLimit";
   if (code === "NOT_FOUND" || type === "not found" || /\bnot found\b/i.test(message)) return "notFound";
   return "other";
 }
@@ -113,14 +122,18 @@ export function answerOf(response: HttpResponse, now: number): Answer {
   const errors: unknown[] = isRecord(body) && Array.isArray(body.errors) ? body.errors : [];
   const kinds = new Set(errors.map(errorKind));
   const status = response.status;
-  if (status === 429 || kinds.has("rateLimited")) return { failure: { kind: "rateLimited", minutes: waitOf(response.headers ?? {}, now) } };
-  if (status === 401 || kinds.has("badKey")) return { failure: { kind: "badKey" } };
-  if (status === 403 || kinds.has("forbidden")) return { failure: { kind: "forbidden" } };
-  if (kinds.has("notFound")) return { failure: { kind: "notFound" } };
+  const ok = status >= 200 && status <= 299;
+  const data = ok && isRecord(body) && isRecord(body.data) ? body.data : undefined;
+  const failed = (failure: Failure): Answer => (data === undefined ? { failure } : { failure, data });
+  if (status === 429 || kinds.has("rateLimited")) return failed({ kind: "rateLimited", minutes: waitOf(response.headers ?? {}, now) });
+  if (status === 401 || kinds.has("badKey")) return failed({ kind: "badKey" });
+  if (status === 403 || kinds.has("forbidden")) return failed({ kind: "forbidden" });
+  if (kinds.has("planLimit")) return failed({ kind: "planLimit" });
+  if (kinds.has("notFound")) return failed({ kind: "notFound" });
   if (status >= 500) return { failure: { kind: "server", status } };
-  if (errors.length > 0 || status < 200 || status > 299) return { failure: { kind: "failed" } };
-  if (!isRecord(body) || !isRecord(body.data)) return { failure: { kind: "unreadable" } };
-  return { data: body.data };
+  if (errors.length > 0 || !ok) return failed({ kind: "failed" });
+  if (data === undefined) return { failure: { kind: "unreadable" } };
+  return { data };
 }
 
 /**
