@@ -281,9 +281,10 @@ function* exportSeeds(text: string): Iterable<Finding> {
 }
 
 /**
- * `.env` lines, `export` lines and compose `- KEY=value` lines; group 4 is the value. A value may go unquoted only when
- * `=` has no spaces around it, as in a .env file: `key = value` is code unless the value is a quoted string. Either
- * way the value must look like a key or a password (`tokenLike`), not like the words a program shows.
+ * `.env` lines, `export` lines and compose `- KEY=value` lines; group 4 is a quoted value, or an unquoted value's first
+ * word. A value may go unquoted only when `=` has no spaces around it, as in a .env file: `key = value` is code unless
+ * the value is a quoted string. Either way the value must look like a key or a password (`tokenLike`), not like the
+ * words a program shows.
  */
 const envLine = /^([ \t]*(?:-[ \t]+)?(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)([ \t]*=[ \t]*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s"'#]\S*)/gm;
 /** Key names that say the value is a secret, by their last word or two; group 1 is that ending. */
@@ -300,10 +301,24 @@ function tokenLike(value: string): boolean {
   return /\d/.test(value) || /[A-Za-z][!@#$%^&*+=\/~|]+[A-Za-z0-9]/.test(value) || (value.length >= 16 && mixed(value) && !/[-.]/.test(value));
 }
 
-/** The words of a key's ending (`password`, and `pass`) that its secret would not spell out: `csrftoken`, `dbpassword`. */
+/**
+ * The words of a key's ending that its secret would not spell out: `csrftoken`, `dbpassword`, `supersecret`. Only the
+ * whole word counts for a password: `pass` stands alone only for a `…_PASS` key, so `SuperPass2024!` is still a password.
+ */
 function ownWords(ending: string): string[] {
   const whole = ending.replace(/_/g, "").toLowerCase();
-  return [whole, ...["secret", "token", "pass"].filter((word) => whole.includes(word))];
+  return [whole, ...["secret", "token"].filter((word) => whole.includes(word))];
+}
+
+/**
+ * An unquoted value as a whole: the rest of its line, without a ` #` comment and trailing spaces. Read in code, not by
+ * a regular expression, so the line is read once.
+ */
+function unquotedValue(text: string, start: number): string {
+  const newline = text.indexOf("\n", start);
+  const line = text.slice(start, newline < 0 ? text.length : newline);
+  const comment = line.search(/\s#/);
+  return (comment < 0 ? line : line.slice(0, comment)).trimEnd();
 }
 
 function* envValues(text: string): Iterable<Finding> {
@@ -313,11 +328,12 @@ function* envValues(text: string): Iterable<Finding> {
     if (!quoted && equals !== "=") continue;
     const ending = secretKey.exec(key.toUpperCase())?.[1];
     if (ending === undefined) continue;
-    const value = quoted ? raw.slice(1, -1) : raw;
+    const start = (match.index ?? 0) + lead.length + key.length + equals.length + (quoted ? 1 : 0);
+    // An unquoted value with spaces inside, such as `Welcome2026 to the app`, is text: `tokenLike` keeps it.
+    const value = quoted ? raw.slice(1, -1) : unquotedValue(text, start);
     if (value.length < 6 || isPlaceholder(value) || !tokenLike(value) || (!quoted && codeValue.test(value))) continue;
     const plain = value.replace(/[-_.]/g, "").toLowerCase();
     if (ownWords(ending).some((word) => plain.includes(word))) continue;
-    const start = (match.index ?? 0) + lead.length + key.length + equals.length + (quoted ? 1 : 0);
     yield { kind: "env", start, end: start + value.length };
   }
 }

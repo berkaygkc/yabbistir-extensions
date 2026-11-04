@@ -595,6 +595,8 @@ describe("adversarialCopies", () => {
     base64urlBlob: chars(B64URL_ALPHABET, SIZE),
     base64Blob: chars(B64, SIZE),
     envManyLines: fill("API_KEY=xxxxxxxxxxxx\n"),
+    envOneLongLine: fill(" word", "API_KEY=Aa1bC2dE3f"),
+    envManyShortLines: fill("A_TOKEN=Aa1 #\n"),
     secretJsonWithoutKeys: fill(`{"secret":"${chars(B32, 20)}"},`),
     otpauthLong: "otpauth://totp/x?" + fill("a=b&"),
     digits: fill("1234567890"),
@@ -636,6 +638,31 @@ describe("regressions", () => {
   test("aValueWithSpacesIsNeverASecret", async () => {
     // A passphrase of words is a secret to a person, but a value with spaces reads as text, and text is kept.
     assert.deepEqual(await capture(text('GPG_PASSPHRASE="correct horse battery staple"')), KEPT);
+  });
+
+  test("anUnquotedValueIsJudgedWhole", async () => {
+    // The rest of the line is the value: with spaces inside, it is text.
+    for (const line of ["WELCOME_TOKEN=Welcome2026 to the app", "GPG_PASSPHRASE=Correct-Horse7 battery staple"]) {
+      assert.deepEqual(await capture(text(line)), KEPT, line);
+    }
+    // A ` #` comment is not part of it.
+    assert.deepEqual(spans("API_TOKEN=abc123XYZ987def # rotated"), ["abc123XYZ987def"]);
+    assert.deepEqual(await capture(text("API_TOKEN=abc123XYZ987def # rotated")), DROPPED);
+    assert.deepEqual(spans("API_TOKEN=abc123XYZ987def   \r\nNEXT=1"), ["abc123XYZ987def"]);
+  });
+
+  test("aPasswordThatContainsPassIsStillAPassword", async () => {
+    for (const [line, value] of [
+      ["DB_PASSWORD=SuperPass2024!", "SuperPass2024!"],
+      ["MYSQL_PASSWORD=mypass123", "mypass123"],
+      ["ADMIN_PASSWORD=Passw0rd!", "Passw0rd!"],
+      ["GPG_PASSPHRASE=Compass-Rose-77", "Compass-Rose-77"],
+    ]) {
+      assert.deepEqual(await capture(text(line)), DROPPED, line);
+      assert.deepEqual(spans(line), [value], line);
+    }
+    // Only a `…_PASS` key's own word is `pass`.
+    assert.deepEqual(await capture(text("SMTP_PASS=mypass123")), KEPT);
   });
 
   test("valuesShapedLikeSecretsStillCount", () => {
