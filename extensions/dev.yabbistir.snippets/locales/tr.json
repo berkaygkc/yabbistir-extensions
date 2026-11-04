@@ -1,0 +1,18 @@
+{
+  "name": "Snippets",
+  "description": "Hazır cevaplar, imzalar ve şablonlar bir Markdown dosyasından, sütun olarak. ↵ ile {date}, {time} ve {clipboard} doldurularak yapıştırılır.",
+  "folder.title": "Metin dosyanın klasörü",
+  "file.title": "Dosya adı",
+  "source.title": "Hazır metinler",
+  "paste.title": "Metni yapıştır",
+  "paste.label": "Metin",
+  "paste.copyTitle": "Metni kopyala",
+  "paste.copied": "Metin kopyalandı.",
+  "noFolder": "Ayarlar › Eklentiler › Snippets içinden bir klasör seç.",
+  "badFileName": "Ayarlar › Eklentiler › Snippets içindeki dosya adı snippets.md gibi düz bir ad olmalı.",
+  "noFile": "Bu klasörde {file} yok. Orada oluştur ya da Ayarlar › Eklentiler › Snippets içinden başka bir klasör seç.",
+  "unreadable": "{file} okunamadı. Ayarlar › Eklentiler › Snippets içindeki klasörü kontrol et.",
+  "noSnippets": "{file} içinde henüz metin yok. Bir metni ## Teşekkürler gibi bir satırla başlat.",
+  "gone": "Bu metin artık dosyada yok.",
+  "emptyResult": "Bu metin boş çıktı, o yüzden hiçbir şey yapıştırılmadı."
+}
