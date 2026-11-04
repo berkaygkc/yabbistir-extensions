@@ -189,6 +189,7 @@ class Parser {
   private strong: "." | "," | null = null;
   private weak: "." | "," | null = null;
   private grouped = false;
+  private inCall = 0;
 
   private tokens: Token[];
   private language: "." | ",";
@@ -262,6 +263,7 @@ class Parser {
       this.emit(op === "of" ? " of " : ` ${op} `);
       const right = this.unary();
       this.meaningful = true;
+      if (op === "%" && right.percent) fail(); // a remainder followed by a percentage is not a sum
       if (op === "of") {
         if (!left.percent) fail();
         left = { v: this.check(left.v * right.v), percent: false };
@@ -322,6 +324,8 @@ class Parser {
       this.pos++;
       const literal = readNumber(token.raw, this.language);
       if (literal === null) return fail();
+      // "max(1,7)": in a dot-decimal language a lone comma inside a call is an argument separator written without a space; refuse rather than read 1.7.
+      if (this.inCall > 0 && this.language === "." && /^[0-9]+,[0-9]+$/.test(token.raw)) return fail();
       if (literal.strong) this.strong ??= literal.decimal;
       else this.weak ??= literal.decimal;
       if (literal.grouped) this.grouped = true;
@@ -345,6 +349,7 @@ class Parser {
         this.pos += 2;
         this.emit(`${token.name}(`);
         if (++this.depth > maxDepth) fail();
+        this.inCall++;
         const args: number[] = [this.expr().v];
         while (this.peek()?.type === ";" || this.peek()?.type === ",") {
           this.pos++;
@@ -355,6 +360,7 @@ class Parser {
         this.pos++;
         this.emit(")");
         this.depth--;
+        this.inCall--;
         if (args.length < fn.min || args.length > fn.max) fail();
         this.meaningful = true;
         return { v: this.check(fn.apply(args)), percent: false };
@@ -374,6 +380,8 @@ class Parser {
 function looksLikeAnIdentifier(text: string): boolean {
   if (/^\+?[0-9]+([-/][0-9]+){2,}$/.test(text)) return true; // 2024-11-04, 11/04/2024, 555-123-4567
   if (/^(19|20)[0-9]{2}-[0-9]{1,2}$/.test(text)) return true; // 2024-11
+  if (/^[0-9]{1,4}-[0-9]{1,4}$/.test(text)) return true; // 2-1 (a score), 10-12 (a page range or hours)
+  if (/^(e|pi|π)-[0-9][0-9.,]*$/i.test(text) || /^[0-9][0-9.,]*-(e|pi|π)$/i.test(text)) return true; // e-1, 2-pi
   return /^[0-9]{3,}-[0-9]{3,}$/.test(text); // 555-1234
 }
 

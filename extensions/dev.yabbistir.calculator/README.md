@@ -38,6 +38,9 @@ A tokenizer and a recursive-descent parser that evaluates as it reads: no `eval`
 ## Limits
 
 - Write a subtraction of two plain numbers of three or more digits with spaces (`555 - 1234`): without spaces it is taken for a phone number or an identifier. Chains like `10-5-2` without spaces are taken for dates for the same reason; with spaces they are sums.
+- Short joined pairs such as `2-1` or `10-12` (scores, page ranges, hours) and `e-1` are not tagged; add spaces (`2 - 1`) to get a sum.
+- A comma without a space is a decimal comma, so in an English app `max(1,7)` is not tagged; write `max(1; 7)` or `max(1, 7)`. In Turkish `max(1,7)` is read as the single number 1,7.
+- A bare function call such as `sqrt(16)` is tagged even without an operator; a remainder followed by a percent (`5 % 2%`) is not tagged.
 - No implicit multiplication (`2(3)`, `2pi`), no `x` as times, no units or currencies, no scientific notation input (`1e3`).
 - Numbers with spaces or apostrophes as thousands marks (`1 234`, `1'234`) are not read.
 - Floating point: results are rounded to 12 digits, so tiny differences (`0.1 + 0.2`) vanish.

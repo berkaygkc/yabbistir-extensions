@@ -153,7 +153,7 @@ describe("number styles", () => {
   test("argumentSeparatorsDoNotEatDecimals", () => {
     assert.equal(result("max(1,5; 2) + 0", "tr"), "2");
     assert.equal(result("max(1, 5) + 0", "en"), "5");
-    assert.equal(result("max(1,5) + 0", "en"), "1,5", "no space after the comma: it is a decimal");
+    assert.equal(result("max(1,5) + 0", "en"), null, "no space after the comma in a call: refused rather than read as 1,5");
   });
 
   test("formatNumberHandlesEdges", () => {
@@ -258,6 +258,26 @@ describe("speed", () => {
   test("moderateNestingStillWorks", () => {
     assert.equal(result("(".repeat(50) + "1 + 1" + ")".repeat(50)), "2");
     assert.equal(result("(".repeat(150) + "1 + 1" + ")".repeat(150)), null, "past the depth limit");
+  });
+});
+
+describe("fix round 1", () => {
+  test("commaWithoutSpaceInACallIsNotTaggedInEnglish", () => {
+    assert.equal(result("max(1,7)"), null);
+    assert.equal(result("min(3,4)"), null);
+    assert.equal(result("max(1, 7)"), "7");
+    assert.equal(result("max(1; 7)"), "7");
+    assert.equal(result("1,5 + 1"), "2,5");
+    assert.equal(result("max(1,7; 2)", "tr"), "2");
+  });
+  test("shortHyphenPairsAreNotTagged", () => {
+    for (const t of ["2-1", "10-12", "e-1", "2-pi"]) assert.equal(result(t), null, t);
+    assert.equal(result("2 - 1"), "1");
+    assert.equal(result("10 - 12"), "-2");
+  });
+  test("remainderThenPercentIsNotTagged", () => {
+    assert.equal(result("5 % 2%"), null);
+    assert.equal(result("10 % 3"), "1");
   });
 });
 

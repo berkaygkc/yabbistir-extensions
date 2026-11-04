@@ -7,7 +7,7 @@
   "expression": "İşlem",
   "result.title": "Sonucu yapıştır",
   "result.keywords": ["sonuç", "sonuc", "hesapla", "hesap", "toplam", "matematik"],
-  "full.title": "İşlemi = sonuç yapıştır",
+  "full.title": "İşlem = sonuç yapıştır",
   "full.keywords": ["işlem", "islem", "hesapla", "hesap", "eşittir", "toplam", "matematik"],
   "notAnExpression": "Bu bir hesaplama değil."
 }
