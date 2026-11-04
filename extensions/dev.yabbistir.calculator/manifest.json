@@ -1,0 +1,26 @@
+{
+  "id": "dev.yabbistir.calculator",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:plus.forwardslash.minus",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "minAppVersion": "0.4.0",
+  "categories": ["productivity"],
+  "contributes": {
+    "detectors": [
+      { "id": "expression", "tag": "tag",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^(?=[^\\n\\r]{3,5000}$)[^\\n\\r]*[-+*/×÷^%()−–·][^\\n\\r]*$" },
+        "validate": true, "preview": true }
+    ],
+    "actions": [
+      { "id": "result", "title": "result.title", "keywords": "result.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["expression"] }, "output": "text", "hint": true },
+      { "id": "full", "title": "full.title", "keywords": "full.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["expression"] }, "output": "text", "hint": true }
+    ]
+  }
+}
