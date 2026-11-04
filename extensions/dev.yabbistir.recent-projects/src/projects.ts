@@ -135,23 +135,50 @@ export function sameProjectKey(project: Project): string {
   return `${project.scheme}://${project.authority.toLowerCase()}${project.path}`;
 }
 
+/** One editor's projects, newest first, and when the editor last started (undefined when that is not known). */
+export interface EditorProjects {
+  readonly projects: readonly Project[];
+  readonly started: number | undefined;
+}
+
 /**
- * The editors' lists as one, at most `cap` long. The editors keep no dates, only an order, so the lists are merged
- * rank by rank: each editor's newest, then each one's second newest, and so on, in the order of EDITORS. A project in
- * more than one list is kept where it comes first, which is where it is most recent.
+ * The editors' lists as one, at most `cap` long. The editors keep no date with an entry, only an order, but each says
+ * when it last started. So the lists are merged rank by rank, the editor started most recently first: each editor's
+ * newest, then each one's second newest, and so on. Editors whose start is not known come after the others, and the
+ * order of EDITORS breaks ties.
+ *
+ * A project in more than one list is listed once, at the first of its places, where it is most recent. It goes under
+ * the editor started most recently of those that list it, the one the person is likelier to be using now; when that
+ * does not tell them apart, under the one where it comes first.
  */
-export function merged(lists: readonly (readonly Project[])[], cap = CAP): Project[] {
+export function merged(lists: readonly EditorProjects[], cap = CAP): Project[] {
+  const startOf = (list: EditorProjects): number => list.started ?? -Infinity;
+  // Stable: lists that start alike keep the order of EDITORS. Two unknown starts give NaN, which counts as a tie.
+  const ordered = [...lists].sort((a, b) => startOf(b) - startOf(a) || 0);
+
+  // The project each one goes under: of its places, the one in the latest started editor, then the first one.
+  const chosen = new Map<string, { project: Project; start: number; place: number }>();
+  ordered.forEach((list, column) => {
+    const start = startOf(list);
+    list.projects.forEach((project, rank) => {
+      const key = sameProjectKey(project);
+      const place = rank * ordered.length + column;
+      const held = chosen.get(key);
+      if (held === undefined || start > held.start || (start === held.start && place < held.place)) chosen.set(key, { project, start, place });
+    });
+  });
+
   const seen = new Set<string>();
   const projects: Project[] = [];
-  const longest = lists.reduce((most, list) => Math.max(most, list.length), 0);
+  const longest = ordered.reduce((most, list) => Math.max(most, list.projects.length), 0);
   for (let rank = 0; rank < longest; rank++) {
-    for (const list of lists) {
-      const project = list[rank];
+    for (const list of ordered) {
+      const project = list.projects[rank];
       if (project === undefined) continue;
       const key = sameProjectKey(project);
       if (seen.has(key)) continue;
       seen.add(key);
-      projects.push(project);
+      projects.push(chosen.get(key)?.project ?? project);
       if (projects.length === cap) return projects;
     }
   }
@@ -178,13 +205,24 @@ function lastPart(path: string): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
+/**
+ * The authority as a person reads it. VS Code writes a resolver's kind and then its data after "+", and the data can
+ * be long hex JSON (GitHub's "github+7b22…" holds a branch or a pull request), so only the kind is shown, as the
+ * editor itself does. A remote project's authority is shown by remoteLabel instead.
+ */
+function shownAuthority(authority: string): string {
+  const plus = authority.indexOf("+");
+  return plus > 0 ? authority.slice(0, plus) : authority;
+}
+
 /** The row's title: the folder's name, or the workspace's without ".code-workspace". */
 export function titleOf(project: Project): string {
   let name = lastPart(project.path);
   if (project.kind === "workspace" && name.length > WORKSPACE_EXTENSION.length && name.toLowerCase().endsWith(WORKSPACE_EXTENSION)) {
     name = name.slice(0, -WORKSPACE_EXTENSION.length);
   }
-  if (name === "") name = project.path === "/" ? "/" : project.authority !== "" ? project.authority : project.uri;
+  // Only a virtual project can have no path, and only the root has an empty last part.
+  if (name === "") name = project.path === "/" ? "/" : project.authority !== "" ? shownAuthority(project.authority) : project.uri;
   return name.normalize("NFC");
 }
 
@@ -241,7 +279,7 @@ export function subtitleOf(project: Project, home: string): string {
   const parts = [yab.t(project.editor.name)];
   if (project.place === "local") parts.push(shortPath(project.path.normalize("NFC"), home.normalize("NFC")));
   else if (project.place === "remote") parts.push(remoteLabel(project.authority), project.path);
-  else parts.push(`${project.scheme}://${project.authority}${project.path}`);
+  else parts.push(`${project.scheme}://${shownAuthority(project.authority)}${project.path}`);
   return parts.join(" · ").normalize("NFC");
 }
 

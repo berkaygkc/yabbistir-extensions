@@ -24,6 +24,8 @@
   "remote.codespaces": "Codespaces",
   "noHome": "Choose your home folder in Settings to see your projects",
   "readFailed": "The editors’ recent lists couldn’t be read.",
+  "readFailedOne": "The recent list of {editor} couldn’t be read.",
   "gone": "This project is no longer in the editor’s recent list.",
-  "log.unreadable": "{editor}: its recent list couldn’t be read, so its projects are left out."
+  "log.unreadable": "{editor}: its recent list couldn’t be read, so its projects are left out.",
+  "log.notFound": "{editor}: no recent list was found where this extension looks, so it shows no projects."
 }

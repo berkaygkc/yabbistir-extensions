@@ -24,6 +24,8 @@
   "remote.codespaces": "Codespaces",
   "noHome": "Projelerini görmek için Ayarlar’dan kullanıcı klasörünü seç",
   "readFailed": "Düzenleyicilerin son açılanlar listesi okunamadı.",
+  "readFailedOne": "{editor} için son açılanlar listesi okunamadı.",
   "gone": "Bu proje artık düzenleyicinin son açılanlar listesinde yok.",
-  "log.unreadable": "{editor}: son açılanlar listesi okunamadı, bu yüzden projeleri listede yok."
+  "log.unreadable": "{editor}: son açılanlar listesi okunamadı; projeleri gösterilmiyor.",
+  "log.notFound": "{editor}: bu eklentinin baktığı yerlerde son açılanlar listesi bulunamadı; projeleri gösterilmiyor."
 }
