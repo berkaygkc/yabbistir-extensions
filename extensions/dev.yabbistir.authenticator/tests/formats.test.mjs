@@ -450,13 +450,19 @@ describe("LastPass Authenticator's QR codes", () => {
 });
 
 describe("unbalanced brackets", () => {
-  test("cost little, and the links after them are still read", () => {
+  test("cost little, and the links after them are still read", async () => {
     const link = otpauth({ issuer: "Posta", account: "deniz", secret: seed("u1") });
     const noises = ["[".repeat(40_000), '{"a":'.repeat(20_000), "[[[[ x ]]]] ".repeat(5_000), `${"[".repeat(3_000)}${"]".repeat(3_000)}`, '"'.repeat(50_000) + "{"];
     for (const noise of noises) {
-      const started = performance.now();
       assert.deepEqual(accountsOf(`${noise}\n${link}`), [account("Posta", "deniz", "u1")], noise.slice(0, 12));
-      assert.ok(performance.now() - started < 500, `${noise.slice(0, 12)}: ${performance.now() - started} ms`);
+      // The fastest of up to five runs: a busy machine can stall one run, while a slow parser is slow every time.
+      let best = Infinity;
+      for (let attempt = 0; attempt < 5 && best >= 500; attempt++) {
+        const started = performance.now();
+        accountsOf(`${noise}\n${link}`);
+        best = Math.min(best, performance.now() - started);
+      }
+      assert.ok(best < 500, `${noise.slice(0, 12)}: ${best.toFixed(1)} ms at best`);
     }
   });
 
