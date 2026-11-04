@@ -1,0 +1,31 @@
+{
+  "id": "dev.yabbistir.docker",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:shippingbox",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "docker", "install": "brew install --cask docker" }
+    ]
+  },
+  "preferences": [
+    { "id": "all", "type": "toggle", "title": "all.title", "default": false }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "containers", "title": "source.title", "actions": [
+        { "id": "name", "kind": "text", "title": "name.title", "label": "name.label",
+          "copyTitle": "name.copyTitle", "copied": "name.copied" },
+        { "id": "exec", "kind": "text", "title": "exec.title", "label": "exec.label" }
+      ] }
+    ]
+  }
+}
