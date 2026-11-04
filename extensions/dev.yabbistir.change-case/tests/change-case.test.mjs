@@ -347,10 +347,16 @@ describe("limits", () => {
 
   test("timeGrowsLinearly", () => {
     for (const variant of ["camel", "title", "slug"]) {
+      // The fastest of three runs, so a stall on a busy machine (the whole store's tests at once) doesn't skew the ratio.
       const time = (count) => {
-        const started = performance.now();
-        convert("fooBar baz_qux ".repeat(count), variant, "en");
-        return performance.now() - started;
+        const text = "fooBar baz_qux ".repeat(count);
+        let best = Infinity;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const started = performance.now();
+          convert(text, variant, "en");
+          best = Math.min(best, performance.now() - started);
+        }
+        return best;
       };
       time(1000);
       const small = Math.max(time(5000), 1);
