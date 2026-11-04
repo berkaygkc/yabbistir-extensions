@@ -17,10 +17,10 @@ With the defaults, *Generate a password* shows something like `q7Rm-xW3#tBv9Kd2Z
 ## How the values are made
 
 - The only source of randomness is `crypto.getRandomValues`. `Math.random` is never used.
-- Every pick from a list uses **rejection sampling**: a 32-bit draw that falls in the last, incomplete block is thrown away, so no character or word is even slightly more likely than another (no modulo bias). The password is then shuffled with an unbiased Fisher-Yates shuffle.
+- Every pick from a list uses **rejection sampling**: a 32-bit draw that falls in the last, incomplete block is thrown away, so every single pick is unbiased (no modulo bias). A password also guarantees one character from each enabled set, then fills the rest from the whole pool. The password is then shuffled with an unbiased Fisher-Yates shuffle.
 - Every character set that is on is present in the password.
 - The row's hint and the pasted value are the same run: what you see is what ↵ pastes.
-- A few EFF words contain a hyphen themselves (`drop-down`); with the dash separator they look like two words. Pick another separator if that matters to you.
+- Four EFF words contain a hyphen themselves (`drop-down`, `felt-tip`, `t-shirt`, `yo-yo`); with the dash separator they look like two words. Pick another separator if that matters to you.
 
 ## Permissions
 

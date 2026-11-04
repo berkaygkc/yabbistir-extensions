@@ -148,12 +148,10 @@ describe("randomness", () => {
 
 describe("passphrase", () => {
   test("hasFiveWordsWithDashesByDefault", async () => {
-    const text = textOf(await run(host(), "passphrase"));
-    const words = text.split("-");
-    // The list has a few words with their own hyphen ("drop-down"), so count by walking the list.
-    assert.ok(text.length >= 5 * 3 + 4);
-    assert.ok(words.length >= 5);
-    assert.ok(/^[a-z-]+$/.test(text));
+    const patch = mock.method(globalThis.crypto, "getRandomValues", seeded(77));
+    let text;
+    try { text = textOf(await run(host(), "passphrase")); } finally { patch.mock.restore(); }
+    assert.equal(text, generatePassphrase(5, "-", seeded(77)));
   });
 
   test("countAndSeparatorFollowThePreferences", async () => {
@@ -169,8 +167,12 @@ describe("passphrase", () => {
       assert.equal(text.split(mark).length >= 6, true, id);
       assert.ok(text.includes(mark));
     }
-    const joined = textOf(await run(host({ separator: "none", words: "4" }), "passphrase"));
-    assert.match(joined, /^[a-z-]+$/);
+    const patch = mock.method(globalThis.crypto, "getRandomValues", seeded(31));
+    let joined;
+    try { joined = textOf(await run(host({ separator: "none", words: "4" }), "passphrase")); } finally { patch.mock.restore(); }
+    assert.equal(joined, generatePassphrase(4, "", seeded(31)));
+    const picked = generatePassphrase(4, " ", seeded(31)).split(" ");
+    assert.equal(joined, picked.join(""));
     assert.equal(textOf(await run(host({ separator: "bogus", words: "99" }), "passphrase")).length > 0, true);
   });
 
@@ -286,11 +288,11 @@ describe("hint and secrecy", () => {
     assert.equal(h.calls.some((c) => ["http", "exec", "history", "ai", "translate", "open"].includes(c.api)), false);
   });
 
-  test("errorMessagesNeverCarryAValue", async () => {
-    const bad = () => { throw new Error("entropy source failed"); };
-    const patch = mock.method(globalThis.crypto, "getRandomValues", bad);
+  test("aFailingSourceSurfacesExactlyItsOwnError", async () => {
+    const failure = new Error("entropy source failed");
+    const patch = mock.method(globalThis.crypto, "getRandomValues", () => { throw failure; });
     try {
-      await assert.rejects(run(host(), "password"), (error) => !/[A-Za-z0-9]{20}/.test(error.message.replace("entropy source failed", "")));
+      await assert.rejects(run(host(), "password"), (error) => error === failure || error.message === "entropy source failed");
     } finally { patch.mock.restore(); }
   });
 
