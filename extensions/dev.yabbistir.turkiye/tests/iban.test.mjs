@@ -229,11 +229,17 @@ describe("ibanTiming", () => {
     const { accepts } = detector("iban");
     const host = hostIn();
     for (const text of [`TR33${"0".repeat(60_000)}`, `TR33${" 0".repeat(30_000)}!`, `IBAN:${" ".repeat(60_000)}TR`, `${"A".repeat(60_000)}`]) {
-      const started = performance.now();
-      acceptsMatch(accepts, item(text));
-      await host.validate(detectors.iban, item(text));
-      await host.preview(detectors.iban, item(text));
-      assert.ok(performance.now() - started < 50, `${text.length} characters took ${performance.now() - started} ms`);
+      // The fastest of up to five runs: a busy machine (the whole store's tests run at once) can stall one run, while
+      // a slow check is slow every time.
+      let took = Infinity;
+      for (let attempt = 0; attempt < 5 && took >= 50; attempt++) {
+        const started = performance.now();
+        acceptsMatch(accepts, item(text));
+        await host.validate(detectors.iban, item(text));
+        await host.preview(detectors.iban, item(text));
+        took = Math.min(took, performance.now() - started);
+      }
+      assert.ok(took < 50, `${text.length} characters took ${took.toFixed(1)} ms at best`);
     }
   });
 });

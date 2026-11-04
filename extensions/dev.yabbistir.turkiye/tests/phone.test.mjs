@@ -11,6 +11,18 @@ const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.m
 const { accepts } = manifest.contributes.detectors.find((entry) => entry.id === "phone");
 const tagged = (text) => hostIn().validate(detectors.phone, item(text));
 
+// The fastest of up to five runs: a busy machine (the whole store's tests run at once) can stall one run, while a
+// slow algorithm is slow every time.
+const fastest = async (limit, work) => {
+  let best = Infinity;
+  for (let attempt = 0; attempt < 5 && best >= limit; attempt++) {
+    const started = performance.now();
+    await work();
+    best = Math.min(best, performance.now() - started);
+  }
+  return best;
+};
+
 // Every common way of writing one synthetic mobile number, 0532 000 00 01.
 const MOBILE_FORMS = [
   "+90 532 000 00 01", "+90 (532) 000 00 01", "+90-532-000-00-01", "+905320000001", "+90 5320000001", "+90 532 000 0001",
@@ -161,12 +173,13 @@ describe("phoneTiming", () => {
       `${"9".repeat(60_000)}`, `+90 ${"5".repeat(60_000)} `,
     ];
     for (const text of texts) {
-      const started = performance.now();
-      acceptsMatch(accepts, item(text));
-      await host.validate(detectors.phone, item(text));
-      await host.preview(detectors.phone, item(text));
-      await host.hint(actions.phoneInternational, item(text));
-      assert.ok(performance.now() - started < 50, `${text.length} characters took ${performance.now() - started} ms`);
+      const took = await fastest(50, async () => {
+        acceptsMatch(accepts, item(text));
+        await host.validate(detectors.phone, item(text));
+        await host.preview(detectors.phone, item(text));
+        await host.hint(actions.phoneInternational, item(text));
+      });
+      assert.ok(took < 50, `${text.length} characters took ${took.toFixed(1)} ms at best`);
     }
   });
 });
