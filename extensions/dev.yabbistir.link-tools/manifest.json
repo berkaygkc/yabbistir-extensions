@@ -1,0 +1,89 @@
+{
+  "id": "dev.yabbistir.link-tools",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:link",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": [
+    "links"
+  ],
+  "permissions": [
+    "network"
+  ],
+  "network": {
+    "domains": [
+      "amzn.to",
+      "bit.do",
+      "bit.ly",
+      "buff.ly",
+      "cutt.ly",
+      "fb.me",
+      "ift.tt",
+      "is.gd",
+      "lnkd.in",
+      "ow.ly",
+      "rb.gy",
+      "rebrand.ly",
+      "s.id",
+      "shorturl.at",
+      "t.co",
+      "t.ly",
+      "tiny.cc",
+      "tinyurl.com",
+      "v.gd",
+      "wp.me"
+    ]
+  },
+  "contributes": {
+    "actions": [
+      {
+        "id": "expand",
+        "title": "expand.title",
+        "keywords": "expand.keywords",
+        "input": "item",
+        "accepts": {
+          "kinds": [
+            "link",
+            "text"
+          ],
+          "tags": [
+            "shortlink"
+          ]
+        },
+        "output": "text"
+      },
+      {
+        "id": "shorten",
+        "title": "shorten.title",
+        "keywords": "shorten.keywords",
+        "input": "item",
+        "accepts": {
+          "kinds": [
+            "link"
+          ],
+          "pattern": "(?i)^\\s*https?://[^\\s]+\\s*$"
+        },
+        "output": "text"
+      }
+    ],
+    "detectors": [
+      {
+        "id": "shortlink",
+        "tag": "tag",
+        "accepts": {
+          "kinds": [
+            "link",
+            "text"
+          ],
+          "pattern": "(?i)^\\s*https?://([a-z0-9-]+\\.)*(bit\\.ly|t\\.co|tinyurl\\.com|ow\\.ly|buff\\.ly|lnkd\\.in|is\\.gd|v\\.gd|rebrand\\.ly|cutt\\.ly|rb\\.gy|t\\.ly|tiny\\.cc|shorturl\\.at|s\\.id|amzn\\.to|fb\\.me|ift\\.tt|bit\\.do|wp\\.me)(:[0-9]+)?([/?#]|\\s*$)"
+        },
+        "validate": true
+      }
+    ]
+  }
+}

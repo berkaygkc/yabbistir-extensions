@@ -1,0 +1,19 @@
+{
+  "name": "Link Araçları",
+  "description": "Kısa bağlantının nereye gittiğini gösterir ve kısa bağlantı üretir.",
+  "tag": "Kısa bağlantı",
+  "expand.title": "Kısa bağlantıyı aç",
+  "expand.keywords": ["aç", "genişlet", "kısa", "bağlantı", "link", "hedef", "yönlendirme"],
+  "shorten.title": "is.gd ile kısalt",
+  "shorten.keywords": ["kısalt", "kısa", "bağlantı", "link", "isgd"],
+  "notShort": "Bu, bilinen bir kısa bağlantı değil.",
+  "noLink": "Kısaltılacak bağlantı yok.",
+  "tooMany": "Bu kısa bağlantı 5’ten fazla kısa bağlantıdan geçiyor.",
+  "loop": "Bu kısa bağlantı kendisine geri dönüyor.",
+  "noRedirect": "Bu kısa bağlantı nereye gittiğini söylemedi.",
+  "blocked": "Bu bağlantının nereye gittiği okunamadı. Hizmeti uygulamayı doğrudan hedefe gönderiyor ve Link Araçları bunu izleyemeyebilir.",
+  "lookupFailed": "is.gd bu bağlantının nereye gittiğini bulamadı.",
+  "rateLimit": "is.gd meşgul. Bir dakika sonra tekrar dene.",
+  "shortenFailed": "is.gd bu bağlantıyı kısaltamadı.",
+  "badLocation": "Kısa bağlantı bir web bağlantısına işaret etmiyor."
+}
