@@ -36,9 +36,9 @@ interface Parts {
   year: number; month: number; day: number; hour: number; minute: number; second: number;
 }
 
-/** True for a real calendar date and clock time (no leap seconds, no 24:00). */
+/** True for a real calendar date and clock time (no leap seconds, no 24:00). The supported range is applied later, on the instant. */
 function validParts(p: Parts): boolean {
-  return p.year >= 1990 && p.year <= 2099 && p.month >= 1 && p.month <= 12 && p.day >= 1 && p.day <= daysIn(p.year, p.month)
+  return p.year >= 1000 && p.year <= 9999 && p.month >= 1 && p.month <= 12 && p.day >= 1 && p.day <= daysIn(p.year, p.month)
     && p.hour <= 23 && p.minute <= 59 && p.second <= 59;
 }
 

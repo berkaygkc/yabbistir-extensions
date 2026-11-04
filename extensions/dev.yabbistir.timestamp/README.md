@@ -16,7 +16,7 @@ Not tagged: phone numbers and ids that only look like timestamps (wrong length, 
 
 ## Example
 
-Copy `1767225600`. The preview shows `January 1, 2026 at 3:00:00 AM GMT+3` (local), the same moment in UTC, `2026-01-01T00:00:00Z`, "3 days ago", "Thursday" and `1767225600`. In Turkish the same preview reads "1 Ocak 2026 03:00:00 GMT+3", "3 gün önce", "Perşembe".
+Copy `1767225600`. The preview shows `January 1, 2026 at 3:00:00 AM GMT+3` (local), the same moment in UTC, `2026-01-01T00:00:00Z`, a relative time ("3 days ago" on the day this example was written), the weekday ("Thursday") and `1767225600`. In Turkish the same preview reads "1 Ocak 2026 03:00:00 GMT+3", "3 gün önce", "Perşembe".
 
 ## Actions
 
@@ -35,5 +35,6 @@ None. The extension only reads the item it is asked about and the clock. Nothing
 ## Limits
 
 - Dates are formatted by the system's `Intl`, so wording follows macOS.
+- Text without a zone is read in this Mac's time. A time inside a spring-forward gap is shifted by the system, and an ambiguous fall-back time resolves to one of its two instants.
 - Relative time is rounded ("3 months ago" is about 91 days).
 - Millisecond precision is the finest a pasted Unix or ISO value keeps in the preview's local and UTC rows; the ISO row and the conversions keep nanoseconds.

@@ -58,6 +58,9 @@ describe("what is tagged", () => {
     // The 2100 edge in the offset's favor and against it.
     assert.equal(await tagged("2099-12-31T23:59:59-05:00"), false, "that is already 2100 in UTC");
     assert.equal(await tagged("1990-01-01T02:00:00+03:00"), false, "that is still 1989 in UTC");
+    // The local year may lie outside the range while the UTC instant is inside it.
+    assert.equal(await tagged("1989-12-31T23:00:00-03:00"), true, "that is 1990-01-01T02:00Z");
+    assert.equal(await tagged("2100-01-01T02:00:00+03:00"), true, "that is 2099-12-31T23:00Z");
     // Ten digits: 1 000 000 000 is 2001; the largest in range is 4 102 444 799.
     assert.equal(await tagged("1000000000"), true);
     assert.equal(await tagged("4102444799"), true);
