@@ -5,7 +5,7 @@ import { acceptsMatch } from "@yabbistir/api/fake-host";
 
 import { actions, detectors } from "../src/index.ts";
 import { areaCodes, parsePhone } from "../src/phone.ts";
-import { hostIn, item } from "./synthetic.mjs";
+import { hostIn, item, vkn } from "./synthetic.mjs";
 
 const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
 const { accepts } = manifest.contributes.detectors.find((entry) => entry.id === "phone");
@@ -17,7 +17,7 @@ const MOBILE_FORMS = [
   "+90 (0) 532 000 00 01", "+90 0532 000 00 01", "0090 532 000 00 01", "00905320000001", "90 532 000 00 01",
   "905320000001", "0532 000 00 01", "0 532 000 00 01", "0 (532) 000 00 01", "(0532) 000 00 01", "0532-000-00-01",
   "05320000001", "0532 0000001", "0532 000 0001", "532 000 00 01", "(532) 000 00 01", "532-000-00-01",
-  "0532 000 00 01", "  0532 000 00 01\n",
+  "0532\u00A0000\u00A000\u00A001", "  0532 000 00 01\n", "5320000001",
 ];
 
 describe("phoneDetection", () => {
@@ -30,7 +30,7 @@ describe("phoneDetection", () => {
   });
 
   test("everyOperatorsMobilePrefixIsTaken", () => {
-    for (const prefix of ["500", "505", "507", "530", "539", "541", "549", "551", "555", "559", "561"]) {
+    for (const prefix of ["500", "505", "507", "516", "530", "539", "541", "549", "551", "555", "559", "561"]) {
       assert.equal(parsePhone(`0${prefix} 200 00 00`)?.kind, "mobile", prefix);
     }
     for (const prefix of ["510", "512", "520", "522", "560", "570", "592", "594", "599"]) assert.equal(parsePhone(`0${prefix} 200 00 00`), null, prefix);
@@ -53,7 +53,7 @@ describe("phoneDetection", () => {
 
   test("otherTextIsNotTagged", async () => {
     const others = [
-      "5320000001", // ten bare digits: as likely a tax number
+      "2122000001", "3122000001", "8500000001", "8000000001", // ten bare digits are a phone number only when mobile
       "0123 456 78 90", "0612 200 00 01", "0900 000 00 01", "0444 00 00", "444 0 444", // no such prefix
       "0212 000 00 01", "0212 100 00 01", // a subscriber number never starts with 0 or 1
       "+1 202 555 0100", "+44 20 7946 0000", "+90 532 000 00", "+90 532 000 00 011", "0532 000 00 0", "0532 000 00 011",
@@ -62,6 +62,24 @@ describe("phoneDetection", () => {
       "", "+", "0", "+90",
     ];
     for (const text of others) assert.equal(await tagged(text), false, text);
+  });
+
+  test("aBareMobileNumberIsTakenButABareLandlineIsNot", () => {
+    assert.deepEqual(parsePhone("5320000001"), { national: "5320000001", kind: "mobile" });
+    assert.deepEqual(parsePhone("5160000001"), { national: "5160000001", kind: "mobile" });
+    // The same ten digits of a landline need their 0, their country code or groups.
+    assert.equal(parsePhone("2122000001"), null);
+    assert.deepEqual(parsePhone("212 200 00 01"), { national: "2122000001", kind: "landline" });
+    assert.deepEqual(parsePhone("02122000001"), { national: "2122000001", kind: "landline" });
+  });
+
+  test("aBareMobileNumberThatFitsTheVKNCheckDigitCarriesBothChips", async () => {
+    // Either reading is possible, so both are offered rather than one being guessed.
+    const number = vkn("532000000");
+    const host = hostIn();
+    assert.equal(await host.validate(detectors.vkn, item(number)), true);
+    assert.equal(await host.validate(detectors.phone, item(number)), true);
+    assert.deepEqual(host.offers(item(number, "phone", "vkn")).filter((id) => id.startsWith("phone")), ["phoneInternational", "phoneNational", "phoneE164"]);
   });
 
   test("theManifestPatternLeavesOtherTextOut", () => {
@@ -77,7 +95,7 @@ describe("phonePreview", () => {
       type: "keyValue", title: "Phone", rows: [["Type", "Mobile"], ["International", "+90 532 000 00 01"]],
     }]);
     assert.deepEqual(await hostIn("tr").preview(detectors.phone, item("05320000001"), { language: "tr" }), [{
-      type: "keyValue", title: "Telefon", rows: [["Tür", "Mobil"], ["Uluslararası", "+90 532 000 00 01"]],
+      type: "keyValue", title: "Telefon", rows: [["Tür", "Cep telefonu"], ["Uluslararası", "+90 532 000 00 01"]],
     }]);
   });
 
@@ -124,7 +142,7 @@ describe("phoneActions", () => {
 
   test("somethingElseSaysSo", async () => {
     assert.deepEqual(await hostIn("en").run(actions.phoneE164, item("hello")), { none: true, message: "This is not a Turkish phone number." });
-    assert.deepEqual(await hostIn("tr").hint(actions.phoneNational, item("+1 202 555 0100")), { none: true, message: "Bu bir Türkiye telefon numarası değil." });
+    assert.deepEqual(await hostIn("tr").hint(actions.phoneNational, item("+1 202 555 0100")), { none: true, message: "Bu bir Türk telefon numarası değil." });
     assert.deepEqual(await hostIn("en").run(actions.phoneInternational, null), { none: true, message: "This is not a Turkish phone number." });
   });
 

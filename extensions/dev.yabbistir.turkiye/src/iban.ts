@@ -21,9 +21,11 @@ export interface Iban {
 
 /** Longer than any IBAN with its spaces and an "IBAN:" label in front. */
 const maxText = 64;
-const label = /^iban:?[  ]*/i;
-const spaces = /[  ]/g;
+const label = /^iban:?[ \u00A0]*/i;
+const spaces = /[ \u00A0]/g;
 const shape = /^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$/;
+/** A Turkish IBAN's BBAN is "5n, 1n, 16c": the bank code and the reserve digit are digits. */
+const turkishStart = /^TR[0-9]{8}/;
 
 /** ISO 7064 MOD 97-10 over the IBAN with its first four characters moved to the end; a valid IBAN gives 1. */
 export function mod97(compact: string): number {
@@ -39,7 +41,8 @@ export function mod97(compact: string): number {
 
 /**
  * The IBAN in the text, or null unless the whole text is one: its country's length, check digits that pass
- * MOD 97-10, with or without spaces, in either case, after an optional "IBAN:" label.
+ * MOD 97-10, with or without spaces, in either case, after an optional "IBAN:" label. A Turkish IBAN must also have
+ * digits for its bank code and reserve digit, since the preview names the bank from them.
  */
 export function parseIban(text: string): Iban | null {
   const trimmed = text.trim();
@@ -48,6 +51,7 @@ export function parseIban(text: string): Iban | null {
   if (!shape.test(compact)) return null;
   const country = compact.slice(0, 2);
   if (ibanLengths[country] !== compact.length) return null;
+  if (country === "TR" && !turkishStart.test(compact)) return null;
   // 00, 01 and 99 can pass the remainder test but are never issued (ISO 13616 check digits run from 02 to 98).
   const check = compact.slice(2, 4);
   if (check === "00" || check === "01" || check === "99") return null;

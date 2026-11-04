@@ -1,6 +1,6 @@
 {
   "name": "Türkiye Paketi",
-  "description": "IBAN, TC kimlik ve vergi numaralarını denetler, telefon numaralarını biçimlendirir, kargoları takip eder.",
+  "description": "IBAN, TC Kimlik ve vergi numaralarını doğrular, telefon numaralarını biçimlendirir, kargoları takip eder.",
   "tag.iban": "IBAN",
   "tag.tckn": "TCKN",
   "tag.vkn": "VKN",
@@ -24,7 +24,7 @@
   "rule.vkn": "10. hane",
   "note.tckn": "Yalnızca kontrol haneleri denetlenir",
   "note.vkn": "Yalnızca kontrol hanesi denetlenir",
-  "type.mobile": "Mobil",
+  "type.mobile": "Cep telefonu",
   "type.landline": "Sabit hat",
   "type.nonGeographic": "Coğrafi olmayan",
   "type.tollFree": "Ücretsiz hat",
@@ -56,8 +56,8 @@
   "dhl.title": "DHL Express ile takip et",
   "dhl.subtitle": "dhl.com’da",
   "notIban": "Bu geçerli bir IBAN değil.",
-  "notPhone": "Bu bir Türkiye telefon numarası değil.",
+  "notPhone": "Bu bir Türk telefon numarası değil.",
   "notTracking": "Bu bir kargo takip numarasına benzemiyor.",
   "noCarrier": "Kargoyu takip etmek için bir firma seç.",
-  "yurtici.refused": "Yurtiçi Kargo takip numaraları 12 ile 16 hane arasındadır."
+  "yurtici.refused": "Yurtiçi Kargo takip numaraları 12 ya da 16 hanelidir."
 }

@@ -33,8 +33,8 @@ The whole copied text must be the number (spaces and line breaks around it are i
 - **IBAN**: two letters for one of the 89 countries of the SWIFT IBAN Registry, the length that country uses, and check digits that pass ISO 7064 MOD 97-10. With or without spaces (non-breaking ones too), in upper or lower case, and after an `IBAN:` label. The bank is named from the five-digit code in positions 5 to 9 of a Turkish IBAN.
 - **TC Kimlik No**: eleven digits, the first not 0, where the 10th digit is (7 × the sum of the 1st, 3rd, 5th, 7th and 9th digits − the sum of the 2nd, 4th, 6th and 8th) mod 10, and the 11th is the sum of the first ten mod 10.
 - **VKN**: ten digits whose last is the check digit of the other nine. For the digit at position *i*: *p* = (digit + 10 − *i*) mod 10, *q* = *p* × 2^(10 − *i*) mod 9, or 9 when *p* is not 0 and *q* is; the check digit is 10 minus the sum of the *q*s, mod 10.
-- **Phone number**: a mobile number (500–509, 530–559, 561), a landline with a province's area code (and a subscriber number that does not start with 0 or 1), or an 850 or 800 number. Written with `+90`, `0090`, `90` or the trunk `0` in front, grouped with spaces or dashes, with the area code in brackets, or as one block: `+90 (532) 000 00 01`, `0 532 000 00 01`, `0532-000-00-01`, `05320000001`.
-- **Tracking number**: ten digits (a DHL Express waybill), 12 to 22 digits (Yurtiçi, Aras, DHL eCommerce and others), a UPS `1Z` number, or a DHL `JJD` or `JD` piece number. Eleven digits never are: in Türkiye those are a TC Kimlik No or a phone number with its 0. A tracking number gets no chip; the actions are offered on it.
+- **Phone number**: a mobile number (500–509, 530–559, and Turkcell's 516 and 561 series), a landline with a province's area code (and a subscriber number that does not start with 0 or 1), or an 850 or 800 number. Written with `+90`, `0090`, `90` or the trunk `0` in front, grouped with spaces or dashes, with the area code in brackets, or as one block: `+90 (532) 000 00 01`, `0 532 000 00 01`, `0532-000-00-01`, `05320000001`. A mobile number is also taken as ten bare digits, `5320000001`.
+- **Tracking number**: ten digits (a DHL Express waybill), 12 to 22 digits (Yurtiçi, Aras, DHL eCommerce and others), a UPS `1Z` number, or a DHL `JJD` or `JD` piece number. Eleven digits never are, since in Türkiye those are a TC Kimlik No or a phone number with its 0, and neither are 90 or 0090 followed by ten digits that start like a Turkish number (with 2, 3, 4, 5 or 8). A tracking number gets no chip; the actions are offered on it.
 
 ## Tracking pages
 
@@ -42,7 +42,7 @@ Each carrier's own tracking page opens, with the number in its address. When yab
 
 | Carrier | Page |
 |---|---|
-| Yurtiçi Kargo | `https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code=<number>` (English: `/en/online-services/tracking?code=`). Takes 12 to 16 digits, the limits of Yurtiçi's own field; another number gets a short notice instead. |
+| Yurtiçi Kargo | `https://www.yurticikargo.com/tr/online-servisler/gonderi-sorgula?code=<number>` (English: `/en/online-services/tracking?code=`). Takes 12 or 16 digits, as Yurtiçi's own page does; another number gets a short notice instead. |
 | Aras Kargo | `https://kargotakip.araskargo.com.tr/mainpage.aspx?code=<number>` |
 | DHL eCommerce (formerly MNG Kargo) | `https://kargotakip.dhlecommerce.com.tr/?takipNo=<number>`. The page asks you to type a short verification code before it shows the shipment. |
 | UPS | `https://www.ups.com/track?loc=tr_TR&tracknum=<number>&requester=ST%2Ftrackdetails` (English: `loc=en_US`) |
@@ -52,7 +52,7 @@ Each carrier's own tracking page opens, with the number in its address. When yab
 
 ## Permissions
 
-None. The extension reads only the item it is asked about. Opening a link in the browser (`yab.open`) needs no permission, and happens only when you pick a *Track with …* row: then the tracking number goes to that carrier's website, and nowhere else. TC Kimlik and tax numbers are never shown back in a preview, written to the log or sent anywhere.
+None. The extension reads only the item it is asked about. Opening a link in the browser (`yab.open`) needs no permission, and happens only when you pick a *Track with …* row: then the tracking number goes to that carrier's website, and nowhere else. TC Kimlik and tax numbers are never shown back in a preview or written to the log. A tax number is sent somewhere only if you pick a *Track with …* row on it, since ten digits are also a DHL Express waybill.
 
 There are no programs to install and nothing to set up.
 
@@ -60,10 +60,10 @@ There are no programs to install and nothing to set up.
 
 - A check digit says a number is well formed, not that it was ever issued or whose it is. Only the check digits are tested, and the preview says so.
 - About one in ten ten-digit numbers fits the single VKN check digit by chance, and about one in a hundred eleven-digit numbers fits both TC Kimlik rules, so an unrelated number of that length (a ten-digit Unix time, for example) can get the chip.
-- Ten bare digits are never taken as a phone number, since they are as likely a tax number; `532 000 00 01`, with groups, is. 444 numbers, short numbers, extensions and numbers written with dots are not recognized.
-- A ten-digit tax number also looks like a DHL Express waybill, so *Track package* is offered on it too.
+- Ten bare digits are taken as a phone number only when they start like a mobile number: `5320000001` is one, but a bare landline, 850 or 800 number such as `2122000001` needs its 0 or groups (`212 200 00 01`), since it is as likely some other number. About one bare mobile number in ten also fits the VKN check digit, and then gets both chips, since it could be either. 444 numbers, short numbers, extensions and numbers written with dots are not recognized.
+- A ten-digit tax number or bare mobile number also looks like a DHL Express waybill, so *Track package* is offered on it too.
 - Bank names come from the Central Bank's lists of 2026. A bank that has closed, or joined later, shows only its code.
-- The IBAN check covers the length and the check digits, not the inner format of each country's account number. Countries added to the registry after December 2024 are not recognized yet.
+- The IBAN check covers the length and the check digits, not the inner format of each country's account number. For a Turkish IBAN, the bank code and the reserve digit must also be digits, since the bank is named from them. Countries added to the registry after December 2024 are not recognized yet.
 - Whether a carrier knows a tracking number is up to its own page.
 
 ## Sources

@@ -34,7 +34,7 @@ describe("ibanDetection", () => {
   });
 
   test("aTurkishIbanIsTaggedWithOrWithoutSpaces", async () => {
-    for (const text of [ZIRAAT, spaced(ZIRAAT), ZIRAAT.toLowerCase(), spaced(ZIRAAT).replace(/ /g, " "), `  ${spaced(ZIRAAT)}\n`]) {
+    for (const text of [ZIRAAT, spaced(ZIRAAT), ZIRAAT.toLowerCase(), spaced(ZIRAAT).replace(/ /g, "\u00A0"), `  ${spaced(ZIRAAT)}\n`]) {
       assert.equal(await valid(text), true, text);
     }
   });
@@ -91,6 +91,17 @@ describe("ibanDetection", () => {
     assert.ok(found > 0);
   });
 
+  test("aTurkishIbanHasDigitsForItsBankCodeAndReserveDigit", async () => {
+    // The registry's TR format is 5n, 1n, 16c: letters there are never issued, even with check digits that fit.
+    for (const text of [iban("TR", "ABCDE00000000000000001"), iban("TR", "0001A00000000000000001"), iban("TR", "00010X0000000000000001")]) {
+      assert.equal(text.length, 26, text);
+      assert.equal(await valid(text), false, text);
+      assert.deepEqual(await hostIn().preview(detectors.iban, item(text)), [], text);
+    }
+    // The sixteen-character account part may hold letters.
+    assert.equal(await valid(iban("TR", "000100ABCD000000000001")), true);
+  });
+
   test("otherTextIsNotTagged", async () => {
     for (const text of ["", "TR", "hello", "TR33", "IBAN", `${ZIRAAT} please`, `send to ${ZIRAAT}`, "TRXX0006100519786457841326", ZIRAAT.replace(/^TR/, "T1"), `${spaced(ZIRAAT)}  ${spaced(ZIRAAT)}`]) {
       assert.equal(await valid(text), false, text);
@@ -99,7 +110,7 @@ describe("ibanDetection", () => {
 
   test("theManifestPatternFindsTheCandidates", () => {
     const { accepts } = detector("iban");
-    for (const text of [ZIRAAT, spaced(ZIRAAT), ZIRAAT.toLowerCase(), `IBAN: ${spaced(ZIRAAT)}`, spaced(ZIRAAT).replace(/ /g, " "), OTHERS.NO, OTHERS.RU]) {
+    for (const text of [ZIRAAT, spaced(ZIRAAT), ZIRAAT.toLowerCase(), `IBAN: ${spaced(ZIRAAT)}`, spaced(ZIRAAT).replace(/ /g, "\u00A0"), OTHERS.NO, OTHERS.RU]) {
       assert.equal(acceptsMatch(accepts, item(text)), true, text);
     }
     for (const text of ["hello", `send to ${ZIRAAT}`, "TR33 0006", "12345678901234567890"]) assert.equal(acceptsMatch(accepts, item(text)), false, text);

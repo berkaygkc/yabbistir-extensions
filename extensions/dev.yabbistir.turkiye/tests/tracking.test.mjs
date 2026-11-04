@@ -61,14 +61,21 @@ describe("trackPackage", () => {
   });
 
   test("yurticiTakesOnlyItsOwnLengths", async () => {
+    // Yurtiçi's page takes 12 or 16 digits and nothing in between, so a 13-digit Aras number is refused calmly.
+    const english = "Yurtiçi Kargo tracking numbers have 12 or 16 digits.";
+    const turkish = "Yurtiçi Kargo takip numaraları 12 ya da 16 hanelidir.";
     for (const [text, language, message] of [
-      [WAYBILL, "en", "Yurtiçi Kargo tracking numbers are 12 to 16 digits."],
-      [UPS, "en", "Yurtiçi Kargo tracking numbers are 12 to 16 digits."],
-      ["10000000000000000001", "tr", "Yurtiçi Kargo takip numaraları 12 ile 16 hane arasındadır."],
+      [WAYBILL, "en", english], [UPS, "en", english], [THIRTEEN, "en", english], ["10000000000001", "en", english],
+      ["100000000000001", "tr", turkish], ["10000000000000000001", "tr", turkish],
     ]) {
       const { result, opened } = await trackWith("yurtici", text, language);
       assert.deepEqual(result, { none: true, message }, text);
       assert.deepEqual(opened, [], text);
+    }
+    for (const text of [TWELVE, SIXTEEN]) {
+      const { result, opened } = await trackWith("yurtici", text);
+      assert.deepEqual(result, { none: true }, text);
+      assert.deepEqual(opened, [`https://www.yurticikargo.com/en/online-services/tracking?code=${text}`], text);
     }
   });
 

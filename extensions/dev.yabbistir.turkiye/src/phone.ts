@@ -28,8 +28,8 @@ export const areaCodes: Readonly<Record<string, { name: string } | { key: string
   "482": { name: "Mardin" }, "484": { name: "Siirt" }, "486": { name: "Şırnak" }, "488": { name: "Batman" },
 };
 
-/** Mobile prefixes the operators give out: 500–509, 530–559 and 561. */
-const mobile = /^5(?:0[0-9]|3[0-9]|4[0-9]|5[0-9]|61)$/;
+/** Mobile prefixes the operators give out: 500–509, 530–559, and Turkcell's special series 516 and 561. */
+const mobile = /^5(?:0[0-9]|16|3[0-9]|4[0-9]|5[0-9]|61)$/;
 
 export type PhoneKind = "mobile" | "landline" | "nonGeographic" | "tollFree";
 
@@ -41,7 +41,7 @@ export interface Phone {
 
 /** Longer than any written form of a number, "+90 (0) 532 123 45 67" included. */
 const maxText = 32;
-const allowed = /^[+0-9 ()\- ]+$/;
+const allowed = /^[+0-9 ()\-\u00A0]+$/;
 const bracketed = /^\((?:0|0?[1-9][0-9]{2})\)$/;
 const before = new Set(["", "0", "90", "0090"]);
 const nonDigits = /[^0-9]/g;
@@ -59,8 +59,9 @@ function kindOf(national: string): PhoneKind | null {
 /**
  * The Turkish phone number the whole text is, or null. Taken: +90, 0090 or 90 in front, or the trunk 0, with the
  * digits grouped by spaces or dashes and the area code in brackets, as in "+90 532 123 45 67", "0 (212) 123 45 67",
- * "0532-123-45-67" and "05321234567". Ten bare digits are not taken (they are as likely a tax number); ten digits
- * with groups are. Dots are not taken as separators, so an IP address is never a phone number.
+ * "0532-123-45-67", "05321234567" and "5321234567". Ten bare digits are taken only as a mobile number: a bare
+ * landline, 850 or 800 number is as likely some other number, so it needs its 0, its country code or groups. Dots are
+ * not taken as separators, so an IP address is never a phone number.
  */
 export function parsePhone(text: string): Phone | null {
   const trimmed = text.trim();
@@ -87,7 +88,8 @@ export function parsePhone(text: string): Phone | null {
   } else if (digits.length === 14 && digits.startsWith("0090")) national = digits.slice(4);
   else if (digits.length === 12 && digits.startsWith("90")) national = digits.slice(2);
   else if (digits.length === 11 && digits.startsWith("0")) national = digits.slice(1);
-  else if (digits.length === 10 && grouped) national = digits;
+  // "532 123 45 67" with groups, or "5321234567" bare when it starts like a mobile number.
+  else if (digits.length === 10 && (grouped || mobile.test(digits.slice(0, 3)))) national = digits;
   if (national === null || national.length !== 10 || national.startsWith("0")) return null;
   const kind = kindOf(national);
   return kind === null ? null : { national, kind };

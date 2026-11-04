@@ -24,8 +24,8 @@ export interface Carrier {
   refused?: string;
 }
 
-/** Yurtiçi's own field takes 12 to 16 digits. */
-const yurticiShape = /^[0-9]{12,16}$/;
+/** Yurtiçi's own page takes 12 or 16 digits, nothing in between (its script checks `length === 12 || length === 16`). */
+const yurticiShape = /^(?:[0-9]{12}|[0-9]{16})$/;
 
 /**
  * The carriers whose official tracking page takes the number in its address, by variant id. PTT and Sürat Kargo
