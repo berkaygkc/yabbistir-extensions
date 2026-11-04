@@ -313,6 +313,25 @@ describe("locale", () => {
   });
 });
 
+describe("postal codes and language codes", () => {
+  test("aTurkishPostalCodeStartsWithTheCityPlate", async () => {
+    const plates = { "İstanbul": "34", "Ankara": "06", "İzmir": "35", "Bursa": "16", "Antalya": "07", "Eskişehir": "26", "Gaziantep": "27", "Trabzon": "61", "Konya": "42", "Adana": "01" };
+    const host = make({ locale: "tr" });
+    for (let i = 0; i < 60; i += 1) {
+      const text = (await host.run(actions.contact, null, { variant: "address" })).text;
+      const match = /\/([^/ ]+) (\d{5})$/.exec(text);
+      assert.ok(match, text);
+      assert.equal(match[2].slice(0, 2), plates[match[1]], text);
+    }
+  });
+
+  test("localeForAcceptsUnderscoreAndHyphenCodes", () => {
+    assert.equal(localeFor("auto", "tr_TR"), "tr");
+    assert.equal(localeFor("auto", "tr-TR"), "tr");
+    assert.equal(localeFor("auto", "en_GB"), "en");
+  });
+});
+
 describe("hints and the pasted value", () => {
   const variantsOf = (action) => manifest.contributes.actions.find((entry) => entry.id === action).variants?.map((v) => v.id) ?? [undefined];
 
@@ -345,14 +364,18 @@ describe("hints and the pasted value", () => {
 
   test("everyVariantRunsWellInsideTheHintLimit", async () => {
     const host = make({ locale: "tr" });
-    const started = Date.now();
+    let slowest = 0;
     for (let round = 0; round < 40; round += 1) {
       for (const entry of manifest.contributes.actions) {
-        for (const variant of variantsOf(entry.id)) await host.hint(actions[entry.id], null, variant ? { variant } : {});
+        for (const variant of variantsOf(entry.id)) {
+          const started = performance.now();
+          await host.hint(actions[entry.id], null, variant ? { variant } : {});
+          slowest = Math.max(slowest, performance.now() - started);
+        }
       }
     }
-    // 40 rounds of every variant; one hint has 500 ms, so this whole run is a very loose bound.
-    assert.ok(Date.now() - started < 5000);
+    // One hint has 500 ms; the slowest single hint in 40 rounds must stay well inside it.
+    assert.ok(slowest < 250, `slowest hint ${slowest} ms`);
   });
 
   test("anUnknownOrMissingVariantFallsBackToTheFirst", async () => {

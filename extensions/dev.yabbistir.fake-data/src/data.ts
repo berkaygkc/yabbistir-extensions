@@ -42,22 +42,24 @@ export const emailDomains = ["example.com", "example.org", "example.net"] as con
 
 export interface Place {
   city: string;
+  /** Turkish licence-plate code of the city (also the first two digits of its postal codes). */
+  plate?: string;
   /** Districts for Turkish cities, the state code for English ones. */
   areas: readonly string[];
 }
 
 export const places: Record<Locale, readonly Place[]> = {
   tr: [
-    { city: "İstanbul", areas: ["Kadıköy", "Beşiktaş", "Üsküdar", "Şişli", "Bakırköy"] },
-    { city: "Ankara", areas: ["Çankaya", "Keçiören", "Yenimahalle", "Mamak"] },
-    { city: "İzmir", areas: ["Karşıyaka", "Bornova", "Konak", "Buca"] },
-    { city: "Bursa", areas: ["Nilüfer", "Osmangazi", "Yıldırım"] },
-    { city: "Antalya", areas: ["Muratpaşa", "Konyaaltı", "Kepez"] },
-    { city: "Eskişehir", areas: ["Tepebaşı", "Odunpazarı"] },
-    { city: "Gaziantep", areas: ["Şehitkamil", "Şahinbey"] },
-    { city: "Trabzon", areas: ["Ortahisar", "Akçaabat"] },
-    { city: "Konya", areas: ["Selçuklu", "Meram", "Karatay"] },
-    { city: "Adana", areas: ["Seyhan", "Çukurova"] },
+    { city: "İstanbul", plate: "34", areas: ["Kadıköy", "Beşiktaş", "Üsküdar", "Şişli", "Bakırköy"] },
+    { city: "Ankara", plate: "06", areas: ["Çankaya", "Keçiören", "Yenimahalle", "Mamak"] },
+    { city: "İzmir", plate: "35", areas: ["Karşıyaka", "Bornova", "Konak", "Buca"] },
+    { city: "Bursa", plate: "16", areas: ["Nilüfer", "Osmangazi", "Yıldırım"] },
+    { city: "Antalya", plate: "07", areas: ["Muratpaşa", "Konyaaltı", "Kepez"] },
+    { city: "Eskişehir", plate: "26", areas: ["Tepebaşı", "Odunpazarı"] },
+    { city: "Gaziantep", plate: "27", areas: ["Şehitkamil", "Şahinbey"] },
+    { city: "Trabzon", plate: "61", areas: ["Ortahisar", "Akçaabat"] },
+    { city: "Konya", plate: "42", areas: ["Selçuklu", "Meram", "Karatay"] },
+    { city: "Adana", plate: "01", areas: ["Seyhan", "Çukurova"] },
   ],
   en: [
     { city: "Portland", areas: ["OR"] },

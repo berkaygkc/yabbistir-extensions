@@ -64,7 +64,7 @@ export function address(locale: Locale): Address {
   if (locale === "tr") {
     const district = pick(place.areas);
     const street = `${name} ${suffix} No: ${between(1, 120)}/${between(1, 24)}`;
-    const code = String(between(1, 81)).padStart(2, "0") + String(between(100, 999));
+    const code = (place.plate ?? "34") + String(between(100, 999));
     return { street, city: place.city, text: `${street}, ${district}/${place.city} ${code}` };
   }
   const street = `${between(100, 9899)} ${name} ${suffix}`;
