@@ -1,0 +1,10 @@
+{
+  "name": "HTML’den Markdown’a",
+  "description": "Web sayfalarından ve belgelerden kopyalanan zengin metni temiz Markdown’a çevirir.",
+  "markdown.title": "Markdown olarak yapıştır",
+  "markdown.subtitle": "Kopyalanan biçimden",
+  "markdown.keywords": ["markdown", "md", "html", "zengin metin", "biçim", "biçimlendirme"],
+  "noRichText": "Bu kopyada Markdown’a çevrilecek biçimlendirme yok",
+  "empty": "Bu kopyada Markdown’a çevrilecek metin yok",
+  "unreadable": "Bu kopyanın biçimlendirmesi okunamadı"
+}
