@@ -1,0 +1,35 @@
+{
+  "id": "dev.yabbistir.onepassword",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:key.horizontal",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "op", "install": "brew install 1password-cli" }
+    ]
+  },
+  "preferences": [
+    { "id": "account", "type": "text", "title": "account.title" },
+    { "id": "vault", "type": "text", "title": "vault.title" }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "logins", "title": "logins.title", "sensitive": true, "actions": [
+        { "id": "password", "kind": "secret", "title": "password.title", "label": "password.label" },
+        { "id": "username", "kind": "text", "title": "username.title", "label": "username.label",
+          "copyTitle": "username.copyTitle", "copied": "username.copied" }
+      ] },
+      { "id": "codes", "title": "codes.title", "sensitive": true, "actions": [
+        { "id": "code", "kind": "secret", "title": "code.title", "label": "code.label" }
+      ] }
+    ]
+  }
+}
