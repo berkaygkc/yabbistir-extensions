@@ -86,6 +86,28 @@ describe("show as QR code", () => {
     }
   });
 
+  test("anyOtherEncoderFailurePassesThrough", () => {
+    const host = createFakeHost({ folder });
+    host.yab.qr.generate = () => {
+      throw yabError("unavailable", "no encoder");
+    };
+    const original = globalThis.yab;
+    globalThis.yab = host.yab;
+    try {
+      assert.throws(() => actions.show.run(text("hello"), { preferences: {} }), { code: "unavailable" });
+    } finally {
+      globalThis.yab = original;
+    }
+  });
+
+  test("trailingWhitespaceIsLeftOut", async () => {
+    const host = createFakeHost({ folder });
+    await host.run(actions.show, link("  https://example.com/menu\n"));
+    await host.run(actions.show, text("hello world \n"));
+    const sent = host.calls.filter((c) => c.api === "qr.generate").map((c) => c.args[0]);
+    assert.deepEqual(sent, ["https://example.com/menu", "hello world"]);
+  });
+
   test("aCancelPassesThrough", () => {
     const host = createFakeHost({ folder });
     host.yab.qr.generate = () => {

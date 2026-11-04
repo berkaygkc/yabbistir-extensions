@@ -1,6 +1,9 @@
 import type { Actions } from "@yabbistir/api";
 
-/** The most a QR code holds in byte mode (version 40, lowest error correction). */
+/**
+ * The most a QR code holds in byte mode (version 40, lowest error correction). The real encoder may
+ * use a higher correction level and give up sooner (about 2,300 bytes); the catch below covers that.
+ */
 export const maxBytes = 2953;
 
 const sizes = [256, 512, 1024];
@@ -25,14 +28,16 @@ export function byteLength(text: string): number {
 export const actions: Actions = {
   show: {
     run(item, ctx) {
-      const text = item?.url ?? item?.text ?? "";
+      // A copied link often carries a trailing newline or space; a scanner would show or open it.
+      const raw = item?.url ?? item?.text ?? "";
+      const text = item?.url !== undefined ? raw.trim() : raw.trimEnd();
       if (text.trim() === "") return { none: true, message: yab.t("empty") };
       if (byteLength(text) > maxBytes) return { none: true, message: yab.t("tooLong") };
       try {
         return { image: yab.qr.generate(text, { size: sizeFrom(ctx.preferences.size) }) };
       } catch (error) {
-        // A text the encoder refuses (near the limit) gets a plain message; a cancel passes through.
-        if ((error as { code?: string }).code === "cancelled") throw error;
+        // A text the encoder refuses (near the limit) gets a plain message; any other failure passes through.
+        if ((error as { code?: string }).code !== "badResult") throw error;
         return { none: true, message: yab.t("tooLong") };
       }
     },

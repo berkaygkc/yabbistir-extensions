@@ -13,10 +13,10 @@ None. The code is drawn and read by the app itself (Vision on this Mac). Nothing
 
 ## Limits
 
-- A QR code holds at most about 2,950 bytes of text (less for non-Latin letters, which take 2 to 4 bytes each). Longer text gets a message instead of an image.
+- A QR code holds at most roughly 2,300 to 2,950 bytes of text, depending on the encoder (less for non-Latin letters, which take 2 to 4 bytes each). Longer text gets a message instead of an image.
 - Wi-Fi codes (`WIFI:S:…;T:…;P:…;;`) are returned as the text they hold, with no special handling. They contain the password: treat the result like one.
 - Barcodes that Vision reads are returned the same way as QR codes.
 
 ## A word on 2FA codes
 
-A QR code that starts with `otpauth://` or `otpauth-migration://` holds a two-factor secret. Reading it works, but the text then passes through the clipboard and lands in the clipboard history. Install the Secret Guard extension to keep such items out of your history, and delete the item once you have imported it.
+A QR code that starts with `otpauth://` or `otpauth-migration://` holds a two-factor secret. Reading it works, but the text then passes through the clipboard and lands in the clipboard history. The Secret Guard extension is meant for items like this; install it if you use it, and delete the item once you have imported it.

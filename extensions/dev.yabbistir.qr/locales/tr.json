@@ -10,6 +10,6 @@
   "read.title": "QR kodu oku",
   "read.keywords": ["qr", "qr kod", "tara", "oku", "barkod"],
   "empty": "QR koda çevrilecek metin yok",
-  "tooLong": "Bu, bir QR kod için çok uzun",
+  "tooLong": "QR kod için fazla uzun",
   "noCode": "Bu görüntüde QR kod bulunamadı"
 }
