@@ -1,0 +1,27 @@
+{
+  "id": "dev.yabbistir.secret-guard",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:lock.shield",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer"],
+  "permissions": ["capture"],
+  "preferences": [
+    { "id": "mode", "type": "choice", "title": "mode.title", "default": "drop", "confirm": "mode.confirm",
+      "options": [
+        { "id": "drop", "title": "mode.drop" },
+        { "id": "mask", "title": "mode.mask" }
+      ] },
+    { "id": "jwt", "type": "toggle", "title": "jwt.title", "default": false }
+  ],
+  "contributes": {
+    "captureRules": [
+      { "id": "guard", "title": "guard.title", "description": "guard.description",
+        "accepts": { "kinds": ["text", "code", "link"], "pattern": "(?i)gh[pousr]_[a-z0-9]{36}|github_pat_|gl(?:pat|dt|rtr?|ptt|oas|soat)-|(?:xox[a-z]|xapp|xwfp)-[0-9]|hooks\\.slack\\.com/|[rs]k_(?:live|test)_|aiza[a-z0-9_-]{35}|sk-(?:ant|proj|svcacct|admin)-|sk-[a-z0-9]{48}|npm_[a-z0-9]{36}|pypi-age|sg\\.[a-z0-9_-]{22}\\.|sk[0-9a-f]{32}|(?:akia|asia)[a-z2-7]{16}|[mno][a-z0-9]{22,26}\\.[a-z0-9_-]{6,7}\\.|[0-9]:a[a-z0-9_-]{34}|private key|secret_?access_?key|session_?token|(?:postgres|mysql|mariadb|mongodb|redis|amqp)[a-z0-9+]*://|otpauth|\"(?:secret|totp)\"\\s*:|(?:secret|token|pass(?:wd|word|phrase)?|key(?:_base)?)[ \\t]*=|eyj[a-z0-9_-]{8}|^[\\s\\S]{16000}" } }
+    ]
+  }
+}
