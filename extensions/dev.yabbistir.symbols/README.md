@@ -31,7 +31,6 @@ None. The extension needs no permission and no command-line tool: both columns a
 - A space can't be pasted from a column: yabbistir treats a value of white space only as empty. ↵ on the non-breaking, en, em, thin and narrow spaces says so, and ⇧↵ pastes their HTML form (`&nbsp;`). The zero-width space and joiner and the soft hyphen paste as they are.
 - Names and search words are in English and Turkish only; any other app language reads English.
 - Row ids are the code points (`u-2318`) and, for kaomoji, the group and the place in it (`shrug-1`). New kaomoji are added at the end of a group so the ids stay.
-- The `‖` double vertical line, the `~` tilde and the like are symbols too, and so are ordinary ASCII marks such as `@`, `#`, `&` and `$`.
 
 ## Where the data comes from
 
