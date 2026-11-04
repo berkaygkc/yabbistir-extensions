@@ -6,6 +6,7 @@ import type { AIOptions } from "@yabbistir/api";
 import { detectLanguage, fixedLanguageRule, languageName, localePhrase, sameLanguageRule, type Language } from "./language.ts";
 import type { Task } from "./tasks.ts";
 import { omitted } from "./text.ts";
+import { estimateTokens, latinWeight, usableTokens } from "./tokens.ts";
 
 export interface Request {
   prompt: string;
@@ -22,10 +23,13 @@ export interface Setting {
   appLanguage: string;
   /** Whether the item is code (or a diff), which "Explain this" explains in the app's language. */
   isCode: boolean;
+  /** About how many tokens a Latin character of the text is: fewer for English and code than for other languages. */
+  latin: number;
 }
 
 export function settingFor(text: string, appLanguage: string, isCode: boolean): Setting {
-  return { language: isCode ? null : detectLanguage(text), appLanguage, isCode };
+  const language = isCode ? null : detectLanguage(text);
+  return { language, appLanguage, isCode, latin: latinWeight(language, isCode) };
 }
 
 /** A marker name the text does not contain: "text", or "text-2" or "text-3" when it does. */
@@ -59,6 +63,9 @@ function languageRules(task: Task, setting: Setting): { locale: string; rule: st
 const role = "You are a writing assistant in a clipboard app on the person's Mac.";
 const answerOnly = "Write ONLY the result: no introduction, no notes, no quotes around it and no code fences.";
 
+/** The fewest tokens an answer is allowed, so a call never asks for an answer that cannot be written. */
+const leastAnswer = 64;
+
 export function buildRequest(task: Task, text: string, setting: Setting): Request {
   const tag = markerFor(text, task.input.kind === "diff" ? "diff" : "text");
   const { locale, rule } = languageRules(task, setting);
@@ -66,9 +73,14 @@ export function buildRequest(task: Task, text: string, setting: Setting): Reques
     [locale, role, task.rule].filter(Boolean).join(" "),
     [dataRule(task, tag), answerOnly, rule].join(" "),
   ].join("\n\n");
+  const prompt = `${task.ask}\n\n<${tag}>\n${text}\n</${tag}>`;
+  // The instructions, the prompt and the answer share the model's context; the parts are sized so the answer fits,
+  // and this keeps it inside even when an estimate is off.
+  const room = usableTokens - estimateTokens(instructions, 1 / 3) - estimateTokens(prompt, setting.latin);
+  const wanted = task.maxTokens(estimateTokens(text, setting.latin));
   return {
-    prompt: `${task.ask}\n\n<${tag}>\n${text}\n</${tag}>`,
-    options: { instructions, temperature: task.temperature, maxTokens: task.maxTokens(text.length) },
+    prompt,
+    options: { instructions, temperature: task.temperature, maxTokens: Math.max(leastAnswer, Math.min(wanted, room)) },
     tag,
   };
 }

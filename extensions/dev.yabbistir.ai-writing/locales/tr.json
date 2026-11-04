@@ -67,6 +67,7 @@
   "slow": "Apple Intelligence çok uzun sürdü. Birazdan tekrar dene.",
   "unavailable": "Apple Intelligence şu anda kullanılamıyor.",
   "declined": "Apple Intelligence bu metin üzerinde çalışmayı reddetti.",
+  "cutShort": "Apple Intelligence metnin sonuna gelmeden durdu, bu yüzden hiçbir şey yapıştırılmadı. Daha kısa bir metinle dene.",
   "noAnswer": "Apple Intelligence yanıt vermedi. Tekrar dene.",
   "unchanged": "Bu metinde değişecek bir şey yok.",
   "fix.unchanged": "Hata bulunamadı.",

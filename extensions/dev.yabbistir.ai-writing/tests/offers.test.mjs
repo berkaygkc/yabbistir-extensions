@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { acceptsMatch, createFakeHost } from "@yabbistir/api/fake-host";
 
-import { actions, instantLimit, tasks } from "../src/index.ts";
+import { actions, denseLimit, instantLimit, tasks } from "../src/index.ts";
 
 const folder = new URL("..", import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
@@ -13,9 +13,11 @@ const host = createFakeHost({ folder });
 const text = (value) => ({ kind: "text", text: value });
 const code = (value) => ({ kind: "code", text: value });
 
-const writingIds = ["fix", "shorter", "formal", "friendly", "bullets", "action-items", "reply", "explain"];
+// The tasks offered at once on short text and as a job on longer text; "explain" is always a job.
+const splitIds = ["fix", "shorter", "formal", "friendly", "bullets", "action-items", "reply"];
+const writingIds = [...splitIds, "explain"];
+const longWritingIds = [...splitIds.map((id) => `${id}-long`), "explain"];
 const diffIds = ["commit", "pr-description", "explain"];
-const long = (ids) => ids.map((id) => `${id}-long`);
 
 const shortDiff = [
   "diff --git a/src/greet.ts b/src/greet.ts",
@@ -30,13 +32,15 @@ const shortDiff = [
 ].join("\n");
 
 describe("the manifest", () => {
-  test("everyTaskIsAnActionAtOnceAndAJob", () => {
+  test("aSplitTaskIsAnActionAtOnceAndAJobTheOthersAJob", () => {
     const ids = manifest.contributes.actions.map((action) => action.id);
-    assert.deepEqual(ids, tasks.flatMap((task) => [task.id, `${task.id}-long`]));
+    assert.deepEqual(ids, tasks.flatMap((task) => (task.form === "job" ? [task.id] : [task.id, `${task.id}-long`])));
     assert.deepEqual(Object.keys(actions), ids);
+    assert.deepEqual(tasks.filter((task) => task.form === "job").map((task) => task.id), ["explain", "commit", "pr-description"]);
     for (const action of manifest.contributes.actions) {
-      const isJob = action.id.endsWith("-long");
-      assert.equal(action.job === true, isJob, `${action.id}: only the -long action is a job`);
+      const task = tasks.find((entry) => action.id === entry.id || action.id === `${entry.id}-long`);
+      const isJob = task.form === "job" || action.id.endsWith("-long");
+      assert.equal(action.job === true, isJob, `${action.id}: only the -long action and the job tasks are jobs`);
       assert.equal(action.hint, undefined, `${action.id}: yab.ai cannot run in a hint`);
       assert.equal(action.output, "text");
       if (isJob) assert.ok(en[action.failTitle], `${action.id} has a failTitle`);
@@ -44,7 +48,7 @@ describe("the manifest", () => {
   });
 
   test("bothFormsReadTheSameInThePanel", () => {
-    for (const task of tasks) {
+    for (const task of tasks.filter((entry) => entry.form === "split")) {
       const [now, later] = [task.id, `${task.id}-long`].map((id) => manifest.contributes.actions.find((action) => action.id === id));
       for (const field of ["title", "subtitle", "keywords", "verb", "accepts"]) {
         if (field === "accepts") assert.deepEqual(now.accepts.kinds, later.accepts.kinds);
@@ -81,38 +85,56 @@ describe("where the actions are offered", () => {
 
   test("longTextGetsTheJobs", () => {
     const paragraph = "This is a longer note about the plan for next week. ".repeat(10);
-    assert.deepEqual(host.offers(text(paragraph)), long(writingIds));
+    assert.deepEqual(host.offers(text(paragraph)), longWritingIds);
   });
 
   test("theLimitIsFourHundredCharactersOfTrimmedText", () => {
     assert.equal(instantLimit, 400);
     assert.deepEqual(host.offers(text("a".repeat(400))), writingIds);
     assert.deepEqual(host.offers(text(`  \n${"a".repeat(400)}\n\n`)), writingIds);
-    assert.deepEqual(host.offers(text("a".repeat(401))), long(writingIds));
-    // Characters, not UTF-16 units: an emoji is one, as in the app's ICU matching.
+    assert.deepEqual(host.offers(text("a".repeat(401))), longWritingIds);
+    // Code points, not UTF-16 units, as in the app's ICU matching: 👍 is one, but 👍🏽 (a thumbs-up and a skin
+    // tone) is two.
     assert.deepEqual(host.offers(text(`${"ğ".repeat(390)}${"👍".repeat(10)}`)), writingIds);
+    assert.deepEqual(host.offers(text(`${"a".repeat(390)}${"👍🏽".repeat(5)}`)), writingIds);
+    assert.deepEqual(host.offers(text(`${"a".repeat(391)}${"👍🏽".repeat(5)}`)), longWritingIds);
+  });
+
+  test("denseScriptsGoToTheJobSooner", () => {
+    // A Chinese, Japanese, Korean or Thai character is about a token, so 150 of them take as long as 400 letters.
+    assert.equal(denseLimit, 150);
+    assert.deepEqual(host.offers(text("请".repeat(149))), writingIds);
+    assert.deepEqual(host.offers(text("请".repeat(150))), longWritingIds);
+    assert.deepEqual(host.offers(text(`${"see ".repeat(50)}${"か".repeat(149)}`)), writingIds);
+    assert.deepEqual(host.offers(text(`${"see ".repeat(50)}${"か".repeat(75)} ${"한".repeat(75)}`)), longWritingIds);
+    assert.deepEqual(host.offers(text("ภาษาไทย ".repeat(19))), writingIds, "133 Thai characters");
+    assert.deepEqual(host.offers(text("ภาษาไทย ".repeat(22))), longWritingIds, "154 Thai characters");
+    assert.deepEqual(host.offers(text("Ünlü bir şarkı söyledi. ".repeat(16))), writingIds, "Turkish letters are not dense");
   });
 
   test("exactlyOneFormOfEachTaskIsOffered", () => {
-    for (const length of [1, 399, 400, 401, 5000]) {
-      const ids = host.offers(text("x".repeat(length)));
+    const samples = [1, 149, 150, 399, 400, 401, 5000].flatMap((length) => ["x".repeat(length), "字".repeat(length)]);
+    for (const sample of samples) {
+      const ids = host.offers(text(sample));
       for (const task of tasks) {
-        const both = ids.filter((id) => id === task.id || id === `${task.id}-long`);
-        assert.ok(both.length <= 1, `${task.id} at ${length}`);
+        const forms = ids.filter((id) => id === task.id || id === `${task.id}-long`);
+        const expected = task.input.kind === "diff" ? 0 : 1;
+        assert.equal(forms.length, expected, `${task.id} on ${sample.length} × ${sample[0]}`);
       }
     }
   });
 
   test("codeGetsOnlyExplain", () => {
     assert.deepEqual(host.offers(code("const total = items.reduce((sum, item) => sum + item.price, 0);")), ["explain"]);
-    assert.deepEqual(host.offers(code("x".repeat(500))), ["explain-long"]);
+    assert.deepEqual(host.offers(code("x".repeat(500))), ["explain"]);
   });
 
   test("aGitDiffGetsTheCommitAndPullRequestActionsFirst", () => {
     assert.deepEqual(host.offers(code(shortDiff)), diffIds);
     assert.deepEqual(host.offers(text(shortDiff)), diffIds, "a diff copied as text is still a diff");
     const longDiff = `${shortDiff}\n${" // a comment line".repeat(30)}`;
-    assert.deepEqual(host.offers(code(longDiff)), long(diffIds));
+    assert.deepEqual(host.offers(code(longDiff)), diffIds);
+    assert.deepEqual(host.offers(text(longDiff)), diffIds);
   });
 
   test("hunksWithoutAGitHeaderAreADiffToo", () => {
@@ -152,6 +174,10 @@ describe("the patterns stay fast", () => {
     "\ndiff --gi".repeat(10_000),
     "1 ".repeat(50_000),
     `${"a".repeat(400)}\n`.repeat(250),
+    "字".repeat(100_000),
+    "字a".repeat(50_000),
+    `${"a".repeat(399)}字`.repeat(250),
+    `${"字".repeat(149)}${"a".repeat(251)}`,
   ];
 
   test("onHostileTextsOfAHundredThousandCharacters", () => {
@@ -162,7 +188,7 @@ describe("the patterns stay fast", () => {
         acceptsMatch(accepts, { kind: "code", text: sample, tags: [] });
       }
       const elapsed = performance.now() - started;
-      assert.ok(elapsed < 500, `${elapsed.toFixed(0)} ms for 40 matches on ${JSON.stringify(sample.slice(0, 12))}…`);
+      assert.ok(elapsed < 500, `${elapsed.toFixed(0)} ms for ${patterns.length * 2} matches on ${JSON.stringify(sample.slice(0, 12))}…`);
     }
   });
 
@@ -179,8 +205,8 @@ describe("the patterns stay fast", () => {
   test("aDiffHeaderIsLookedForInTheFirstFourThousandCharacters", () => {
     const preamble = "commit message line\n".repeat(150);
     assert.ok(preamble.length < 4000);
-    assert.deepEqual(host.offers(code(`${preamble}diff --git a/a b/a\n@@ -1 +1 @@\n-a\n+b`)), long(diffIds));
+    assert.deepEqual(host.offers(code(`${preamble}diff --git a/a b/a\n@@ -1 +1 @@\n-a\n+b`)), diffIds);
     const farAway = `${"commit message line\n".repeat(250)}diff --git a/a b/a\n@@ -1 +1 @@\n-a\n+b`;
-    assert.deepEqual(host.offers(text(farAway)), long(writingIds), "past that, it reads as text");
+    assert.deepEqual(host.offers(text(farAway)), longWritingIds, "past that, it reads as text");
   });
 });

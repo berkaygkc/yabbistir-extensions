@@ -67,6 +67,7 @@
   "slow": "Apple Intelligence is taking too long. Try again in a moment.",
   "unavailable": "Apple Intelligence isn’t available right now.",
   "declined": "Apple Intelligence wouldn’t work on this text.",
+  "cutShort": "Apple Intelligence stopped before the end of the text, so nothing was pasted. Try a shorter text.",
   "noAnswer": "Apple Intelligence gave no answer. Try again.",
   "unchanged": "Nothing to change in this text.",
   "fix.unchanged": "No mistakes found.",

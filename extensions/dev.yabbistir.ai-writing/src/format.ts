@@ -33,8 +33,8 @@ export function toChecklist(text: string): string {
     const found = marker.exec(line);
     if (found) line = line.slice(found[0].length);
     line = line.replace(checkbox, "").trim();
-    // "Action items:" or "Tasks:" over the list is a heading, not an item.
-    if (line === "" || (!found && line.endsWith(":") && line.length <= 40)) continue;
+    // "Action items:" or "Tasks:" over the list is a heading, not an item; "- [ ] NONE" is no item either.
+    if (line === "" || noItems.test(line) || (!found && line.endsWith(":") && line.length <= 40)) continue;
     const key = line.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);

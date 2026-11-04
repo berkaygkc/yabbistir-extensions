@@ -1,6 +1,7 @@
 // Which language to ask the model for. By default it answers in the language of its whole input, and the frame
 // around the person's text is English, so a Turkish text could come back in English. Naming the language when it
-// is clear keeps the answer in it; otherwise the instructions ask for the text's own language.
+// is clear keeps the answer in it. When it is not clear, the instructions ask for the text's own language: naming a
+// wrong one would have the model translate the text, which is worse than naming none.
 
 /** Common Turkish words that other languages rarely use as words of their own. */
 const turkishWords = new Set([
@@ -9,19 +10,32 @@ const turkishWords = new Set([
   "selam", "evet", "hayır", "biz", "siz", "benim", "senin", "bizim", "olan", "oldu", "yok",
 ]);
 
-/** Common English words. */
+/**
+ * Common English words that are not also common words of another language the model speaks: "was" and "will"
+ * (German), "we", "is" and "of" (Dutch), "for" and "have" (Danish, Norwegian), "to" (Slavic languages) are left
+ * out, so a German or Dutch text is not taken for English.
+ */
 const englishWords = new Set([
-  "the", "and", "is", "are", "was", "were", "to", "of", "that", "this", "it", "for", "you", "with", "have", "has",
-  "will", "would", "could", "should", "please", "thanks", "what", "when", "we", "our", "your", "not", "but", "be",
-  "been", "from", "they", "there", "about",
+  "the", "and", "are", "were", "that", "this", "these", "those", "it", "its", "you", "your", "with", "has", "had",
+  "would", "could", "should", "please", "thanks", "thank", "what", "when", "where", "which", "who", "our", "not",
+  "but", "be", "been", "from", "they", "them", "their", "there", "about", "into", "than", "then", "because", "here",
+  "before", "after", "only", "some", "any", "every", "very",
 ]);
+
+/** Letters Turkish does not use, which Azerbaijani, Turkmen, Romanian, Kurdish and others do, beside ı, ğ or ş. */
+const notTurkish = /[əäßñșțţăåøæãõłőűêňžý]/;
+
+/** The least share of a text's words that must be a language's own for the text to be named as that language. */
+const share = 0.2;
 
 export type Language = "Turkish" | "English";
 
 /** "Turkish" or "English" when the text clearly is, else null. Reads the first 4,000 characters. */
 export function detectLanguage(text: string): Language | null {
   const sample = text.slice(0, 4000);
-  const words = sample.toLowerCase().match(/\p{L}+/gu) ?? [];
+  const lower = sample.toLowerCase();
+  const words = lower.match(/\p{L}+/gu) ?? [];
+  if (words.length === 0) return null;
   let turkish = 0;
   let english = 0;
   for (const word of words) {
@@ -30,8 +44,9 @@ export function detectLanguage(text: string): Language | null {
   }
   // "İ" lowercases to "i" and a combining dot, so it is counted on the original text.
   turkish += (sample.match(/İ/g) ?? []).length;
-  if (turkish >= 2 && turkish > english * 2) return "Turkish";
-  if (english >= 2 && english > turkish * 2) return "English";
+  const clearly = (hits: number, least: number, other: number) => hits >= least && hits >= words.length * share && hits > other * 2;
+  if (clearly(turkish, 2, english) && !notTurkish.test(lower)) return "Turkish";
+  if (clearly(english, 3, turkish)) return "English";
   return null;
 }
 

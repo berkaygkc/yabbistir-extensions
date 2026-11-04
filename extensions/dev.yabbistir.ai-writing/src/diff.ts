@@ -54,18 +54,50 @@ function pathOf(line: string): string {
   return at === -1 ? "" : line.slice(at + 3);
 }
 
-/** The diff's files, in order; the text before the first file (a `git show` header) is the preamble. */
+/**
+ * The file a `--- ` or `+++ ` line names, without git's `a/` or `b/` and without the date `diff -u` adds after a
+ * tab ("+++ new.txt\t2026-05-03 10:00:00"); "" for /dev/null, the side of a file that is added or deleted.
+ */
+function sidePath(line: string): string {
+  const tab = line.indexOf("\t");
+  const path = (tab === -1 ? line.slice(4) : line.slice(4, tab)).trim();
+  if (path === "/dev/null") return "";
+  return path.startsWith("a/") || path.startsWith("b/") ? path.slice(2) : path;
+}
+
+/** A hunk header's line counts, "@@ -12,7 +12,8 @@" → 7 old and 8 new; a count left out is 1. */
+const hunkCounts = /^@@ -\d{1,9}(?:,(\d{1,9}))? \+\d{1,9}(?:,(\d{1,9}))? @@/;
+
+/**
+ * The diff's files, in order; the text before the first file (a `git show` header) is the preamble. Files start at
+ * `diff --git`, or, in a diff git did not make (`diff -u`, `svn diff`), at a `--- ` line followed by a `+++ ` line
+ * once the hunk before it has all the lines its header counts.
+ */
 export function parseDiff(diff: string): { preamble: string; files: FileDiff[] } {
   const files: FileDiff[] = [];
   const preamble: string[] = [];
   let file: FileDiff | null = null;
   let inHunk = false;
-  for (const raw of diff.split("\n")) {
-    const line = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+  // The lines the current hunk's header says are still to come, on each side.
+  let oldLeft = 0;
+  let newLeft = 0;
+  const lines = diff.split("\n").map((raw) => (raw.endsWith("\r") ? raw.slice(0, -1) : raw));
+  for (const [index, line] of lines.entries()) {
     if (line.startsWith("diff --git ")) {
       file = newFile([shortLine(line)]);
       file.path = pathOf(line);
       files.push(file);
+      inHunk = false;
+      continue;
+    }
+    const hunkDone = !inHunk || (oldLeft <= 0 && newLeft <= 0);
+    if (hunkDone && line.startsWith("--- ") && (lines[index + 1] ?? "").startsWith("+++ ")) {
+      // A new file's header, unless a `diff --git` line has just opened this file and it has no hunk yet.
+      if (file === null || file.lines.length > 0) {
+        file = newFile();
+        files.push(file);
+      }
+      file.path = file.path || sidePath(lines[index + 1]) || sidePath(line);
       inHunk = false;
       continue;
     }
@@ -74,6 +106,9 @@ export function parseDiff(diff: string): { preamble: string; files: FileDiff[] }
         file = newFile();
         files.push(file);
       }
+      const counts = hunkCounts.exec(line);
+      oldLeft = counts ? Number(counts[1] ?? "1") : Infinity;
+      newLeft = counts ? Number(counts[2] ?? "1") : Infinity;
       inHunk = true;
       file.lines.push({ text: shortLine(line), context: false });
       continue;
@@ -84,7 +119,7 @@ export function parseDiff(diff: string): { preamble: string; files: FileDiff[] }
     }
     if (!inHunk) {
       if (line.startsWith("+++ ")) {
-        if (file.path === "") file.path = line.slice(4).replace(/^b\//, "");
+        if (file.path === "") file.path = sidePath(line);
       } else if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) {
         file.binary = true;
       } else if (/^(?:new|deleted) file mode|^rename (?:from|to) |^similarity index/.test(line)) {
@@ -95,11 +130,15 @@ export function parseDiff(diff: string): { preamble: string; files: FileDiff[] }
     }
     if (line.startsWith("+")) {
       file.added++;
+      newLeft--;
       file.lines.push({ text: shortLine(line), context: false });
     } else if (line.startsWith("-")) {
       file.removed++;
+      oldLeft--;
       file.lines.push({ text: shortLine(line), context: false });
     } else if (line.startsWith(" ") || line === "") {
+      oldLeft--;
+      newLeft--;
       file.lines.push({ text: shortLine(line), context: true });
     }
     // "\ No newline at end of file" and anything else inside a hunk is left out.

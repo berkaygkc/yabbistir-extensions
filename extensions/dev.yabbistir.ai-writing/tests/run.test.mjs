@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createFakeHost, yabError } from "@yabbistir/api/fake-host";
 
 import { actions, maxCharacters, tasks, writingAction } from "../src/index.ts";
+import { estimateTokens, usableTokens } from "../src/tokens.ts";
 import { code, folder, inside, text, writing } from "./helpers.mjs";
 
 const task = (id) => tasks.find((entry) => entry.id === id);
@@ -15,13 +16,25 @@ describe("fix spelling and grammar", () => {
     assert.equal(asked.length, 1);
     assert.equal(inside(asked[0].prompt), "can u check this before the meting");
     assert.equal(asked[0].options.temperature, 0);
-    assert.equal(asked[0].options.maxTokens, Math.ceil(34 / 2) + 128);
+    // English, about three characters a token: the answer may be a quarter longer than the text, and then some.
+    assert.equal(asked[0].options.maxTokens, Math.ceil(estimateTokens("can u check this before the meting", 1 / 3) * 1.25) + 128);
     assert.deepEqual(host.progress, [], "an action that runs at once has no card");
   });
 
   test("saysSoWhenThereIsNoMistake", async () => {
-    const { host } = writing("The report is ready.");
-    assert.deepEqual(await host.run(actions.fix, text("The report is ready")), { none: true, message: "No mistakes found." });
+    const { host } = writing("The report is ready.  \n");
+    assert.deepEqual(await host.run(actions.fix, text("The report is ready.")), { none: true, message: "No mistakes found." });
+  });
+
+  test("aFixOfCapitalsOrTheFinalStopIsPasted", async () => {
+    for (const [input, answer] of [
+      ["hello, i am ada and i live in ankara", "Hello, I am Ada and I live in Ankara."],
+      ["See you tomorrow", "See you tomorrow."],
+      ["see you on monday.", "See you on Monday."],
+    ]) {
+      const { host } = writing(answer);
+      assert.deepEqual(await host.run(actions.fix, text(input)), { text: answer }, input);
+    }
   });
 
   test("keepsThePersonsTextOutOfTheInstructions", async () => {
@@ -69,9 +82,16 @@ describe("the answer's language", () => {
   });
 
   test("anyOtherLanguageIsKeptAsItIs", async () => {
-    const instructions = await instructionsFor(text("Kannst du mir den Bericht morgen schicken?"));
-    assert.match(instructions, /You MUST write in the same language as the text/);
-    assert.doesNotMatch(instructions, /locale/);
+    for (const sample of [
+      "Kannst du mir den Bericht morgen schicken?",
+      "Was hast du gesagt? Ich will das nicht machen.",
+      "We hebben het rapport gisteren gestuurd, maar het is nog niet klaar en dat was de bedoeling niet.",
+      "Sabah görüşə gələ bilməyəcəyəm, işim çoxdur.",
+    ]) {
+      const instructions = await instructionsFor(text(sample));
+      assert.match(instructions, /You MUST write in the same language as the text/, sample);
+      assert.doesNotMatch(instructions, /locale|in English|in Turkish/, sample);
+    }
   });
 
   test("codeIsExplainedInTheAppsLanguage", async () => {
@@ -82,6 +102,16 @@ describe("the answer's language", () => {
     const english = await instructionsFor(snippet, actions.explain, { language: "en" });
     assert.match(english, /You MUST write in English\./);
     assert.doesNotMatch(english, /locale/);
+  });
+
+  test("codeCopiedAsTextIsExplainedInTheAppsLanguage", async () => {
+    const snippet = text("for (const item of this.items) {\n  if (item.price > 0) total += item.price;\n}");
+    const turkish = await instructionsFor(snippet, actions.explain, { language: "tr" });
+    assert.match(turkish, /You MUST write in Turkish\./);
+    const python = text("def total(items):\n    result = 0\n    for item in items:\n        result += item.price\n    return result");
+    assert.match(await instructionsFor(python, actions.explain, { language: "tr" }), /You MUST write in Turkish\./);
+    const prose = text("The function returns the total of the prices, and it is called when the cart changes.");
+    assert.match(await instructionsFor(prose, actions.explain, { language: "tr" }), /You MUST write in English, the language of the text/);
   });
 
   test("commitMessagesAndDescriptionsAreInEnglish", async () => {
@@ -205,9 +235,9 @@ describe("the job for longer text", () => {
   });
 
   test("waitsForASlowModel", async () => {
-    const host = createFakeHost({ folder, ai: () => new Promise((resolve) => setTimeout(() => resolve("Fixed text."), 60)) });
+    const host = createFakeHost({ folder, ai: (prompt) => new Promise((resolve) => setTimeout(() => resolve(inside(prompt).replaceAll("alpha", "Alpha")), 60)) });
     const job = writingAction(task("fix"), "job", 10);
-    assert.deepEqual(await host.run(job, text(paragraph("alpha"))), { text: "Fixed text." });
+    assert.deepEqual(await host.run(job, text(paragraph("alpha"))), { text: paragraph("Alpha") });
   });
 });
 
@@ -218,14 +248,16 @@ describe("when Apple Intelligence cannot answer", () => {
     // A thrown error would count toward turning the extension off; Apple Intelligence being off is not its fault.
     const host = createFakeHost({ folder, ai: () => { throw yabError("unavailable", off); } });
     assert.deepEqual(await host.run(actions.fix, text("helo")), { none: true, message: off });
-    assert.deepEqual(await host.run(actions.commit, text("@@ -1 +1 @@\n-a\n+b")), { none: true, message: off });
+    assert.deepEqual(await host.run(actions.reply, text("Can we meet tomorrow?")), { none: true, message: off });
     assert.deepEqual(host.logs, []);
   });
 
   test("aJobLetsTheAppsErrorThrough", async () => {
     const host = createFakeHost({ folder, ai: () => { throw yabError("unavailable", off); } });
     await assert.rejects(host.run(actions["fix-long"], text(paragraph("alpha"))), { code: "unavailable", message: off });
-    await assert.rejects(host.run(actions["commit-long"], text(`diff --git a/a b/a\n@@ -1 +1 @@\n${"+x\n".repeat(200)}`)), { code: "unavailable", message: off });
+    await assert.rejects(host.run(actions.commit, text(`diff --git a/a b/a\n@@ -1 +1 @@\n${"+x\n".repeat(200)}`)), { code: "unavailable", message: off });
+    await assert.rejects(host.run(actions.commit, text("@@ -1 +1 @@\n-a\n+b")), { code: "unavailable", message: off }, "a short diff too");
+    await assert.rejects(host.run(actions.explain, text("What is a monad?")), { code: "unavailable", message: off });
   });
 
   test("withoutAModelAtAll", async () => {
@@ -276,6 +308,19 @@ describe("when Apple Intelligence cannot answer", () => {
     const declined = { none: true, message: "Apple Intelligence wouldn’t work on this text." };
     assert.deepEqual(await host.run(actions.formal, text("send it now")), declined);
     assert.deepEqual(await host.run(actions["formal-long"], text(paragraph("alpha"))), declined);
+  });
+
+  test("aPoliteNoIsARewriteNotARefusal", async () => {
+    // Making a "no" formal or friendly is a main use: an answer that says sorry is then the rewrite.
+    for (const [action, input, answer] of [
+      [actions.formal, "no i cant do that this week, im fully booked", "I'm sorry, but I am unable to do that this week, as I am fully booked."],
+      [actions.friendly, "bu hafta sonu taşınmana yardım edemem", "Maalesef bu hafta sonu taşınmana yardımcı olamam, çok üzgünüm!"],
+      [actions.formal, "busy, cant help with the move", "I'm sorry, but I can't help with the move."],
+      [actions.formal, "not doing the report, got no time", "I'm sorry, but I can't complete the report, as I do not have the time."],
+    ]) {
+      const { host } = writing(answer);
+      assert.deepEqual(await host.run(action, text(input)), { text: answer }, input);
+    }
   });
 
   test("aReplyThatSaysSorryIsAReply", async () => {
@@ -367,7 +412,7 @@ describe("shapes of the answers", () => {
   });
 
   test("noActionItemsIsANotice", async () => {
-    for (const answer of ["NONE", "None.", "No action items found."]) {
+    for (const answer of ["NONE", "None.", "No action items found.", "- [ ] NONE", "- None.", "Action items:\n- [ ] None"]) {
       const { host } = writing(answer);
       assert.deepEqual(await host.run(actions["action-items"], text("Lovely weather today.")), { none: true, message: "No action items found." });
     }
@@ -386,7 +431,7 @@ describe("shapes of the answers", () => {
 
   test("explainGetsALongTextShortened", async () => {
     const { host, asked } = writing("It describes the plan.");
-    await host.run(actions["explain-long"], text("A sentence of the long text. ".repeat(500)));
+    await host.run(actions.explain, text("A sentence of the long text. ".repeat(500)));
     assert.ok(inside(asked[0].prompt).length <= 5000);
   });
 
@@ -420,7 +465,7 @@ describe("shapes of the answers", () => {
     ].join("\n"));
     files.push(["diff --git a/package-lock.json b/package-lock.json", "@@ -1,3 +1,3 @@", ...Array.from({ length: 500 }, () => "+    \"integrity\": \"sha512-x\"")].join("\n"));
     const { host, asked } = writing("chore: update files");
-    await host.run(actions["commit-long"], text(files.join("\n")));
+    await host.run(actions.commit, text(files.join("\n")));
     const sent = inside(asked[0].prompt);
     assert.ok(sent.length <= 6000, `${sent.length}`);
     assert.match(sent, /^Files changed: 13\n- src\/file0\.ts \(\+10 -10\)/);
@@ -463,15 +508,86 @@ describe("the app's language", () => {
     const { host } = writing((part) => part);
     await host.run(actions["formal-long"], text(input), { language: "tr" });
     assert.deepEqual(host.progress.map(({ message }) => message), ["0 / 2 bölüm", "1 / 2 bölüm", "2 / 2 bölüm"]);
-    const single = writing("Düzeltildi.");
+    const single = writing((part) => part.replaceAll("alpha", "Alpha"));
     await single.host.run(actions["fix-long"], text(paragraph("alpha")), { language: "tr" });
     assert.deepEqual(single.host.progress, [{ fraction: null, message: "Düzeltiliyor" }]);
   });
 
   test("noticesSpeakTurkish", async () => {
     const { host } = writing("Rapor hazır.");
-    assert.deepEqual(await host.run(actions.fix, text("Rapor hazır"), { language: "tr" }), { none: true, message: "Hata bulunamadı." });
+    assert.deepEqual(await host.run(actions.fix, text("Rapor hazır."), { language: "tr" }), { none: true, message: "Hata bulunamadı." });
     const declined = writing("I'm sorry, but I can't help with that.");
     assert.equal((await declined.host.run(actions.fix, text("x y"), { language: "tr" })).message, "Apple Intelligence bu metin üzerinde çalışmayı reddetti.");
+  });
+});
+
+describe("what fits in the model's context", () => {
+  // Instructions, prompt and answer share 4,096 tokens; a call may use 3,800 of them.
+  const used = ({ prompt, options }, latin) => estimateTokens(options.instructions, 1 / 3) + estimateTokens(prompt, latin) + options.maxTokens;
+
+  test("chineseJapaneseAndKoreanGetAnAnswerAsLongAsTheText", async () => {
+    // About a token a character: 140 characters need about 140 tokens, plus room.
+    const input = "请在明天的会议之前把报告发给我".repeat(10);
+    const { host, asked } = writing((part) => part);
+    await host.run(actions.fix, text(input));
+    assert.ok(asked[0].options.maxTokens >= input.length * 1.25 + 128, `${asked[0].options.maxTokens} tokens for ${input.length} characters`);
+  });
+
+  test("aLongDenseTextIsCutIntoPartsThatFit", async () => {
+    const sentence = "请在明天的会议之前把报告发给我。";
+    const input = Array.from({ length: 12 }, () => sentence.repeat(25)).join("\n\n");
+    const { host, asked } = writing((part) => part.replaceAll("我", "你"));
+    const result = await host.run(actions["fix-long"], text(input));
+    assert.ok(result.text === input.replaceAll("我", "你"), "every part comes back, in order");
+    assert.equal(asked.length, 4, "three paragraphs, about 1,200 characters, a part");
+    for (const call of asked) {
+      const part = inside(call.prompt);
+      assert.ok(estimateTokens(part, 1 / 2) <= 1400, `a part of ${part.length} characters`);
+      assert.ok(call.options.maxTokens >= part.length * 1.25, "the answer has room for the whole part, a character a token");
+      assert.ok(used(call, 1 / 2) <= usableTokens, `${used(call, 1 / 2)} tokens`);
+    }
+  });
+
+  test("everyTaskFitsWithItsLongestInput", async () => {
+    const samples = {
+      english: "Please send the report to the team before the meeting, and tell them what changed. ",
+      turkish: "Lütfen toplantıdan önce raporu ekibe gönder ve neyin değiştiğini onlara söyle. ",
+      chinese: "请在明天的会议之前把报告发给团队，并告诉他们有什么变化。",
+    };
+    for (const [language, sentence] of Object.entries(samples)) {
+      for (const { id, form } of tasks) {
+        const isDiff = id === "commit" || id === "pr-description";
+        const body = sentence.repeat(Math.ceil(12_000 / sentence.length));
+        const input = isDiff ? `diff --git a/notes.md b/notes.md\n@@ -1,400 +1,400 @@\n${body.match(/.{1,80}/gu).map((line) => `+${line}`).join("\n")}` : body;
+        const { host, asked } = writing((part) => part);
+        await host.run(actions[form === "split" ? `${id}-long` : id], text(input));
+        const latin = language === "english" || isDiff ? 1 / 3 : 1 / 2;
+        for (const call of asked) {
+          assert.ok(used(call, latin) <= usableTokens, `${id} in ${language}: ${used(call, latin)} tokens`);
+          assert.equal(call.options.maxTokens, task(id).maxTokens(estimateTokens(inside(call.prompt), latin)), `${id} in ${language}: the answer is not squeezed`);
+        }
+      }
+    }
+  });
+
+  test("anAnswerCutShortIsNotPasted", async () => {
+    const input = [paragraph("alpha"), paragraph("beta")].join("\n\n");
+    const notice = { none: true, message: "Apple Intelligence stopped before the end of the text, so nothing was pasted. Try a shorter text." };
+    // The second part's answer stops halfway: pasting it would drop the end of the person's text.
+    const { host } = writing((part, prompt, options, call) => (call === 2 ? part.slice(0, part.length / 3) : part));
+    assert.deepEqual(await host.run(actions["fix-long"], text(input)), notice);
+    const formal = writing((part) => part.slice(0, Math.floor(part.length * 0.3)));
+    assert.deepEqual(await formal.host.run(actions["formal-long"], text(paragraph("alpha"))), notice);
+    const turkish = await formal.host.run(actions["formal-long"], text(paragraph("alpha")), { language: "tr" });
+    assert.equal(turkish.message, "Apple Intelligence metnin sonuna gelmeden durdu, bu yüzden hiçbir şey yapıştırılmadı. Daha kısa bir metinle dene.");
+  });
+
+  test("aShorterAnswerIsFineWhereShorterIsTheTask", async () => {
+    const { host } = writing("Alpha, many times.");
+    assert.deepEqual(await host.run(actions["shorter-long"], text(paragraph("alpha"))), { text: "Alpha, many times." });
+    const tone = writing((part) => part.slice(0, Math.floor(part.length * 0.5)));
+    assert.equal((await tone.host.run(actions["friendly-long"], text(paragraph("alpha")))).text.length, Math.floor(paragraph("alpha").length * 0.5));
+    const tiny = writing("Ok.");
+    assert.deepEqual(await tiny.host.run(actions.fix, text("okkkkkkkkkkkkkkkkk")), { text: "Ok." }, "a short text is never judged by its length");
   });
 });

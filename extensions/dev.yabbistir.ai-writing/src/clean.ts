@@ -2,6 +2,8 @@
 // fence, a line such as "Here is the corrected text:", and quotes. Each is removed only when the person's own text
 // did not have it, so a text that really starts with "Here's the plan:" keeps that line.
 
+import { foldedWords, overlap } from "./words.ts";
+
 /** The first line of a text, without its line end. */
 function firstLine(text: string): string {
   const end = text.indexOf("\n");
@@ -31,24 +33,53 @@ export function stripFence(output: string, input: string): string {
   return inside.trim();
 }
 
-const preambles = [
-  // "Sure! Here is the corrected text:", "Here's a friendlier version:", "Below is the reply:"
-  /^(?:(?:sure|certainly|of course|okay|ok)[,!.]?\s)?(?:here(?:'|’)?s|here is|here are|below is|below are)\s[^\n]{0,120}:$/i,
+/** A line that introduces what follows: "Sure! Here is the corrected text:", "Below are the action items:". */
+const introductions = [
+  /^(?:(?:sure|certainly|of course|okay|ok)[,!.]?\s)?(?:here(?:'|’)?s|here is|here are|below is|below are)\s([^\n]{0,120}):$/i,
   // "İşte düzeltilmiş metin:", "Tabii, işte daha kısa hali:" ("İ" is spelled out: it has no simple case folding)
-  /^(?:tabii(?:\s?ki)?[,!.]?\s)?(?:[iİ]şte|[aA]şağıda)\s[^\n]{0,120}:$/iu,
-  // A bare label: "Corrected text:", "Reply:", "Commit message:", "Düzeltilmiş metin:"
-  /^(?:(?:the\s)?(?:corrected|rewritten|revised|shorter|shortened|formal|friendly|friendlier)\s(?:text|version|message)|reply|response|draft|explanation|commit message|pull request description|pr description|bullet points|action items|(?:düzeltilmiş|yeniden yazılmış|kısaltılmış|resmi|samimi)\s(?:metin|hali|sürüm)|yanıt|cevap|açıklama)\s?:$/iu,
+  /^(?:tabii(?:\s?ki)?[,!.]?\s)?(?:[iİ]şte|[aA]şağıda)\s([^\n]{0,120}):$/iu,
 ];
 
-/** Whether a line reads like the model introducing its answer. */
-function isPreamble(line: string): boolean {
-  return line.length <= 160 && preambles.some((pattern) => pattern.test(line));
+/** A bare label: "Corrected text:", "Reply:", "Commit message:", "Düzeltilmiş metin:". */
+const label = /^(?:(?:the\s)?(?:corrected|rewritten|revised|shorter|shortened|formal|friendly|friendlier)\s(?:text|version|message)|reply|response|draft|explanation|commit message|pull request description|pr description|bullet points|action items|(?:düzeltilmiş|yeniden yazılmış|kısaltılmış|resmi|samimi)\s(?:metin|hali|sürüm)|yanıt|cevap|açıklama)\s?:$/iu;
+
+/** The starts of words that name an answer, folded ("açıklama" → "aciklama"), English and Turkish. */
+const answerWords = [
+  "text", "version", "repl", "respons", "rewrit", "revis", "correct", "edit", "list", "point", "bullet", "item",
+  "checklist", "task", "todo", "explan", "messag", "draft", "summar", "descript", "commit", "result", "output",
+  "metin", "metn", "hali", "surum", "yanit", "cevap", "liste", "madde", "aciklama", "mesaj", "taslak",
+  "duzelt", "ozet", "gorev", "yapilacak", "sonuc",
+];
+
+/** Whether a line's words name the answer itself: "the corrected text", "a friendlier version", "daha kısa hali". */
+function namesTheAnswer(words: string): boolean {
+  return foldedWords(words).some((word) => answerWords.some((start) => word.startsWith(start)));
+}
+
+/**
+ * Whether a line reads like the model introducing its answer. "Here are my thoughts:" introduces an answer only
+ * when the person's own first line did not say "my thoughts" too: then it is their line, rewritten.
+ */
+function introducesAnswer(line: string, input: string): boolean {
+  if (line.length > 160) return false;
+  if (label.test(line)) return true;
+  for (const pattern of introductions) {
+    const found = pattern.exec(line);
+    if (found) return namesTheAnswer(found[1]) || overlap(found[1], firstLine(input)) === 0;
+  }
+  return false;
+}
+
+/** Whether the person's own first line is an introduction, which their text then really starts with. */
+function startsWithIntroduction(input: string): boolean {
+  const line = firstLine(input);
+  return line.length <= 160 && (label.test(line) || introductions.some((pattern) => pattern.test(line)));
 }
 
 /** Drops a first line that introduces the answer, when the person's text does not start with one too. */
 export function stripPreamble(output: string, input: string): string {
   const line = firstLine(output);
-  if (!isPreamble(line) || isPreamble(firstLine(input))) return output;
+  if (!introducesAnswer(line, input) || startsWithIntroduction(input)) return output;
   const rest = output.slice(output.indexOf("\n") + 1).trim();
   return output.includes("\n") && rest !== "" ? rest : output;
 }
@@ -77,18 +108,38 @@ export function cleanAnswer(output: string, input: string, tag: string): string 
   return stripMarkers(text, tag).trim();
 }
 
-// Apostrophes are optional, so the person's own "Im sorry but I cant help" is recognized as theirs.
+// What the model says when it declines. Apostrophes are optional, so "Im sorry but I cant help" counts too.
 const refusals = [
   /^(?:i(?:'|’)?m sorry|i am sorry|sorry|i apologi[sz]e)[,.]?\s(?:but\s)?i\s(?:can(?:'|’)?t|cannot|can not|am unable to|(?:'|’)?m unable to|won(?:'|’)?t)\s(?:help|assist|fulfil|fulfill|comply|do that|provide|process|rewrite|complete)/i,
   /^i\s(?:can(?:'|’)?t|cannot|am unable to|(?:'|’)?m unable to)\s(?:help|assist|fulfil|fulfill|comply)\s(?:with|you)/i,
   /^as an ai\b/i,
-  /^(?:üzgünüm|maalesef)[,.]?\s[^\n]{0,80}(?:yardımcı olamam|yapamam|yerine getiremem)/iu,
+  /^(?:üzgünüm|maalesef)[,.]?\s[^\n]{0,80}(?:yardımcı olamam|yerine getiremem)/iu,
 ];
 
-/** Whether the answer is the model declining, rather than the text the person asked for. */
+/** Words of saying no, folded: when the person's own text has one, a rewrite of it may well start "Sorry, I can't". */
+const declineWords = new Set([
+  "sorry", "cant", "cannot", "unable", "wont", "apologize", "apologise", "unfortunately", "regret", "decline",
+  "uzgunum", "maalesef", "malesef", "ozur", "ozurler",
+]);
+
+/** Turkish verbs said with "can't" or "won't": "olamam", "edemem", "yapamayacağım", "gelemeyiz". */
+const turkishNo = ["amam", "emem", "amayiz", "emeyiz", "amayacagim", "emeyecegim", "amayacagiz", "emeyecegiz"];
+
+/** Whether the person's text itself says no or says sorry. */
+function saysNo(text: string): boolean {
+  return foldedWords(text).some((word) => declineWords.has(word)
+    || (word.length >= 6 && turkishNo.some((ending) => word.endsWith(ending))));
+}
+
+/**
+ * Whether the answer is the model declining, rather than the text the person asked for. The app already reports
+ * the model's own refusals as `unavailable`; this only catches one written out as an answer, and leans towards
+ * pasting: an answer that starts like a refusal is one only when the person's text does not say no itself and
+ * the answer has little to do with the text (under a quarter of its words).
+ */
 export function isRefusal(output: string, input: string): boolean {
   const line = firstLine(output);
   if (line.length > 300 || output.length > 600) return false;
-  const declines = (text: string) => refusals.some((pattern) => pattern.test(text));
-  return declines(line) && !declines(firstLine(input));
+  if (!refusals.some((pattern) => pattern.test(line))) return false;
+  return !saysNo(input) && overlap(input, output) < 0.25;
 }

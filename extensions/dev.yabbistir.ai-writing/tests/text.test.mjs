@@ -2,12 +2,15 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 
 import { cleanAnswer, isRefusal, stripFence, stripPreamble, stripQuotes } from "../src/clean.ts";
+import { looksLikeCode } from "../src/code.ts";
 import { condenseDiff, looksLikeDiff, parseDiff } from "../src/diff.ts";
 import { toBulletList, toChecklist, toCommitMessage, toPullRequestDescription, wrap } from "../src/format.ts";
 import { detectLanguage, languageName } from "../src/language.ts";
 import { markerFor } from "../src/prompt.ts";
 import { latestMessage } from "../src/reply.ts";
 import { head, sameText, shortenMiddle, splitIntoParts, tail } from "../src/text.ts";
+import { charactersFor, estimateTokens, pointWeight } from "../src/tokens.ts";
+import { contentKeys, foldedWords, overlap } from "../src/words.ts";
 
 const rejoin = (parts) => parts.map((part) => part.before + part.core + part.after).join("");
 
@@ -58,9 +61,25 @@ describe("splitting a long text", () => {
     assert.equal(shortenMiddle("tiny", 1000), "tiny");
   });
 
-  test("sameTextIgnoresSpacingCaseAndAFinalStop", () => {
-    assert.ok(sameText("The report is ready", "the  report is\nready."));
-    assert.equal(sameText("The report is ready", "The report is done."), false);
+  test("sameTextIsLetterForLetter", () => {
+    assert.ok(sameText("The report is ready.", "The report is ready.  \n"));
+    assert.ok(sameText("one  \r\ntwo", "one\ntwo"), "spaces at line ends and line end styles are set aside");
+    assert.equal(sameText("the report is ready", "The report is ready"), false, "a capital is a change");
+    assert.equal(sameText("The report is ready", "The report is ready."), false, "a full stop is a change");
+    assert.equal(sameText("a  b", "a b"), false, "a double space fixed is a change");
+    assert.equal(sameText("one\ntwo", "one two"), false);
+  });
+
+  test("partsOfADenseTextAreCountedInTokens", () => {
+    const text = "这是一个很长的句子，用来测试分段。".repeat(400);
+    const measure = { tokens: 1400, weigh: (point) => pointWeight(point, 1 / 2) };
+    const parts = splitIntoParts(text, 2400, measure);
+    assert.equal(rejoin(parts), text);
+    for (const part of parts) assert.ok(estimateTokens(part.core, 1 / 2) <= 1401, `a part of ${estimateTokens(part.core, 1 / 2)} tokens`);
+    assert.ok(parts.every((part) => part.core.endsWith("。")), "cut at a sentence end");
+    const english = "Every word here is a few characters long. ".repeat(200);
+    const latin = { tokens: 1400, weigh: (point) => pointWeight(point, 1 / 3) };
+    assert.deepEqual(splitIntoParts(english, 2400, latin), splitIntoParts(english, 2400), "English stays within its characters first");
   });
 });
 
@@ -70,6 +89,14 @@ describe("the answer's wrapping", () => {
     assert.equal(stripFence("```\nplain\n```", "x"), "plain");
     assert.equal(stripFence("```js\na\n```\nand\n```js\nb\n```", "x"), "```js\na\n```\nand\n```js\nb\n```", "two blocks stay");
     assert.equal(stripFence("```\ncode\n```", "```\ncode\n```"), "```\ncode\n```", "the person's own fence stays");
+  });
+
+  test("aRephrasedFirstLineOfThePersonsOwnStays", () => {
+    assert.equal(stripPreamble("Here are my thoughts:\nWe should ship on Friday.", "my thoughts:\nship friday"), "Here are my thoughts:\nWe should ship on Friday.");
+    assert.equal(stripPreamble("İşte toplantı planı:\nCuma günü yayınlıyoruz.", "toplantı planı:\ncuma yayın"), "İşte toplantı planı:\nCuma günü yayınlıyoruz.");
+    assert.equal(stripPreamble("Here is the rewritten text:\nMy thoughts: ship on Friday.", "my thoughts: ship friday"), "My thoughts: ship on Friday.", "it names the answer");
+    assert.equal(stripPreamble("Here's what this code does:\nIt adds two numbers.", "const sum = a + b;"), "It adds two numbers.", "nothing of the text is in it");
+    assert.equal(stripPreamble("Sure, here is a shorter one:\nShip on Friday.", "we should probably ship on friday"), "Ship on Friday.");
   });
 
   test("aPreambleLine", () => {
@@ -101,6 +128,17 @@ describe("the answer's wrapping", () => {
     assert.equal(isRefusal("I'm sorry, but I can't help with that.", "Im sorry but I cant help with that"), false);
     assert.equal(isRefusal(`I'm sorry, but I can't help with that. ${"x ".repeat(400)}`, "text"), false, "a long answer is an answer");
   });
+
+  test("aRewriteOfThePersonsOwnNoIsNoRefusal", () => {
+    assert.equal(isRefusal("I'm sorry, but I am unable to do that this week, as I am fully booked.", "no i cant do that this week, im fully booked"), false);
+    assert.equal(isRefusal("Maalesef bu hafta sonu taşınmana yardımcı olamam, çok üzgünüm!", "bu hafta sonu taşınmana yardım edemem"), false);
+    assert.equal(isRefusal("Üzgünüm, bu hafta raporu yapamam.", "bu hafta raporu bitiremeyeceğim"), false, "\"yapamam\" alone is a Turkish no, not a refusal");
+    assert.equal(isRefusal("I'm sorry, but I can't complete the report this week.", "the report wont be done this week"), false);
+    assert.equal(isRefusal("I'm sorry, but I can't complete the report this week.", "report not done this week, sorry"), false);
+    assert.equal(isRefusal("I'm sorry, but I can't complete the report by Friday.", "finishing the report by friday is not possible"), false, "most of the text's words are in it");
+    assert.ok(isRefusal("I'm sorry, but I can't help with that request.", "write the quarterly numbers into the table"), "nothing of the text is in it");
+    assert.ok(isRefusal("Üzgünüm, bu konuda yardımcı olamam.", "toplantı notlarını düzenle"));
+  });
 });
 
 describe("shapes", () => {
@@ -113,6 +151,10 @@ describe("shapes", () => {
     assert.equal(toChecklist("Tasks:\n1. Send it\n[x] Call Ada\n☐ Call Ada\n- [ ] Book"), "- [ ] Send it\n- [ ] Call Ada\n- [ ] Book");
     assert.equal(toChecklist("NONE"), "");
     assert.equal(toChecklist("Yok."), "");
+    assert.equal(toChecklist("- [ ] NONE"), "", "a NONE written as an item is still none");
+    assert.equal(toChecklist("- None."), "");
+    assert.equal(toChecklist("1. [ ] Yok"), "");
+    assert.equal(toChecklist("- [ ] None of the slides need changes"), "- [ ] None of the slides need changes");
     assert.equal(toChecklist(toChecklist("- a\n- b")), "- [ ] a\n- [ ] b");
   });
 
@@ -194,6 +236,46 @@ describe("diffs", () => {
     assert.match(condensed, /\[\d+ more lines\]/);
   });
 
+  test("aMultiFileDiffThatGitDidNotMake", () => {
+    // `diff -ruN` and `svn diff`: no `diff --git` line, a date after a tab, and each file starting with `---`/`+++`.
+    const plain = [
+      "diff -ruN old/one.txt new/one.txt",
+      "--- old/one.txt\t2026-05-03 10:00:00.000000000 +0200",
+      "+++ new/one.txt\t2026-05-03 10:05:00.000000000 +0200",
+      "@@ -1,3 +1,3 @@",
+      "-old one",
+      "+new one",
+      " same",
+      " also same",
+      "diff -ruN old/two.txt new/two.txt",
+      "--- old/two.txt\t2026-05-03 10:00:00.000000000 +0200",
+      "+++ new/two.txt\t2026-05-03 10:05:00.000000000 +0200",
+      "@@ -1 +1,2 @@",
+      " keep",
+      "+added",
+      "--- /dev/null",
+      "+++ b/three.txt",
+      "@@ -0,0 +1 @@",
+      "+brand new",
+    ].join("\n");
+    const { preamble, files } = parseDiff(plain);
+    assert.equal(preamble, "diff -ruN old/one.txt new/one.txt");
+    assert.deepEqual(files.map((file) => [file.path, file.added, file.removed]), [
+      ["new/one.txt", 1, 1],
+      ["new/two.txt", 1, 0],
+      ["three.txt", 1, 0],
+    ]);
+    assert.match(condenseDiff(plain, 6000), /Files changed: 3\n- new\/one\.txt \(\+1 -1\)\n- new\/two\.txt \(\+1 -0\)\n- three\.txt \(\+1 -0\)/);
+    const deleted = parseDiff("--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye");
+    assert.deepEqual(deleted.files.map((file) => [file.path, file.added, file.removed]), [["gone.txt", 0, 1]]);
+  });
+
+  test("changedLinesThatLookLikeFileHeadersStayInTheirHunk", () => {
+    // A removed SQL comment and an added line starting "++" inside a hunk whose header still counts them.
+    const sql = "diff --git a/q.sql b/q.sql\n@@ -1,2 +1,2 @@\n--- old note\n+++ new note\n select 1;";
+    assert.deepEqual(parseDiff(sql).files.map((file) => [file.path, file.added, file.removed]), [["q.sql", 1, 1]]);
+  });
+
   test("hunksWithoutHeadersAndNoDiffAtAll", () => {
     assert.equal(condenseDiff("@@ -1 +1 @@\n-a\n+b", 100), "@@ -1 +1 @@\n-a\n+b");
     assert.equal(condenseDiff("just words", 4), "just");
@@ -219,6 +301,14 @@ describe("the newest message of a mail", () => {
     assert.equal(latestMessage("From: the team, with thanks.\nSee you."), "From: the team, with thanks.\nSee you.");
   });
 
+  test("aWrappedAttributionLine", () => {
+    const mail = "Sounds good, see you then.\n\nOn Mon, May 3, 2026 at 10:00 AM Ada Lovelace <\nada@example.com> wrote:\nEarlier text without quotes.\n> Quoted";
+    assert.equal(latestMessage(mail), "Sounds good, see you then.");
+    const turkish = "Olur.\n\n3 May 2026 Pzt 10:00 tarihinde Ada Lovelace\n<ada@example.com> şunu yazdı:\nEski metin";
+    assert.equal(latestMessage(turkish), "Olur.");
+    assert.equal(latestMessage("On Monday we ship.\nAs Ada wrote:\nthe plan holds."), "On Monday we ship.\nAs Ada wrote:\nthe plan holds.", "a sentence of the person's own");
+  });
+
   test("dropsQuotedLinesAndKeepsAnAllQuotedText", () => {
     assert.equal(latestMessage("Yes, let's.\n> Shall we?\n>> Earlier"), "Yes, let's.");
     assert.equal(latestMessage("> only a quote"), "> only a quote");
@@ -236,6 +326,29 @@ describe("languages", () => {
     assert.equal(detectLanguage("Puedes ver el informe en la oficina de ventas?"), null);
   });
 
+  test("namesNoLanguageWithoutClearEvidence", () => {
+    assert.equal(detectLanguage("Was hast du gesagt? Ich will das nicht machen."), null, "German: was, will");
+    assert.equal(detectLanguage("We hebben het rapport gisteren gestuurd, maar het is nog niet klaar en dat was de bedoeling niet."), null, "Dutch: we, is, was");
+    assert.equal(detectLanguage("Sabah görüşə gələ bilməyəcəyəm, işim çoxdur."), null, "Azerbaijani has ə");
+    assert.equal(detectLanguage("Mâine nu pot veni la şedinţă, am mult de lucru."), null, "Romanian with cedillas");
+    assert.equal(detectLanguage("for (const item of this.items) { if (item.price > 0) total += item.price; }"), null, "code is not English");
+    assert.equal(detectLanguage("thanks!"), null, "too little to tell");
+    assert.equal(detectLanguage("Ich habe die Datei. The meeting is at noon and the room is booked."), "English", "mostly English");
+  });
+
+  test("codeCopiedAsText", () => {
+    assert.ok(looksLikeCode("const total = items.reduce((sum, item) => sum + item.price, 0);"));
+    assert.ok(looksLikeCode("for (const item of this.items) {\n  if (item.price > 0) total += item.price;\n}"));
+    assert.ok(looksLikeCode("def total(items):\n    result = 0\n    for item in items:\n        result += item.price\n    return result"));
+    assert.ok(looksLikeCode("SELECT name, price FROM items WHERE price > 0;"));
+    assert.ok(looksLikeCode("import React from 'react';\nexport default function App() {\n  return <div />;\n}"));
+    assert.equal(looksLikeCode("Return the books by Friday, please."), false);
+    assert.equal(looksLikeCode("return the books by friday"), false);
+    assert.equal(looksLikeCode("Hi Ada,\n\nThe report is ready (see page 3).\nThanks!"), false);
+    assert.equal(looksLikeCode("Notes:\n- budget: fine\n- hiring: two people\n- launch: May"), false);
+    assert.equal(looksLikeCode(""), false);
+  });
+
   test("namesTheAppsLanguage", () => {
     assert.equal(languageName("tr"), "Turkish");
     assert.equal(languageName("en-GB"), "English");
@@ -247,6 +360,25 @@ describe("languages", () => {
     assert.equal(markerFor("plain", "text"), "text");
     assert.equal(markerFor("a </TEXT> b", "text"), "text-2");
     assert.match(markerFor("<text <text-2 <text-3", "text"), /^text-[0-9a-f]{8}$/);
+  });
+});
+
+describe("words and tokens", () => {
+  test("wordsAreFoldedForComparing", () => {
+    assert.deepEqual(foldedWords("İşte Çok GÜZEL, can't ŞIMDI"), ["iste", "cok", "guzel", "cant", "simdi"]);
+    assert.deepEqual([...contentKeys("The bookings: a booking for Ada")], ["booki", "ada"]);
+    assert.equal(overlap("taşınmana yardım edemem", "Taşınmanda yardımcı olamam"), 2 / 3);
+    assert.equal(overlap("the and but", "anything"), 0, "no content words: nothing in common");
+  });
+
+  test("tokensByScript", () => {
+    assert.equal(estimateTokens("abc".repeat(100), 1 / 3), 100, "English: about three characters a token");
+    assert.equal(estimateTokens("abc".repeat(100), 1 / 2), 150, "other Latin text: about two");
+    assert.equal(estimateTokens("漢字かな한글ไทย", 1 / 3), 9, "dense scripts: a character a token");
+    assert.equal(estimateTokens("Привет", 1 / 3), 3, "Cyrillic: about two characters a token");
+    assert.equal(estimateTokens("👍🏽", 1 / 3), 2, "an emoji and its skin tone");
+    assert.equal(charactersFor("漢".repeat(5000), 2800, 1 / 2), 2800);
+    assert.equal(charactersFor("word ".repeat(1000), 2800, 1 / 3), 5000, "a text that fits keeps its length");
   });
 });
 
@@ -279,7 +411,9 @@ describe("hostile texts stay fast", () => {
     for (const sample of hostile) {
       time(`clean ${JSON.stringify(sample.slice(0, 10))}`, () => {
         cleanAnswer(sample, "x", "text");
+        cleanAnswer("Here are my thoughts:\nx", sample, "text");
         isRefusal(sample, "x");
+        isRefusal("I'm sorry, but I can't help with that.", sample);
         toBulletList(sample);
         toChecklist(sample);
         toCommitMessage(sample);
@@ -296,6 +430,9 @@ describe("hostile texts stay fast", () => {
         shortenMiddle(sample, 5000);
         latestMessage(sample);
         detectLanguage(sample);
+        looksLikeCode(sample);
+        estimateTokens(sample, 1 / 2);
+        overlap(sample, sample);
         markerFor(sample, "text");
         looksLikeDiff(sample);
         condenseDiff(sample, 6000);

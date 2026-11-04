@@ -1,18 +1,28 @@
 import type { Action, Actions, Context, Item, Result, YabError } from "@yabbistir/api";
 
 import { cleanAnswer, isRefusal } from "./clean.ts";
+import { looksLikeCode } from "./code.ts";
 import { condenseDiff, looksLikeDiff } from "./diff.ts";
 import { buildRequest, settingFor, type Setting } from "./prompt.ts";
 import { tasks, type Task } from "./tasks.ts";
 import { sameText, splitIntoParts, type Part } from "./text.ts";
+import { charactersFor, estimateTokens, pointWeight } from "./tokens.ts";
 
-// Each task is two actions, and the manifest offers exactly one of them on an item. Up to `instantLimit`
-// characters the action runs at once and pastes: Apple's model answers that much well inside an action's
+// A task whose answer is about as long as the text (a rewrite, a list, a reply) is two actions, and the manifest
+// offers exactly one of them on an item. Up to `instantLimit` characters, and fewer than `denseLimit` characters
+// of a dense script, the action runs at once and pastes: Apple's model answers that much well inside an action's
 // 10-second limit. Longer text runs as a job (`<id>-long`): a card under the menu bar icon shows its progress and
-// can cancel it, and it has no time limit, so a long text is rewritten part by part.
+// can cancel it, and it has no time limit, so a long text is rewritten part by part. A task whose answer is as long
+// for a line as for a page (an explanation, a commit message, a PR description) is one action, always a job.
 
 /** The longest text, in characters, the at-once action is offered on (the manifest's patterns say 400 too). */
 export const instantLimit = 400;
+
+/**
+ * How many characters of Chinese, Japanese, Korean or Thai send a text to the job instead (the manifest's patterns
+ * say 150 too): those are about a token each, so 150 of them take the model as long as 400 characters of English.
+ */
+export const denseLimit = 150;
 
 /** How long the at-once action waits for the model before it says so, leaving room under the 10-second limit. */
 export const instantDeadline = 8500;
@@ -58,12 +68,36 @@ async function ask(task: Task, text: string, setting: Setting, mode: Mode, deadl
   }
 }
 
-/** The stretches of text the model is asked about, one call each. */
-function partsFor(task: Task, text: string): Part[] {
+/** The text shortened by `cut` to at most `tokens` tokens, measured again in case the estimate was off. */
+function fitted(text: string, size: number, tokens: number, latin: number, cut: (size: number) => string): string {
+  let room = Math.min(size, charactersFor(text, tokens, latin));
+  let core = cut(room);
+  for (let round = 0; round < 3; round++) {
+    const used = estimateTokens(core, latin);
+    if (used <= tokens) break;
+    room = Math.max(1, Math.floor((room * tokens) / used * 0.95));
+    core = cut(room);
+  }
+  return core;
+}
+
+/** The stretches of text the model is asked about, one call each, each within the task's characters and tokens. */
+function partsFor(task: Task, text: string, setting: Setting): Part[] {
   const input = task.input;
-  if (input.kind === "parts") return splitIntoParts(text, input.size);
-  const core = input.kind === "diff" ? condenseDiff(text, input.budget) : input.prepare(text);
-  return [{ before: "", core, after: "" }];
+  if (input.kind === "parts") {
+    const weigh = (point: number) => pointWeight(point, setting.latin);
+    return splitIntoParts(text, input.size, { tokens: input.tokens, weigh });
+  }
+  const cut = input.kind === "diff"
+    ? (size: number) => condenseDiff(text, size)
+    : (size: number) => input.prepare(text, size);
+  return [{ before: "", core: fitted(text, input.size, input.tokens, setting.latin, cut), after: "" }];
+}
+
+/** Whether an answer is far shorter than the part it rewrites, as when the model stopped before the end. */
+function cutShort(task: Task, part: string, answer: string): boolean {
+  if (task.minShare === undefined || part.length < 120 || answer === "") return false;
+  return answer.length < part.length * task.minShare;
 }
 
 function formatNumber(value: number, language: string): string {
@@ -87,8 +121,8 @@ async function write(task: Task, mode: Mode, item: Item | null, ctx: Context, de
     return none(yab.t("tooLong", { max: formatNumber(maxCharacters, ctx.language) }));
   }
   const started = Date.now();
-  const setting = settingFor(text, ctx.language, item?.kind === "code" || looksLikeDiff(text));
-  const parts = partsFor(task, text);
+  const setting = settingFor(text, ctx.language, item?.kind === "code" || looksLikeDiff(text) || looksLikeCode(text));
+  const parts = partsFor(task, text, setting);
   const answers: string[] = [];
   for (const [index, part] of parts.entries()) {
     ctx.signal.throwIfAborted();
@@ -97,6 +131,8 @@ async function write(task: Task, mode: Mode, item: Item | null, ctx: Context, de
     if (!("answer" in reply)) return reply;
     const answer = cleanAnswer(reply.answer, part.core, reply.tag);
     if (!task.replyLike && isRefusal(answer, part.core)) return none(yab.t("declined"));
+    // A rewrite that stopped early would paste the text without its end: say so rather than paste it.
+    if (cutShort(task, part.core, answer)) return none(yab.t("cutShort"));
     answers.push(task.shape ? task.shape(answer) : answer);
   }
   if (mode === "job" && parts.length > 1) report(task, parts.length, parts.length);
@@ -115,9 +151,12 @@ export function writingAction(task: Task, mode: Mode, deadline = instantDeadline
   return { run: (item, ctx) => write(task, mode, item, ctx, deadline) };
 }
 
-export const actions: Actions = Object.fromEntries(tasks.flatMap((task) => [
-  [task.id, writingAction(task, "instant")],
-  [`${task.id}-long`, writingAction(task, "job")],
-]));
+/** The actions of a task, by id: at once and as a job for a split task, the job alone for the others. */
+function actionsOf(task: Task): [string, Action][] {
+  if (task.form === "job") return [[task.id, writingAction(task, "job")]];
+  return [[task.id, writingAction(task, "instant")], [`${task.id}-long`, writingAction(task, "job")]];
+}
+
+export const actions: Actions = Object.fromEntries(tasks.flatMap(actionsOf));
 
 export { tasks };

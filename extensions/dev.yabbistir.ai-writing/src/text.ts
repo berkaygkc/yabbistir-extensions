@@ -64,22 +64,44 @@ function partEnd(text: string, start: number, size: number): number {
   const paragraph = text.lastIndexOf("\n\n", limit);
   if (paragraph >= floor) return paragraph;
   const sentence = Math.max(text.lastIndexOf(". ", limit), text.lastIndexOf("! ", limit), text.lastIndexOf("? ", limit),
-    text.lastIndexOf("。", limit), text.lastIndexOf("\n", limit));
+    text.lastIndexOf("。", limit), text.lastIndexOf("！", limit), text.lastIndexOf("？", limit), text.lastIndexOf("\n", limit));
   if (sentence >= floor) return sentence + 1;
   const space = text.lastIndexOf(" ", limit);
   if (space >= floor) return space;
   return Math.max(start + 1, boundaryBefore(text, limit));
 }
 
+/** How a part is measured in tokens: the most a part may hold, and what each code point counts. */
+export interface Measure {
+  tokens: number;
+  weigh: (point: number) => number;
+}
+
+/** How many characters from `start` stay within `size` characters and the measure's tokens. */
+function windowFrom(text: string, start: number, size: number, measure: Measure | undefined): number {
+  const end = Math.min(text.length, start + size);
+  if (measure === undefined) return end - start;
+  let used = 0;
+  let index = start;
+  while (index < end) {
+    const point = text.codePointAt(index) ?? 0;
+    used += measure.weigh(point);
+    if (used > measure.tokens) break;
+    index += point > 0xffff ? 2 : 1;
+  }
+  return Math.max(1, index - start);
+}
+
 /**
- * The text in parts of at most `size` characters, cut where paragraphs, then sentences, then words end. Joining
- * every part's `before`, `core` and `after` gives the text back exactly.
+ * The text in parts of at most `size` characters, and at most `measure.tokens` tokens when a measure is given, cut
+ * where paragraphs, then sentences, then words end. Joining every part's `before`, `core` and `after` gives the
+ * text back exactly.
  */
-export function splitIntoParts(text: string, size: number): Part[] {
+export function splitIntoParts(text: string, size: number, measure?: Measure): Part[] {
   const parts: Part[] = [];
   let start = 0;
   while (start < text.length) {
-    const end = partEnd(text, start, size);
+    const end = partEnd(text, start, windowFrom(text, start, size, measure));
     const piece = text.slice(start, end);
     const core = piece.trim();
     if (core === "" && parts.length > 0) {
@@ -93,8 +115,15 @@ export function splitIntoParts(text: string, size: number): Part[] {
   return parts;
 }
 
-/** Whether two texts read the same once spacing, case and the final full stop are set aside. */
+/** A text with its line ends made plain and the spaces at the end of each line and of the whole taken off. */
+function plain(text: string): string {
+  return text.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trimEnd()).join("\n").trim();
+}
+
+/**
+ * Whether two texts are the same, letter for letter. Only the spaces at line ends and around the whole are set
+ * aside: a change of case or of a full stop is a change, and Fix's whole point.
+ */
 export function sameText(a: string, b: string): boolean {
-  const normal = (text: string) => text.split(/\s+/).filter(Boolean).join(" ").toLowerCase().replace(/[.!。]$/, "");
-  return normal(a) === normal(b);
+  return plain(a) === plain(b);
 }
