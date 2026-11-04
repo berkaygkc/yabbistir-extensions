@@ -288,11 +288,27 @@ function renderPieces(pieces: Piece[], inCell: boolean): string {
   return out.join("");
 }
 
-/** A line of a paragraph that Markdown would read as a heading, a quote, a list item or a rule gets a backslash. */
+/** One cell of the rule under a GFM table's header: dashes, a colon on either side or both, and spaces around. */
+const RULE_CELL = /^[ \t]*:?-+:?[ \t]*$/;
+
+/** Whether GFM could read the line as the rule under a table's header, such as `-- | --` or `|:-:|`. */
+function isTableRule(line: string): boolean {
+  if (!line.includes("-")) return false;
+  let cells = line.trim();
+  if (cells.startsWith("|")) cells = cells.slice(1);
+  if (cells.endsWith("|")) cells = cells.slice(0, -1);
+  return cells.split("|").every((cell) => RULE_CELL.test(cell));
+}
+
+/**
+ * A line of a paragraph that Markdown would read as a heading, a quote, a list item, a rule, or the rule that makes
+ * the line above a table's header, gets a backslash.
+ */
 export function escapeLineStart(line: string): string {
   if (/^(?:#{1,6}(?:\s|$)|>|[-+](?:\s|$)|(?:-+|=+)\s*$)/.test(line)) return `\\${line}`;
   const number = /^([0-9]{1,9})[.)](?:\s|$)/.exec(line);
   if (number) return `${number[1]}\\${line.slice(number[1].length)}`;
+  if (isTableRule(line)) return `\\${line}`;
   return line;
 }
 
@@ -342,6 +358,17 @@ function prepare(blocks: Block[], options: Options): Block[] {
   return out;
 }
 
+/**
+ * Whether a list can start on the line right after a paragraph's text. CommonMark lets only a bulleted list, or a
+ * numbered one that starts at 1, do that, and only when its first marker has something after it: `1. Step` over
+ * `   3. sub` is the one paragraph "Step 3. sub". Any other list needs a blank line first, which makes the item loose.
+ */
+function followsText(list: Extract<Block, { type: "list" }>, text: string): boolean {
+  if (list.ordered && list.start !== 1) return false;
+  const end = text.indexOf("\n");
+  return !/^(?:-|[0-9]{1,9}[.)])$/.test(end < 0 ? text : text.slice(0, end));
+}
+
 function renderBlocks(blocks: Block[], options: Options, tight: boolean): { text: string; first: Block["type"] | null } {
   const parts: string[] = [];
   let previous: Block["type"] | null = null;
@@ -349,7 +376,9 @@ function renderBlocks(blocks: Block[], options: Options, tight: boolean): { text
   for (const block of prepare(blocks, options)) {
     const text = renderBlock(block, options);
     if (text === "") continue;
-    if (previous !== null) parts.push(tight && previous === "paragraph" && block.type === "list" ? "\n" : "\n\n");
+    if (previous !== null) {
+      parts.push(tight && previous === "paragraph" && block.type === "list" && followsText(block, text) ? "\n" : "\n\n");
+    }
     parts.push(text);
     previous = block.type;
     first ??= block.type;
@@ -410,7 +439,9 @@ function cellText(cell: TableCell, header: boolean, options: Options): string {
   for (const block of prepare(cell.blocks, options)) {
     let text = "";
     if (block.type === "paragraph" || block.type === "heading") text = renderPieces(toPieces(block.leaves, options, header), true);
-    else if (block.type === "code") text = codeSpan(block.text.replace(/\s*\n\s*/g, " "));
+    // Each run of white space that holds a line break becomes one space. `/\s+/` matches a whole run in one go,
+    // where `/\s*\n\s*/` would scan a long run with no line break again from each of its spaces.
+    else if (block.type === "code") text = codeSpan(block.text.replace(/\s+/g, (run: string) => run.includes("\n") ? " " : run));
     if (text !== "") parts.push(text);
   }
   return parts.join("<br>").replace(/\|/g, "\\|");

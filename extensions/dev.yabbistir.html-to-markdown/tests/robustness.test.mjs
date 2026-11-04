@@ -21,6 +21,31 @@ describe("malformed HTML", () => {
     assert.equal(md("<p><b>bold</p><p>still bold</b> not</p>"), "**bold**\n\n**still bold** not");
   });
 
+  test("cellsWithoutARowGetOne", () => {
+    assert.equal(md("<table><td>a</td><td>b</td></table>"), "| a   | b   |\n| --- | --- |");
+    assert.equal(md("<table><th>A</th><th>B</th><tr><td>1</td><td>2</td></tr></table>"), "| A   | B   |\n| --- | --- |\n| 1   | 2   |");
+    assert.equal(md("<table><tbody><td>a<td>b</tbody></table>"), "| a   | b   |\n| --- | --- |");
+    assert.equal(md("<table><caption>Prices</caption><td>a<td>b</table>"), "Prices\n\n| a   | b   |\n| --- | --- |");
+    assert.equal(md("<td>alone</td>"), "alone");
+  });
+
+  test("contentOutsideTheCellsComesBeforeTheTable", () => {
+    // A browser shows text and blocks that sit in a table but outside its cells just before the table.
+    const table = "| a   | b   |\n| --- | --- |";
+    assert.equal(md("<table>Note<tr><td>a</td><td>b</td></tr></table>"), `Note\n\n${table}`);
+    assert.equal(md("<table><tr><td>a</td><td>b</td></tr><p>After</p></table>"), `After\n\n${table}`);
+    assert.equal(md("<table><tr><div>Row note</div><td>a</td><td>b</td></tr></table>"), `Row note\n\n${table}`);
+    assert.equal(md("<table><tr><div>Unclosed<td>a<td>b</table>"), `Unclosed\n\n${table}`);
+    assert.equal(md("<table><div>Unclosed<tr><td>a<td>b</table>"), `Unclosed\n\n${table}`);
+    assert.equal(md("<table><form><tr><td>a</td><td>b</td></tr></form></table>"), table);
+    assert.equal(md("<b><table>Bold<tr><td>a</td><td>b</td></tr></table></b>"), `**Bold**\n\n${table}`);
+    assert.equal(md("<table style='font-weight:bold'>Plain<tr><td>a</td><td>b</td></tr></table>"), `Plain\n\n${table}`);
+  });
+
+  test("whiteSpaceBetweenTablePartsIsNotContent", () => {
+    assert.equal(md("<table>\n  <colgroup><col><col></colgroup>\n  <tr>\n    <td>a</td><td>b</td>\n  </tr>&nbsp;\n</table>"), "| a   | b   |\n| --- | --- |");
+  });
+
   test("strayEndTags", () => {
     assert.equal(md("a</b></div></span>b"), "ab");
     assert.equal(md("a</p>b"), "a\n\nb");
@@ -162,10 +187,22 @@ describe("size and time", () => {
       important: `<span style="font-weight:700${"!".repeat(n)}important">x</span>`,
       tildes: "<p>" + "~".repeat(n) + "</p>",
       conditionals: "<![if !supportLists]>".repeat(n / 22),
+      conditionalSpaces: "<p>a</p><![if" + " ".repeat(n) + "x>",
       headings: "<h1>a<h2>b".repeat(n / 12),
       codeLines: "<pre>" + "<div>a</div>".repeat(n / 12) + "</pre>",
+      codeSpaces: "<pre>" + " ".repeat(n) + "x</pre>",
       monoLines: `<b id="docs-internal-guid-1">${"<p><span style=\"font-family:Courier New\">x</span></p><br>".repeat(n / 60)}<p>text</p></b>`,
+      monoSpaces: `<b id="docs-internal-guid-1"><p>text</p><p><span style="font-family:Consolas">${" ".repeat(n)}x</span></p></b>`,
+      monoCellSpaces: `<b id="docs-internal-guid-1"><p>text</p><table><tr><td><p><span style="font-family:Consolas">${" ".repeat(n)}x</span></p></td>`
+        + "<td>y</td></tr><tr><td>1</td><td>2</td></tr></table></b>",
+      // Many blank monospaced lines: each line break once looked back over every line before it.
+      monoBlankLines: `<b id="docs-internal-guid-1"><p>text</p><p>${"<span style=\"font-family:Courier New\"> </span><br>".repeat(n / 6)}</p></b>`,
       entityRun: "<p>" + "&amp;lt;".repeat(n / 8) + "</p>",
+      tableRuleLine: "<p>a<br>" + "-|".repeat(n / 2) + "</p>",
+      tableRuleSpaces: "<p>a<br>|" + " ".repeat(n) + "-</p>",
+      cellsWithoutRows: "<table>" + "<td>x".repeat(n / 5) + "</table>",
+      fosteredText: "<table>" + "x<tr><td>y</td></tr>".repeat(n / 20) + "</table>",
+      multiLevelMarker: "<p style='mso-list:l0 level1 lfo1'><![if !supportLists]>" + "1.".repeat(n / 2) + "<![endif]>t</p>",
     };
     for (const [name, html] of Object.entries(inputs)) {
       const started = performance.now();

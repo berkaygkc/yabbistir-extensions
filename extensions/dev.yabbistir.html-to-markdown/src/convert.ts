@@ -162,23 +162,35 @@ export function hasContent(leaves: Leaf[]): boolean {
   return leaves.some((leaf) => leaf.type === "image" || (leaf.type === "text" && leaf.text !== ""));
 }
 
-/** Drops the spaces at the end of each line, and line breaks before the first and after the last content. */
+/**
+ * Drops the spaces at the end of each line, and line breaks before the first and after the last content. It runs in
+ * one pass: a line break looks back only at the leaves that came after the one before it, and whether content has
+ * gone in yet is kept as it goes, so a copy of many blank lines stays linear.
+ */
 function trimLeaves(leaves: Leaf[]): Leaf[] {
   const out: Leaf[] = [];
+  // Leaves before this index were trimmed at an earlier line break, so walking back over them again changes nothing.
+  let trimmed = 0;
+  // An image, or text with more than spaces: trimming never takes it away, so a line break after it stays.
+  let content = false;
   const trimLine = () => {
-    for (let at = out.length - 1; at >= 0; at--) {
+    for (let at = out.length - 1; at >= trimmed; at--) {
       const leaf = out[at];
       if (leaf.type !== "text") break;
       const text = leaf.text.replace(/ +$/, "");
       out[at] = { ...leaf, text };
       if (text !== "") break;
     }
+    trimmed = out.length;
   };
   for (const leaf of leaves) {
     if (leaf.type === "break") {
       trimLine();
-      if (hasContent(out)) out.push(leaf);
-    } else out.push(leaf);
+      if (content) out.push(leaf);
+      continue;
+    }
+    out.push(leaf);
+    if (!content && (leaf.type === "image" || /[^ ]/.test(leaf.text))) content = true;
   }
   trimLine();
   while (out.length > 0 && out[out.length - 1].type === "break") out.pop();
@@ -297,7 +309,8 @@ function isMono(leaves: Leaf[]): boolean {
 function monoText(leaves: Leaf[]): string {
   const text = leaves.map((leaf) => leaf.type === "break" ? "\n" : leaf.type === "text" ? (leaf.style.mono ? leaf.raw : leaf.text) : "")
     .join("");
-  return text.split("\n").map((line) => line.replace(/\s+$/, "")).join("\n");
+  // trimEnd, not a regular expression: `/\s+$/` is quadratic on a long run of spaces in some engines.
+  return text.split("\n").map((line) => line.trimEnd()).join("\n");
 }
 
 /** Word writes a list as paragraphs with a level each; this puts them back together as nested lists. */
@@ -432,7 +445,7 @@ function walk(node: HtmlNode, style: Style, sink: Sink, ctx: Context): void {
     return;
   }
   if (name === "pre" || name === "listing") return codeBlock(node, languageOf(node), sink);
-  if (name === "table") return table(node, own, sink, ctx);
+  if (name === "table") return table(node, own, style, sink, ctx);
 
   if (name === "p" || name === "div") {
     const level = /level(\d+)/.exec(css?.get("mso-list") ?? "");
@@ -481,15 +494,22 @@ function headingBlock(node: ElementNode, level: number, style: Style, sink: Sink
   if (hasContent(leaves)) sink.blocks.push({ type: "heading", level, leaves });
 }
 
+/** Word's numbers: `1.`, `(2)`, `3)`, and the multi-level `1.2.` or `2.3` of its nine levels. */
+const WORD_NUMBER = /^\(?[0-9]{1,9}(?:\.[0-9]{1,9}){0,8}[.)]?$/;
+/** Word's letters and Roman numerals: `a.`, `(b)`, `iv)`. */
+const WORD_LETTER = /^\(?(?:[a-z]{1,3}|[ivxlcdm]{1,8})[.)]$/i;
+
 /** A Word list paragraph: its bullet or number says whether the list is numbered, its style gives the level. */
 function wordItem(node: ElementNode, level: number, style: Style, sink: Sink, ctx: Context): void {
   sink.flush();
   const marker = markerText(node, 0) ?? "";
-  const number = /^\(?([0-9]{1,9})[.)]/.exec(marker);
-  const ordered = /^\(?([0-9]{1,9}|[a-z]{1,3}|[ivxlcdm]{1,8})[.)]$/i.test(marker);
+  const numbered = WORD_NUMBER.test(marker);
+  // The last part of a multi-level number is the item's own: `1.2.` is the second item of its sub-list.
+  const parts = numbered ? marker.match(/[0-9]+/g) ?? [] : [];
+  const start = parts.length > 0 ? Number(parts[parts.length - 1]) : 1;
   const inner = new Sink(ctx);
   walkChildren(node, style, inner, ctx);
-  sink.blocks.push({ type: "wordItem", level, ordered, start: number ? Number(number[1]) : 1, blocks: inner.finish() });
+  sink.blocks.push({ type: "wordItem", level, ordered: numbered || WORD_LETTER.test(marker), start, blocks: inner.finish() });
 }
 
 /** The text of a Word list paragraph's own bullet or number. */
@@ -630,7 +650,7 @@ function codeText(node: ElementNode): string {
     if (line) newLine();
   };
   for (const child of node.children) visit(child);
-  return parts.join("").replace(/\u00a0/g, " ").replace(/[\u200b\ufeff]/g, "").replace(/^\n+/, "").replace(/\s+$/, "");
+  return parts.join("").replace(/\u00a0/g, " ").replace(/[\u200b\ufeff]/g, "").replace(/^\n+/, "").trimEnd();
 }
 
 function codeBlock(node: ElementNode, language: string, sink: Sink): void {
@@ -681,18 +701,31 @@ function span(value: string | undefined, limit: number): number {
   return Number.isFinite(count) && count > 1 ? Math.min(count, limit) : 1;
 }
 
-function table(node: ElementNode, style: Style, sink: Sink, ctx: Context): void {
+/**
+ * A table. `style` is the table's own formatting and `outer` that of the element around it, which is what the
+ * content a browser moves out of the table, to just before it, keeps: text, or a block, between the rows or cells.
+ */
+function table(node: ElementNode, style: Style, outer: Style, sink: Sink, ctx: Context): void {
   sink.flush();
   const rows: { row: ElementNode; style: Style }[] = [];
+  const fostered = (child: HtmlNode) => {
+    if (child.type === "element" || hasText(child.text)) walk(child, outer, sink, ctx);
+  };
   const collect = (parent: ElementNode, parentStyle: Style) => {
     for (const child of parent.children) {
-      if (child.type !== "element") continue;
+      if (child.type === "text") {
+        fostered(child);
+        continue;
+      }
       const css = cssOf(child);
       if (!shown(child, css)) continue;
       const childStyle = styleOf(child, css, parentStyle, ctx);
-      if (child.name === "tr") rows.push({ row: child, style: childStyle });
-      else if (child.name === "thead" || child.name === "tbody" || child.name === "tfoot" || child.name === "form") collect(child, childStyle);
+      if (child.name === "tr") {
+        rows.push({ row: child, style: childStyle });
+        for (const part of child.children) if (part.type === "text" || (part.name !== "td" && part.name !== "th")) fostered(part);
+      } else if (child.name === "thead" || child.name === "tbody" || child.name === "tfoot" || child.name === "form") collect(child, childStyle);
       else if (child.name === "caption") walk(child, parentStyle, sink, ctx);
+      else if (child.name !== "colgroup" && child.name !== "col") fostered(child);
     }
   };
   collect(node, style);

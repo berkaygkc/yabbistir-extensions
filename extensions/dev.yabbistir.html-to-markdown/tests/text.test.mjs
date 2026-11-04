@@ -106,6 +106,15 @@ describe("escaping", () => {
     assert.equal(md("<p>Intro<br># two<br>- three</p>"), "Intro  \n\\# two  \n\\- three");
   });
 
+  test("aLineShapedLikeATableRule", () => {
+    // GFM reads "a | b" over "-- | --" as a table.
+    assert.equal(md("<p>a | b<br>-- | --</p>"), "a | b  \n\\-- | --");
+    assert.equal(md("<p>Name|Age<br>|:--|--:|</p>"), "Name|Age  \n\\|:--|--:|");
+    assert.equal(md("<p>Total<br>:-: |</p>"), "Total  \n\\:-: |");
+    assert.equal(md("<p>a | b<br>-- | x</p>"), "a | b  \n-- | x");
+    assert.equal(md("<p>1 - 2 | 3 -- 4</p>"), "1 - 2 | 3 -- 4");
+  });
+
   test("markdownInsideALine", () => {
     assert.equal(md("<p>2*3 = 6, `x`, [link](url), &lt;div&gt;, a &lt; b, AT&amp;T</p>"),
       "2\\*3 = 6, \\`x\\`, \\[link\\](url), \\<div>, a < b, AT&T");
@@ -132,6 +141,10 @@ describe("escaping", () => {
     assert.equal(escapeText("a_b *c* [d] `e` <f & g;", false), "a_b \\*c\\* \\[d\\] \\`e\\` \\<f & g;");
     assert.equal(escapeLineStart("###### six"), "\\###### six");
     assert.equal(escapeLineStart("####### seven"), "####### seven");
+    assert.equal(escapeLineStart("| --- | :-: |"), "\\| --- | :-: |");
+    assert.equal(escapeLineStart("-|-"), "\\-|-");
+    assert.equal(escapeLineStart("|"), "|");
+    assert.equal(escapeLineStart("| a | -- |"), "| a | -- |");
   });
 });
 

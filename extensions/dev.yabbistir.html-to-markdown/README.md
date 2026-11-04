@@ -29,7 +29,7 @@ Press ⇧ on the item and choose *Paste as Markdown*:
 - Block quotes, horizontal rules and code blocks, with the language when the page names it (`language-js`, `lang-js`, `highlight-source-js`, `data-lang`).
 - Tables, with the column alignment the page sets. Cells that span columns or rows leave the cells they cover empty.
 - Entities such as `&amp;` and `&#8217;`, and white space the way a browser shows it.
-- Text that Markdown would read as syntax is escaped, and nothing else: `snake_case` stays as it is, while a line that starts with `1.` or `#` gets a backslash.
+- Characters Markdown could read as syntax get a backslash: `*`, `` ` ``, `[` and `]` always, and the start of a line that would read as a heading, a list item, a quote or a table rule (`#`, `-`, `1.`, `>`, `-- | --`). An underscore inside a word, as in `snake_case`, stays as it is.
 
 It knows the quirks of the apps you copy from:
 

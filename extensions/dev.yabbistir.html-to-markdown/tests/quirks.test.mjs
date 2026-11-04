@@ -62,6 +62,14 @@ describe("Google Docs", () => {
     assert.equal(md(html), "| Name | Role     |\n| ---- | -------- |\n| Ada  | Engineer |");
   });
 
+  test("codeInATableCellIsOneLine", () => {
+    // Lines of code in a cell join with one space; the spaces inside a line stay.
+    const cell = (...paragraphs) => `<td>${paragraphs.join("")}</td>`;
+    const html = docs(`<table><tbody><tr>${cell(para(plain("Step")))}${cell(para(plain("Command")))}</tr>`
+      + `<tr>${cell(para(plain("Build")))}${cell(para(mono("make  all")), "<br>", para(mono("    --quiet")))}</tr></tbody></table>`);
+    assert.equal(md(html), "| Step  | Command             |\n| ----- | ------------------- |\n| Build | `make  all --quiet` |");
+  });
+
   test("monospacedParagraphsAreACodeBlock", () => {
     const html = docs(para(plain("Run this:")) + para(mono("if (ready) {")) + para(mono("    start();")) + "<br>"
       + para(mono("}")) + para(plain("Then "), mono("npm test"), plain(" again.")));
@@ -134,6 +142,18 @@ describe("Word", () => {
     const html = word(bullet(1, "1.", "Step one") + bullet(2, "a.", "Detail") + bullet(1, "2.", "Step two")
       + "<p class=MsoNormal>Between<o:p></o:p></p>" + bullet(1, "4)", "Fourth"));
     assert.equal(md(html), "1. Step one\n   1. Detail\n2. Step two\n\nBetween\n\n4. Fourth");
+  });
+
+  test("multiLevelNumbers", () => {
+    // Legal-style numbering: the last part of `1.2.` or `2.1)` is the item's number in its sub-list.
+    const html = word(bullet(1, "1.", "Scope") + bullet(2, "1.1.", "Terms") + bullet(2, "1.2", "Parties") + bullet(1, "2.", "Fees")
+      + bullet(2, "2.1)", "Rates") + bullet(3, "2.1.1", "Hourly"));
+    assert.equal(md(html), "1. Scope\n   1. Terms\n   2. Parties\n2. Fees\n   1. Rates\n      1. Hourly");
+  });
+
+  test("aSubListThatCarriesOnItsNumbering", () => {
+    assert.equal(md(word(bullet(1, "1.", "One") + bullet(2, "3.", "Three"))), "1. One\n\n   3. Three");
+    assert.equal(md(word(bullet(1, "1.", "One") + bullet(2, "1.3.", "Third"))), "1. One\n\n   3. Third");
   });
 
   test("aListMarkerWithoutConditionalComments", () => {

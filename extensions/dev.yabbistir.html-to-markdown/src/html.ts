@@ -52,6 +52,10 @@ const BUTTON_SCOPE = new Set([...SCOPE, "button"]);
 const LIST_ITEM_SCOPE = new Set([...SCOPE, "ol", "ul"]);
 const TABLE_SCOPE = new Set(["html", "table", "template"]);
 const TABLE_PARTS = new Set(["table", "caption", "colgroup", "tbody", "thead", "tfoot", "tr", "td", "th"]);
+/** What a cell, a row and a row group go into: the nearest of these that is open. */
+const ROW_CONTEXT = new Set(["tr", "tbody", "thead", "tfoot", "table"]);
+const BODY_CONTEXT = new Set(["tbody", "thead", "tfoot", "table"]);
+const TABLE_CONTEXT = new Set(["table"]);
 /** Formatting that the Standard carries over when it is closed by mistake: `<b><i>x</b>y` makes y italic. */
 const FORMATTING = new Set(["a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong",
   "tt", "u"]);
@@ -158,6 +162,26 @@ class TreeBuilder {
     }
   }
 
+  /**
+   * A row or a cell goes where the HTML Standard puts it. What is still open above the table's own parts closes
+   * (a browser shows that content before the table), and a cell with no row open gets one: `<table><td>` is a row.
+   */
+  private enterTable(name: string): void {
+    if ((this.openCount.get("table") ?? 0) <= 0) return;
+    const cell = name === "td" || name === "th";
+    const context = cell ? ROW_CONTEXT : name === "tr" ? BODY_CONTEXT : TABLE_CONTEXT;
+    for (let at = this.stack.length - 1; at > 0; at--) {
+      if (!context.has(this.stack[at].name)) continue;
+      this.popThrough(at + 1);
+      break;
+    }
+    if (cell && this.current.name !== "tr" && this.stack.length < MAX_DEPTH) {
+      const row = element("tr", Object.create(null) as Record<string, string>, this.current);
+      this.current.children.push(row);
+      this.push(row);
+    }
+  }
+
   text(value: string): void {
     let text = value;
     if (this.dropNewline) {
@@ -196,6 +220,7 @@ class TreeBuilder {
     if (name === "a") this.close("a", SCOPE); // links do not nest
     if (name === "tr" || name === "td" || name === "th" || name === "tbody" || name === "thead" || name === "tfoot") {
       this.closeTableParts(name);
+      this.enterTable(name);
     }
     if (MARKERS.has(name)) this.pending = [];
     else if (!BLOCKS.has(name)) this.reopen();
@@ -374,7 +399,9 @@ export function parseHTML(source: string): ElementNode {
       const body = html.slice(at + 2, close < 0 ? length : close);
       at = close < 0 ? length : close + 1;
       // Word's conditionals show their content in browsers: `<![if !supportLists]>·<![endif]>` is a list bullet.
-      const condition = /^\[if\s+([^\]]*)\]$/i.exec(body);
+      // One white-space character after "if", not a run: a run and the condition would both take the spaces of a
+      // long `<![if     …` and make the match quadratic.
+      const condition = /^\[if\s([^\]]*)\]$/i.exec(body);
       if (condition) {
         const test = condition[1].trim().toLowerCase();
         if (test === "!supportlists") {

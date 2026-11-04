@@ -255,6 +255,16 @@ describe("lists", () => {
     assert.equal(md("<ol><li>a<ul><li>b</li></ul></li></ol>"), "1. a\n   - b");
   });
 
+  test("aNestedListThatCannotInterruptItsItemsTextStartsAfterABlankLine", () => {
+    // CommonMark reads `1. Step\n   3. sub` as the one paragraph "Step 3. sub": right after a line of text, only a
+    // bulleted list or a numbered one from 1 can start, and only with something after its first marker.
+    assert.equal(md('<ol><li>Step<ol start="3"><li>sub</li></ol></li></ol>'), "1. Step\n\n   3. sub");
+    assert.equal(md('<ul><li>a<ol start="2"><li>b</li></ol></li></ul>'), "- a\n\n  2. b");
+    assert.equal(md("<ul><li>a<ul><li></li></ul></li></ul>"), "- a\n\n  -");
+    assert.equal(md("<ul><li>a<ul><li><ul><li>deep</li></ul></li></ul></li></ul>"), "- a\n\n  -\n    - deep");
+    assert.equal(md('<ul><li>a<ol start="1"><li>b</li></ol></li></ul>'), "- a\n  1. b");
+  });
+
   test("continuationLinesFollowTheMarkersWidth", () => {
     assert.equal(md("<ol start=9><li><p>x</p><p>more</p></li><li><p>y</p><p>more</p></li></ol>"),
       "9. x\n\n   more\n10. y\n\n    more");
