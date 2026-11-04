@@ -1,0 +1,23 @@
+{
+  "name": "Harf Düzeni",
+  "description": "Metni camelCase, snake_case, Başlık Düzeni, URL slug ve daha fazlasına çevirir; sonucu önceden gösterir.",
+  "changeCase.title": "Harf düzenini değiştir",
+  "changeCase.keywords": ["harf", "büyük", "küçük", "case", "değiştir", "camel", "pascal", "snake", "kebab", "constant", "dot", "başlık", "title", "cümle", "sentence", "upper", "lower", "slug"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Başlık Düzeni",
+  "sentence.title": "Cümle düzeni",
+  "upper.title": "BÜYÜK HARF",
+  "lower.title": "küçük harf",
+  "slug.title": "URL slug",
+  "casing.title": "Büyük/küçük harf kuralları",
+  "casing.auto": "Otomatik (uygulamanın dili)",
+  "casing.tr": "Türkçe",
+  "casing.en": "İngilizce",
+  "empty": "Değiştirilecek metin yok.",
+  "emptySlug": "Bu metinden bir slug çıkmıyor."
+}

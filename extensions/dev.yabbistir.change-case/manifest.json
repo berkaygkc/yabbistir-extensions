@@ -1,0 +1,40 @@
+{
+  "id": "dev.yabbistir.change-case",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:textformat",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["text", "developer"],
+  "preferences": [
+    { "id": "casing", "type": "choice", "title": "casing.title", "default": "auto",
+      "options": [
+        { "id": "auto", "title": "casing.auto" },
+        { "id": "tr", "title": "casing.tr" },
+        { "id": "en", "title": "casing.en" }
+      ] }
+  ],
+  "contributes": {
+    "actions": [
+      { "id": "changeCase", "title": "changeCase.title", "keywords": "changeCase.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text", "hint": true,
+        "variants": [
+          { "id": "camel", "title": "camel.title" },
+          { "id": "pascal", "title": "pascal.title" },
+          { "id": "snake", "title": "snake.title" },
+          { "id": "constant", "title": "constant.title" },
+          { "id": "kebab", "title": "kebab.title" },
+          { "id": "dot", "title": "dot.title" },
+          { "id": "title", "title": "title.title" },
+          { "id": "sentence", "title": "sentence.title" },
+          { "id": "upper", "title": "upper.title" },
+          { "id": "lower", "title": "lower.title" },
+          { "id": "slug", "title": "slug.title" }
+        ] }
+    ]
+  }
+}
