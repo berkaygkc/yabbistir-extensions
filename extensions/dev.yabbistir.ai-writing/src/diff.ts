@@ -65,6 +65,11 @@ function sidePath(line: string): string {
   return path.startsWith("a/") || path.startsWith("b/") ? path.slice(2) : path;
 }
 
+/** The paths of the files a diff changes, in order. */
+export function changedPaths(diff: string): string[] {
+  return parseDiff(diff).files.map((file) => file.path).filter((path) => path !== "");
+}
+
 /** A hunk header's line counts, "@@ -12,7 +12,8 @@" → 7 old and 8 new; a count left out is 1. */
 const hunkCounts = /^@@ -\d{1,9}(?:,(\d{1,9}))? \+\d{1,9}(?:,(\d{1,9}))? @@/;
 

@@ -1,6 +1,8 @@
 // The shapes some answers are pasted in: a bullet list, a checklist, a commit message, a pull request description.
 // The model is asked for each shape; these make sure of it, line by line.
 
+import { changedPaths } from "./diff.ts";
+
 /** A list marker the model may use at the start of a line: -, *, •, –, or a number. */
 const marker = /^(\s*)(?:[-*•‣◦▪–—]|\d{1,3}[.)])\s+/;
 
@@ -76,15 +78,58 @@ function trimEndOf(text: string, characters: string): string {
   return text.slice(0, end);
 }
 
+/**
+ * The verbs a commit summary starts with, by the forms the model writes them in ("Added", "Fixes"), with their
+ * imperative, which Conventional Commits and git ask for: "add", "fix".
+ */
+const imperatives = new Map<string, string>();
+for (const verb of [
+  "add", "fix", "update", "remove", "change", "improve", "refactor", "implement", "introduce", "create", "rename", "move",
+  "replace", "delete", "bump", "upgrade", "convert", "clean", "document", "allow", "enable", "disable", "prevent",
+  "handle", "support", "ensure", "use", "switch", "drop", "rework", "adjust", "correct", "resolve", "retry", "show",
+  "hide", "make", "set", "simplify", "split", "merge", "revert", "extract", "avoid", "keep", "let", "stop", "start",
+]) {
+  const stem = verb.endsWith("e") ? verb.slice(0, -1) : verb;
+  const forms = [verb, `${verb}s`, verb.endsWith("e") ? `${verb}d` : `${verb}ed`, `${stem}ing`];
+  if (verb.endsWith("y")) forms.push(`${verb.slice(0, -1)}ies`, `${verb.slice(0, -1)}ied`);
+  if (/(?:x|sh|ch|ss)$/.test(verb)) forms.push(`${verb}es`);
+  for (const form of forms) imperatives.set(form, verb);
+}
+for (const [form, verb] of [["made", "make"], ["kept", "keep"], ["split", "split"], ["set", "set"], ["let", "let"], ["dropped", "drop"], ["stopped", "stop"], ["shown", "show"]]) imperatives.set(form, verb);
+
+/** Whether every changed file is documentation, or every one a test, by its path. */
+const docsFile = /(?:\.(?:md|mdx|markdown|rst|adoc)$|(?:^|\/)docs?\/)/i;
+const testFile = /(?:(?:^|\/)(?:tests?|__tests__|specs?)\/|\.(?:test|spec)\.[cm]?[jt]sx?$|_test\.(?:go|py)$|(?:^|\/)test_[^/]{1,200}\.py$)/i;
+
+/**
+ * The type and summary, made to agree with Conventional Commits: the summary's first verb in the imperative and in
+ * lower case ("Added retry logic" → "add retry logic"), "feat" that only fixes made "fix", and "docs" or "test"
+ * when every changed file is documentation or a test.
+ */
+function settleType(type: string, summary: string, paths: string[]): [string, string] {
+  const space = summary.indexOf(" ");
+  const first = space === -1 ? summary : summary.slice(0, space);
+  const verb = imperatives.get(first.toLowerCase());
+  const rest = verb === undefined ? summary : verb + summary.slice(first.length);
+  let settled = type;
+  if (type === "feat" && verb === "fix") settled = "fix";
+  if (paths.length > 0 && type !== "revert") {
+    if (paths.every((path) => docsFile.test(path))) settled = "docs";
+    else if (paths.every((path) => testFile.test(path))) settled = "test";
+  }
+  return [settled, rest];
+}
+
 /** A subject of at most 72 characters, cut between words, without a closing full stop. */
-function tidySubject(raw: string): string {
+function tidySubject(raw: string, paths: string[]): string {
   let subject = raw.replace(/^#{1,6}\s+/, "").replace(/^(?:subject|başlık)\s*:\s*/i, "").trim();
   if (subject.startsWith("**") && subject.endsWith("**") && subject.length > 4) subject = subject.slice(2, -2).trim();
   if (subject.startsWith("`") && subject.endsWith("`") && subject.length > 2) subject = subject.slice(1, -1).trim();
   subject = subject.split(/\s+/).join(" ");
   const typed = /^([A-Za-z]+)(\([^()\n]{0,40}\))?(!)?:\s*/.exec(subject);
   if (typed && commitTypes.has(typed[1].toLowerCase())) {
-    subject = `${typed[1].toLowerCase()}${typed[2] ?? ""}${typed[3] ?? ""}: ${subject.slice(typed[0].length)}`;
+    const [type, summary] = settleType(typed[1].toLowerCase(), subject.slice(typed[0].length), paths);
+    subject = `${type}${typed[2] ?? ""}${typed[3] ?? ""}: ${summary}`;
   }
   subject = trimEndOf(subject, ".。");
   if (subject.length <= subjectLimit) return subject;
@@ -92,14 +137,36 @@ function tidySubject(raw: string): string {
   return trimEndOf(subject.slice(0, cut > subjectLimit / 2 ? cut : subjectLimit), " ,;:.-");
 }
 
-/** A commit message as git expects it: a subject of at most 72 characters, a blank line, a body wrapped at 72. */
-export function toCommitMessage(text: string): string {
+/** The lines a diff adds, without their "+", that are long enough to tell apart: what a body must not repeat. */
+function addedLines(diff: string): Set<string> {
+  const added = new Set<string>();
+  for (const line of diff.split("\n")) {
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    const content = line.slice(1).trim();
+    if (content.length >= 16) added.add(content);
+  }
+  return added;
+}
+
+/**
+ * A commit message as git expects it: a subject of at most 72 characters, a blank line, a body wrapped at 72.
+ * `diff` is the diff it describes: its files can settle the type, and a body line that only repeats a line it adds
+ * is left out, as is a code block, which the model sometimes copies from the diff.
+ */
+export function toCommitMessage(text: string, diff = ""): string {
   const lines = text.split("\n");
   const first = lines.findIndex((line) => line.trim() !== "");
   if (first === -1) return "";
-  const subject = tidySubject(lines[first]);
+  const subject = tidySubject(lines[first], diff === "" ? [] : changedPaths(diff));
+  const copied = diff === "" ? new Set<string>() : addedLines(diff);
   const body: string[] = [];
+  let inCode = false;
   for (const raw of lines.slice(first + 1)) {
+    if (raw.trim().startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode || copied.has(raw.trim())) continue;
     const line = raw.trimEnd().replace(/^(?:body|gövde)\s*:\s*/i, "");
     if (line.trim() === "") {
       if (body.length > 0 && body[body.length - 1] !== "") body.push("");

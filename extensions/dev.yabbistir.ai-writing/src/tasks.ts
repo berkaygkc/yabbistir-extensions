@@ -43,8 +43,8 @@ export interface Task {
   temperature: number;
   /** The longest answer, in tokens, for a prompt text of about this many tokens. */
   maxTokens: (tokens: number) => number;
-  /** The answer's final shape, after the wrapping is taken off. */
-  shape?: (answer: string) => string;
+  /** The answer's final shape, after the wrapping is taken off; `text` is the person's whole text. */
+  shape?: (answer: string, text: string) => string;
   /** The locale key for the notice when the answer is the text unchanged. */
   unchanged?: string;
   /** The locale key for the notice when the answer is empty once shaped. */
@@ -56,6 +56,11 @@ export interface Task {
    * not pasted.
    */
   minShare?: number;
+  /**
+   * For a rewrite that keeps the text's sentences: an answer shorter than its part that stops in the middle of a
+   * sentence, where the part ends one, ran out before the end, and is not pasted.
+   */
+  keepsSentences?: boolean;
 }
 
 /** About as many tokens as the text, with room to spare: an answer cut short would lose the end of the text. */
@@ -74,6 +79,7 @@ export const tasks: Task[] = [
     maxTokens: asLong,
     unchanged: "fix.unchanged",
     minShare: 0.6,
+    keepsSentences: true,
   },
   {
     id: "shorter",
@@ -85,30 +91,33 @@ export const tasks: Task[] = [
     temperature: 0.3,
     maxTokens: (tokens) => Math.min(2048, Math.ceil(tokens * 0.7) + 128),
     unchanged: "unchanged",
+    keepsSentences: true,
   },
   {
     id: "formal",
     form: "split",
     input: { kind: "parts", size: 2400, tokens: 1400, join: "keep" },
-    rule: "Rewrite the text in a more formal, polite and professional tone. Keep its meaning, facts, names, numbers, dates and links, about the same length, and its line breaks and lists.",
+    rule: "Rewrite the text in a more formal, polite and professional tone. Keep its meaning, facts, names, numbers, dates and links, about the same length, and its line breaks and lists. Add no sign-off, signature or placeholder the text does not already have.",
     ask: "Rewrite this text in a more formal tone:",
     language: "text",
     temperature: 0.4,
     maxTokens: asLong,
     unchanged: "unchanged",
     minShare: 0.4,
+    keepsSentences: true,
   },
   {
     id: "friendly",
     form: "split",
     input: { kind: "parts", size: 2400, tokens: 1400, join: "keep" },
-    rule: "Rewrite the text in a warmer, friendlier and more casual tone that stays clear and respectful. Keep its meaning, facts, names, numbers, dates and links, about the same length, and its line breaks and lists. Add no emoji the text does not already have.",
+    rule: "Rewrite the text in a warmer, friendlier and more casual tone that stays clear and respectful. Keep its meaning, facts, names, numbers, dates and links, about the same length, and its line breaks and lists. Add no emoji, sign-off, signature or placeholder the text does not already have.",
     ask: "Rewrite this text in a friendlier tone:",
     language: "text",
     temperature: 0.5,
     maxTokens: asLong,
     unchanged: "unchanged",
     minShare: 0.4,
+    keepsSentences: true,
   },
   {
     id: "bullets",
@@ -137,7 +146,7 @@ export const tasks: Task[] = [
     id: "reply",
     form: "split",
     input: { kind: "whole", size: 5000, tokens: 2800, prepare: (text, size) => shortenMiddle(latestMessage(text), size) },
-    rule: "Write a reply to the message, as the person who received it. Answer what it asks and match its tone and formality. Keep it short. Do not make up facts, dates or promises: where a detail is needed, write a short placeholder in square brackets, such as [time]. No subject line and no signature.",
+    rule: "Write a reply to the message, as the person who received it. Answer what it asks and match its tone and formality. Keep it short. Do not make up facts, dates or promises: for a detail the message does not give, write a short placeholder in square brackets, such as [time]. No subject line and no signature.",
     ask: "Write a reply to this message:",
     language: "text",
     temperature: 0.6,
@@ -165,12 +174,15 @@ export const tasks: Task[] = [
     // A copied diff is longer than a chat message almost always, so commit messages are always jobs.
     form: "job",
     input: { kind: "diff", size: 6000, tokens: 2800 },
-    rule: "Write a git commit message for the changes in the diff, in the Conventional Commits style. The first line is type(scope): summary, at most 72 characters, in the imperative mood, with no full stop at the end. The type is one of feat, fix, docs, style, refactor, perf, test, build, ci, chore or revert; leave out (scope) when there is no clear one. Then an empty line and a short body of one to three lines on what changed and why.",
+    rule: "Write a git commit message for the changes in the diff, in the Conventional Commits style. The first line is type(scope): summary, at most 72 characters, in the imperative mood, with no full stop at the end. The type is one of feat, fix, docs, style, refactor, perf, test, build, ci, chore or revert; leave out (scope) when there is no clear one. Then an empty line and a short body of one to three lines on what changed and why."
+      // An example: without one, the model wrote a subject alone, in the past tense, every time.
+      + " For example:\nfeat(search): match the words of a query in any order\n\n"
+      + "Typing \"report march\" now finds \"March report\" too: the query is\nsplit into words, and each must appear in the item.",
     ask: "Write a commit message for this diff:",
     language: "english",
     temperature: 0.2,
     maxTokens: fixed(220),
-    shape: toCommitMessage,
+    shape: (answer, diff) => toCommitMessage(answer, diff),
   },
   {
     id: "pr-description",

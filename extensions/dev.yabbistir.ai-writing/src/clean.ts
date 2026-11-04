@@ -98,9 +98,41 @@ export function stripQuotes(output: string, input: string): string {
   return output;
 }
 
+/**
+ * The answer with square brackets the model escaped as Markdown made plain again: it writes a reply's placeholder
+ * as "\[name]" now and then. Kept when the person's own text has a backslash, as code or a path might.
+ */
+export function stripEscapes(output: string, input: string): string {
+  if (input.includes("\\") || !output.includes("\\")) return output;
+  return output.split("\\[").join("[").split("\\]").join("]");
+}
+
+/** The last line of `text`, and where it starts; the whole text when it has one line. */
+function lastLine(text: string): [string, number] {
+  const start = text.lastIndexOf("\n") + 1;
+  return [text.slice(start).trim(), start];
+}
+
+/**
+ * A rewrite without the signature the model added at its end: a line that is only a placeholder ("[Your Name]",
+ * "[İsminiz]"), and the short sign-off just above it ("Best regards,") when the person's text does not have that
+ * line. Kept when the person's text has square brackets of its own.
+ */
+export function stripPlaceholderSignature(output: string, input: string): string {
+  if (input.includes("[")) return output;
+  const [placeholder, start] = lastLine(output);
+  if (start === 0 || !/^\[[^[\]\n]{1,40}\]$/.test(placeholder)) return output;
+  let text = output.slice(0, start).trimEnd();
+  const [signOff, signOffStart] = lastLine(text);
+  if (signOffStart > 0 && signOff.length <= 40 && signOff.endsWith(",") && !input.includes(signOff)) {
+    text = text.slice(0, signOffStart).trimEnd();
+  }
+  return text;
+}
+
 /** The answer as it should be pasted: the wrapping taken off, line ends made plain, ends trimmed. */
 export function cleanAnswer(output: string, input: string, tag: string): string {
-  let text = output.replace(/\r\n?/g, "\n").trim();
+  let text = stripEscapes(output.replace(/\r\n?/g, "\n").trim(), input);
   text = stripMarkers(text, tag);
   text = stripFence(text, input);
   text = stripPreamble(text, input);

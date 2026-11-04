@@ -1,11 +1,11 @@
 import type { Action, Actions, Context, Item, Result, YabError } from "@yabbistir/api";
 
-import { cleanAnswer, isRefusal } from "./clean.ts";
+import { cleanAnswer, isRefusal, stripPlaceholderSignature } from "./clean.ts";
 import { looksLikeCode } from "./code.ts";
 import { condenseDiff, looksLikeDiff } from "./diff.ts";
 import { buildRequest, settingFor, type Setting } from "./prompt.ts";
 import { tasks, type Task } from "./tasks.ts";
-import { sameText, splitIntoParts, type Part } from "./text.ts";
+import { sameText, splitIntoParts, stopsMidSentence, type Part } from "./text.ts";
 import { charactersFor, estimateTokens, pointWeight } from "./tokens.ts";
 
 // A task whose answer is about as long as the text (a rewrite, a list, a reply) is two actions, and the manifest
@@ -94,10 +94,14 @@ function partsFor(task: Task, text: string, setting: Setting): Part[] {
   return [{ before: "", core: fitted(text, input.size, input.tokens, setting.latin, cut), after: "" }];
 }
 
-/** Whether an answer is far shorter than the part it rewrites, as when the model stopped before the end. */
+/**
+ * Whether a rewrite stopped before the end of its part: it is far shorter than the part, or shorter and it stops in
+ * the middle of a sentence where the part ends one. A short text is never judged this way.
+ */
 function cutShort(task: Task, part: string, answer: string): boolean {
-  if (task.minShare === undefined || part.length < 120 || answer === "") return false;
-  return answer.length < part.length * task.minShare;
+  if (part.length < 120 || answer === "") return false;
+  if (task.minShare !== undefined && answer.length < part.length * task.minShare) return true;
+  return task.keepsSentences === true && answer.length < part.length && stopsMidSentence(part, answer);
 }
 
 function formatNumber(value: number, language: string): string {
@@ -129,11 +133,12 @@ async function write(task: Task, mode: Mode, item: Item | null, ctx: Context, de
     if (mode === "job") report(task, index, parts.length);
     const reply = await ask(task, part.core, setting, mode, deadline - (Date.now() - started));
     if (!("answer" in reply)) return reply;
-    const answer = cleanAnswer(reply.answer, part.core, reply.tag);
+    const cleaned = cleanAnswer(reply.answer, part.core, reply.tag);
+    const answer = task.keepsSentences ? stripPlaceholderSignature(cleaned, part.core) : cleaned;
     if (!task.replyLike && isRefusal(answer, part.core)) return none(yab.t("declined"));
     // A rewrite that stopped early would paste the text without its end: say so rather than paste it.
     if (cutShort(task, part.core, answer)) return none(yab.t("cutShort"));
-    answers.push(task.shape ? task.shape(answer) : answer);
+    answers.push(task.shape ? task.shape(answer, text) : answer);
   }
   if (mode === "job" && parts.length > 1) report(task, parts.length, parts.length);
   if (answers.every((answer) => answer === "")) return none(yab.t(task.nothing ?? "noAnswer"));
@@ -141,7 +146,7 @@ async function write(task: Task, mode: Mode, item: Item | null, ctx: Context, de
   const joined = task.input.kind === "parts" && task.input.join === "keep"
     ? parts.map((part, index) => part.before + (answers[index] || part.core) + part.after).join("").trim()
     : answers.filter((answer) => answer !== "").join("\n");
-  const result = task.shape && parts.length > 1 ? task.shape(joined) : joined;
+  const result = task.shape && parts.length > 1 ? task.shape(joined, text) : joined;
   if (task.unchanged && sameText(result, text)) return none(yab.t(task.unchanged));
   return { text: result };
 }

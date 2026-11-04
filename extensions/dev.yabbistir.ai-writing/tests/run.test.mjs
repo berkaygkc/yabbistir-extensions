@@ -81,16 +81,35 @@ describe("the answer's language", () => {
     assert.doesNotMatch(instructions, /tr_TR/, "the app's language does not pull the answer into Turkish");
   });
 
-  test("anyOtherLanguageIsKeptAsItIs", async () => {
-    for (const sample of [
-      "Kannst du mir den Bericht morgen schicken?",
-      "Was hast du gesagt? Ich will das nicht machen.",
-      "We hebben het rapport gisteren gestuurd, maar het is nog niet klaar en dat was de bedoeling niet.",
-      "Sabah görüşə gələ bilməyəcəyəm, işim çoxdur.",
-    ]) {
+  test("everyLanguageTheModelSpeaksIsNamed", async () => {
+    // Told only "the same language as the text", the model wrote formal and friendly rewrites of these in English.
+    const samples = {
+      German: "Kannst du mir den Bericht morgen schicken?",
+      Dutch: "We hebben het rapport gisteren gestuurd, maar het is nog niet klaar en dat was de bedoeling niet.",
+      French: "Peux-tu m'envoyer le rapport avant la réunion ? Merci beaucoup.",
+      Spanish: "¿Puedes enviarme el informe antes de la reunión?",
+      Japanese: "明日の会議の前にレポートを送ってください。",
+    };
+    for (const [name, sample] of Object.entries(samples)) {
+      const instructions = await instructionsFor(text(sample), actions.formal, { language: "tr" });
+      assert.match(instructions, new RegExp(`You MUST write in ${name}, the language of the text\\. NEVER translate it\\.`), name);
+      assert.doesNotMatch(instructions, /locale|in English|in Turkish/, name);
+    }
+    const chinese = await instructionsFor(text("請在會議之前看一下草稿，謝謝！"), actions.friendly);
+    assert.match(chinese, /You MUST write in Chinese, the language of the text, in the same characters as the text, simplified or traditional\./);
+  });
+
+  test("twoLanguagesAboutAsLikelyAreBothNamed", async () => {
+    const danish = "hej alle sammen, en kort opdatering om lanceringen. buildet er grønt igen, efter at vi har rettet den ustabile test, så jeg tror, vi kan udgive på torsdag, hvis ingen har noget imod det.";
+    const instructions = await instructionsFor(text(danish), actions.formal);
+    assert.match(instructions, /You MUST write in the language of the text, (?:Danish or Norwegian|Norwegian or Danish), whichever it is\. NEVER translate it\./);
+  });
+
+  test("aLanguageThatIsNotClearIsKeptAsItIs", async () => {
+    for (const sample of ["Sabah görüşə gələ bilməyəcəyəm, işim çoxdur.", "Bon dia, em pots enviar l'informe abans de la reunió?", "Привет, можешь прислать отчёт до встречи?"]) {
       const instructions = await instructionsFor(text(sample));
       assert.match(instructions, /You MUST write in the same language as the text/, sample);
-      assert.doesNotMatch(instructions, /locale|in English|in Turkish/, sample);
+      assert.doesNotMatch(instructions, /locale|in English|in Turkish|whichever/, sample);
     }
   });
 
@@ -435,6 +454,22 @@ describe("shapes of the answers", () => {
     assert.ok(inside(asked[0].prompt).length <= 5000);
   });
 
+  test("theNotesOfAShortenedTextAreExplainedOnlyWhenItHasThem", async () => {
+    // Named in every call, "[12 more lines]" turned up at the end of a real reply.
+    const { host, asked } = writing("Sure, Thursday works.");
+    await host.run(actions.reply, text("Can we move the review to Thursday morning?"));
+    assert.doesNotMatch(asked[0].options.instructions, /more lines|\[…\]|left out/);
+    await host.run(actions.explain, text("A sentence of the long text. ".repeat(500)));
+    assert.match(asked[1].options.instructions, /Notes in square brackets, such as \[…\] or \[12 more lines\], mark parts left out of a long text; leave them out of the answer\./);
+  });
+
+  test("aRewriteLosesTheSignatureTheModelAdded", async () => {
+    const { host } = writing("Dear Team,\n\nThe build is green again, and we ship on Thursday.\n\nBest regards,\n[Your Name]");
+    assert.deepEqual(await host.run(actions.formal, text("hey team, the build is green again and we ship thursday")), { text: "Dear Team,\n\nThe build is green again, and we ship on Thursday." });
+    const reply = writing("Sure, [time] works for me.\n\nBest,\n[name]");
+    assert.equal((await reply.host.run(actions.reply, text("When can we meet?"))).text, "Sure, [time] works for me.\n\nBest,\n[name]", "a reply's placeholders are its point");
+  });
+
   test("aCommitMessageFollowsGitsShape", async () => {
     const answer = [
       "```",
@@ -446,7 +481,7 @@ describe("shapes of the answers", () => {
     const { host, asked } = writing(answer);
     const result = await host.run(actions.commit, text("@@ -1,2 +1,3 @@\n-send()\n+retry(send, 3)"));
     const [subject, blank, ...body] = result.text.split("\n");
-    assert.equal(subject, "feat(upload): Add a retry to the upload client for when the network");
+    assert.equal(subject, "feat(upload): add a retry to the upload client for when the network", "the verb in lower case");
     assert.ok(subject.length <= 72);
     assert.equal(blank, "");
     assert.ok(body.length >= 2 && body.every((line) => line.length <= 72), body.join("|"));
@@ -580,6 +615,43 @@ describe("what fits in the model's context", () => {
     assert.deepEqual(await formal.host.run(actions["formal-long"], text(paragraph("alpha"))), notice);
     const turkish = await formal.host.run(actions["formal-long"], text(paragraph("alpha")), { language: "tr" });
     assert.equal(turkish.message, "Apple Intelligence metnin sonuna gelmeden durdu, bu yüzden hiçbir şey yapıştırılmadı. Daha kısa bir metinle dene.");
+  });
+
+  // Sentences of 63 characters, the last one with its full stop.
+  const sentences = (count) => "Ada sends the draft to the team before the meeting on Thursday. ".repeat(count).trim();
+  // An answer that stops at a word, in the middle of a sentence, at about `share` of its part.
+  const stopAt = (share, word = " before") => (part) => part.slice(0, part.lastIndexOf(word, Math.floor(part.length * share)));
+
+  test("anAnswerThatStopsMidSentenceIsNotPasted", async () => {
+    // Each answer keeps more than the share the length guard asks for: only where it ends tells it stopped early.
+    const notice = { none: true, message: "Apple Intelligence stopped before the end of the text, so nothing was pasted. Try a shorter text." };
+    const input = [sentences(30), sentences(30)].join("\n\n");
+    const { host, asked } = writing((part, prompt, options, call) => (call === 2 ? stopAt(0.9)(part) : part));
+    assert.deepEqual(await host.run(actions["fix-long"], text(input)), notice);
+    assert.equal(asked.length, 2, "two parts, the second one cut");
+    for (const id of ["shorter-long", "formal-long", "friendly-long"]) {
+      const { host: rewriting } = writing(stopAt(0.75));
+      assert.deepEqual(await rewriting.run(actions[id], text(sentences(12))), notice, id);
+    }
+    const dense = "请在明天的会议之前把报告发给团队，并告诉他们有什么变化。".repeat(8);
+    const chinese = writing(stopAt(0.95, "并告诉"));
+    assert.deepEqual(await chinese.host.run(actions["fix-long"], text(dense)), notice, "Chinese, stopped at a comma");
+    const atOnce = writing(stopAt(0.8));
+    assert.deepEqual(await atOnce.host.run(actions.fix, text(sentences(5))), notice, "at once too");
+  });
+
+  test("anAnswerThatEndsWhereItsTextDoesIsPasted", async () => {
+    const finished = writing((part) => `${part.split(". ").slice(0, 6).join(". ")}.`);
+    assert.equal((await finished.host.run(actions["shorter-long"], text(sentences(12)))).text, sentences(6), "a shorter text that ends a sentence");
+    const noStop = writing((part) => part.slice(0, -1));
+    assert.equal((await noStop.host.run(actions["fix-long"], text(sentences(12)))).text, sentences(12).slice(0, -1), "only the final full stop left off");
+    const unfinished = "ada sends the draft to the team before the meeting on thursday and grace checks the numbers ".repeat(6).trim();
+    const own = writing(stopAt(0.8));
+    assert.ok("text" in (await own.host.run(actions["formal-long"], text(unfinished))), "the text ends no sentence itself");
+    const list = writing(stopAt(0.8));
+    assert.ok("text" in (await list.host.run(actions["bullets-long"], text(sentences(12)))), "a list is not judged by its end");
+    const short = writing("Ada sends the draft");
+    assert.deepEqual(await short.host.run(actions.fix, text("Ada sends the draft to the team on Thursday.")), { text: "Ada sends the draft" }, "a short text is never judged");
   });
 
   test("aShorterAnswerIsFineWhereShorterIsTheTask", async () => {

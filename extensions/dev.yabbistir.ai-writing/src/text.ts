@@ -127,3 +127,62 @@ function plain(text: string): string {
 export function sameText(a: string, b: string): boolean {
   return plain(a) === plain(b);
 }
+
+/** What may follow a sentence's end: closing quotes and brackets, and Markdown emphasis. */
+const closers = new Set(Array.from("\"'”’»›)]}）」』】〉》*_`"));
+/** The marks that end a sentence. */
+const sentenceEnds = new Set(Array.from(".!?…。！？؟।"));
+/** The marks a sentence goes on after. */
+const openEnds = new Set(Array.from(",;:-–—、，；："));
+const isWordPoint = (point: string) => /^[\p{L}\p{M}\p{N}]$/u.test(point);
+
+/** The code point that ends just before `index` (at least 1), and where it starts. */
+function pointBefore(text: string, index: number): [string, number] {
+  const low = text.charCodeAt(index - 1);
+  if (index >= 2 && low >= 0xdc00 && low <= 0xdfff) {
+    const high = text.charCodeAt(index - 2);
+    if (high >= 0xd800 && high <= 0xdbff) return [text.slice(index - 2, index), index - 2];
+  }
+  return [text.slice(index - 1, index), index - 1];
+}
+
+/**
+ * How a text ends: its last character past closing quotes, brackets and emphasis, and its last word, folded.
+ * Linear: it walks back from the end once, and keeps at most 64 letters of the word.
+ */
+function ending(text: string): { mark: string; word: string } {
+  const trimmed = text.trimEnd();
+  let index = trimmed.length;
+  let mark = "";
+  while (index > 0 && mark === "") {
+    const [point, start] = pointBefore(trimmed, index);
+    if (closers.has(point)) index = start;
+    else mark = point;
+  }
+  while (index > 0) {
+    const [point, start] = pointBefore(trimmed, index);
+    if (isWordPoint(point)) break;
+    index = start;
+  }
+  let word = "";
+  for (let count = 0; index > 0 && count < 64; count++) {
+    const [point, start] = pointBefore(trimmed, index);
+    if (!isWordPoint(point)) break;
+    word = point + word;
+    index = start;
+  }
+  return { mark, word: word.toLowerCase() };
+}
+
+/**
+ * Whether `answer` stops in the middle of a sentence where `part`, the text it rewrites, ends one: on a letter, a
+ * digit or a comma, and on another word than the part's last. That is how an answer that ran out of room ends. A
+ * rewrite that only left off the final full stop ends on the part's own last word, and is not taken for one.
+ */
+export function stopsMidSentence(part: string, answer: string): boolean {
+  const whole = ending(part);
+  if (!sentenceEnds.has(whole.mark)) return false;
+  const cut = ending(answer);
+  if (!isWordPoint(cut.mark) && !openEnds.has(cut.mark)) return false;
+  return cut.word !== whole.word;
+}
