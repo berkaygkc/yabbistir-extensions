@@ -608,14 +608,15 @@ describe("adversarialCopies", () => {
       assert.ok(input.length > 200_000 && input.length <= 256_000, `${name}: ${input.length}`);
       for (const first of [true, false]) {
         // The best of up to five runs: a busy machine (the whole store's tests run at once) can stall one run,
-        // while a quadratic pattern is slow every time.
+        // while a quadratic pattern is slow every time (seconds at this size). The limit is half of the 200 ms a
+        // capture rule has, so GitHub's slower macOS runners pass too.
         let best = Infinity;
-        for (let attempt = 0; attempt < 5 && best >= 50; attempt++) {
+        for (let attempt = 0; attempt < 5 && best >= 100; attempt++) {
           const started = performance.now();
           findSecrets(input, { jwt: true }, first);
           best = Math.min(best, performance.now() - started);
         }
-        assert.ok(best < 50, `${name} took ${best.toFixed(1)} ms at best`);
+        assert.ok(best < 100, `${name} took ${best.toFixed(1)} ms at best`);
       }
     });
   }
