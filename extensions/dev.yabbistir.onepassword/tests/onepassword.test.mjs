@@ -15,7 +15,7 @@ let helpers = 0;
 async function newHelper() {
   return (await import(`../src/index.ts?helper=${++helpers}`)).sources;
 }
-const { DEADLINE } = await import("../src/index.ts");
+const { DEADLINE, CHECK } = await import("../src/index.ts");
 
 // Synthetic values, put together here so that nothing in this file looks like a real credential.
 const PASSWORD = ["s3cr3t", "örnek", "parola"].join("-");
@@ -87,15 +87,18 @@ const DISMISSED = ERROR("authorization prompt dismissed, please try again");
  *                approves makes it true again
  *   unlocked     false: 1Password is locked and the person dismisses its prompt
  *   list / get   replace every `op item list` / `op item get` answer (a result, a promise or a function of the args)
+ *   whoami       replaces every `op whoami` answer
+ * A field an item lacks fails the whole command, as op 2 does: `"password" isn't a field in the "<title>" item`.
  */
 function fakeOp(changes = {}) {
-  const state = { version: "2.32.0", integration: true, approved: true, unlocked: true, items: ITEMS, fields: FIELDS, codes: CODES, list: undefined, get: undefined, ...changes };
+  const state = { version: "2.32.0", integration: true, approved: true, unlocked: true, items: ITEMS, fields: FIELDS, codes: CODES, list: undefined, get: undefined, whoami: undefined, ...changes };
   const ok = (stdout) => ({ exitCode: 0, stdout, stderr: "" });
   const fail = (stderr) => ({ exitCode: 1, stdout: "", stderr });
   const op = (args) => {
     if (args[0] === "--version") return ok(`${state.version}\n`);
     if (!state.integration) return fail(NO_ACCOUNTS);
     if (args[0] === "whoami") {
+      if (state.whoami !== undefined) return state.whoami;
       return state.approved && state.unlocked
         ? ok(`${JSON.stringify({ url: "https://my.1password.com", email: "deniz.k@ornek.dev", user_uuid: idOf("user"), account_uuid: idOf("account") })}\n`)
         : fail(ERROR("account is not signed in"));
@@ -116,6 +119,8 @@ function fakeOp(changes = {}) {
         return code === undefined ? fail(ERROR(`item "${id}" does not have a one-time password field`)) : ok(`${code}\n`);
       }
       const label = args[args.indexOf("--fields") + 1].replace(/^label=/, "");
+      const title = state.items.find((item) => item.id === id)?.title ?? id;
+      if (!Object.hasOwn(fields, label)) return fail(ERROR(`"${label}" isn't a field in the "${title}" item`));
       const purpose = { password: "PASSWORD", username: "USERNAME" }[label];
       const field = { id: label, type: label === "password" ? "CONCEALED" : "STRING", purpose, label, value: fields[label], reference: `op://Kişisel/${id}/${label}` };
       return ok(`${JSON.stringify(field, null, 2)}\n`);
@@ -125,8 +130,9 @@ function fakeOp(changes = {}) {
   return Object.assign(op, { state });
 }
 
+/** `now: null` leaves the clock alone, for tests that move it with mock timers. */
 function hostWith(sources, op, { now = START, language = "en", preferences = {} } = {}) {
-  return createFakeHost({ folder, sources, exec: { op }, now, context: { language }, preferences });
+  return createFakeHost({ folder, sources, exec: { op }, ...(now === null ? {} : { now }), context: { language }, preferences });
 }
 /** The arguments of each op run, in order. */
 const runs = (host) => host.calls.filter((call) => call.api === "exec" && call.args[0] === "op").map((call) => call.args[1]);
@@ -139,7 +145,8 @@ const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 /** For tests that wait on op: a regression fails them instead of leaving them waiting. */
 const WAITS = { timeout: 5_000 };
 
-const SETUP = { locked: true, message: "Open 1Password and turn on “Integrate with 1Password CLI” in Settings › Developer." };
+const SETUP = { locked: true, message: "Open 1Password and turn on “Integrate with 1Password CLI” in Settings › Developer. On macOS 27, also allow yabbistir under Privacy & Security › Files & Folders." };
+const OFFLINE = ERROR("Get \"https://my.1password.com/api/v1/session\": dial tcp: lookup my.1password.com: no such host");
 const LOCKED = { locked: true, message: "1Password is locked or didn’t allow access. Unlock it and approve its prompt, then open this column again." };
 const UPDATE = { locked: true, message: "op needs an update", command: "brew upgrade 1password-cli" };
 const READ_FAILED = "op could not read this item.";
@@ -229,6 +236,12 @@ describe("list", () => {
     ];
     const host = hostWith(await newHelper(), fakeOp({ items }));
     assert.deepEqual(await host.list("logins"), { rows: [{ id: idOf("first"), title: "İlk" }] });
+  });
+
+  test("two logins with one name are both listed, in the order of their ids", async () => {
+    const items = [login(idOf("bbb"), "Google", { additional_information: "is" }), login(idOf("aaa"), "Google", { additional_information: "ev" })];
+    const host = hostWith(await newHelper(), fakeOp({ items }));
+    assert.deepEqual(await host.list("logins"), { rows: [{ id: idOf("aaa"), title: "Google", subtitle: "ev" }, { id: idOf("bbb"), title: "Google", subtitle: "is" }] });
   });
 
   test("an empty vault has no rows", async () => {
@@ -361,7 +374,7 @@ describe("locked", () => {
   });
 
   test("not signed in, or without the app, says the same", async () => {
-    for (const stderr of [NOT_SIGNED_IN, NO_APP, ERROR("LostConnectionToApp")]) {
+    for (const stderr of [NOT_SIGNED_IN, NO_APP, ERROR("LostConnectionToApp"), ERROR("connectionreset"), ERROR("account is not signed in")]) {
       const host = hostWith(await newHelper(), fakeOp({ list: { exitCode: 1, stdout: "", stderr } }));
       assert.deepEqual(await host.list("codes"), SETUP, stderr);
     }
@@ -374,6 +387,30 @@ describe("locked", () => {
       const other = hostWith(await newHelper(), fakeOp({ list: { exitCode: 1, stdout: "", stderr } }));
       assert.deepEqual(await other.list("logins"), LOCKED, stderr);
     }
+  });
+
+  test("both columns opened at once while 1Password is locked are both locked, after one listing", async () => {
+    const host = hostWith(await newHelper(), fakeOp({ unlocked: false }));
+    const [logins, codes] = await Promise.all([host.list("logins"), host.list("codes")]);
+    assert.deepEqual(logins, LOCKED);
+    assert.deepEqual(codes, LOCKED);
+    assert.equal(listings(host), 1, "one listing, and so one prompt");
+  });
+
+  test("offline, the row says so instead of asking to turn on the integration", async () => {
+    const message = "1Password couldn’t reach its server. Check your internet connection, then open this column again.";
+    for (const stderr of [OFFLINE, ERROR("dial tcp 10.0.0.1:443: connect: network is unreachable"), ERROR("read tcp 10.0.0.2:50000->10.0.0.1:443: i/o timeout")]) {
+      const host = hostWith(await newHelper(), fakeOp({ list: { exitCode: 1, stdout: "", stderr } }));
+      assert.deepEqual(await host.list("logins"), { locked: true, message }, stderr);
+    }
+  });
+
+  test("words in op’s error that came from a name, or from Settings, decide nothing", async () => {
+    const titled = ERROR(`couldn't list "Slack Connect · Integration Unlock: 1Password is locked"`);
+    await assert.rejects(hostWith(await newHelper(), fakeOp({ list: { exitCode: 1, stdout: "", stderr: titled } })).list("logins"), { message: LIST_FAILED });
+    // A vault named "app" and a one-letter account shorthand leave op's own phrase whole.
+    const host = hostWith(await newHelper(), fakeOp({ list: { exitCode: 1, stdout: "", stderr: NO_APP } }), { preferences: { vault: "app", account: "m" } });
+    assert.deepEqual(await host.list("logins"), SETUP);
   });
 
   test("a locked answer lets the rows go", async () => {
@@ -623,6 +660,73 @@ describe("run", () => {
     await assert.rejects(host.runSource("logins", id, "password"), { message: READ_FAILED });
   });
 
+  test("a login without a password field, such as a passkey-only one, says it has no password, and the rows stay", async () => {
+    const sources = await newHelper();
+    const slack = idOf("slack");
+    const quoted = idOf("quoted");
+    const items = [login(ID.posta, "Posta"), login(slack, "Slack Connect · Integration Unlock"), login(quoted, `Ali’s "Connect" app`)];
+    const fields = { [ID.posta]: { username: "deniz" }, [slack]: { username: "deniz" }, [quoted]: {} };
+    const op = fakeOp({ items, fields });
+    await hostWith(sources, op).list("logins");
+    const host = hostWith(sources, op, { now: START + 1_000 });
+    const message = "This item has no password.";
+    await assert.rejects(host.runSource("logins", ID.posta, "password"), { message });
+    await assert.rejects(host.runSource("logins", slack, "password"), { message }, "words in the title decide nothing");
+    await assert.rejects(host.runSource("logins", quoted, "password"), { message }, "nor do quotation marks in it");
+    await assert.rejects(host.runSource("logins", quoted, "username"), { message: "This item has no username." });
+    assert.deepEqual(await host.runSource("logins", slack, "username"), { text: "deniz" });
+    const later = hostWith(sources, op, { now: START + 2_000 });
+    await later.list("logins");
+    assert.deepEqual(commands(later), ["whoami"], "the rows stayed");
+  });
+
+  test("a missing field reads the same without a list to take the title from", async () => {
+    const get = { exitCode: 1, stdout: "", stderr: ERROR(`"password" isn't a field in the "Ali’s "Connect" app" item`) };
+    const host = hostWith(await newHelper(), fakeOp({ get }));
+    await assert.rejects(host.runSource("logins", ID.posta, "password"), { message: "This item has no password." });
+  });
+
+  test("offline, a read says so, and the rows stay", async () => {
+    const sources = await newHelper();
+    const op = fakeOp();
+    await hostWith(sources, op).list("logins");
+    op.state.get = { exitCode: 1, stdout: "", stderr: OFFLINE };
+    const host = hostWith(sources, op, { now: START + 1_000 });
+    const message = "1Password couldn’t reach its server. Check your internet connection, then try again.";
+    await assert.rejects(host.runSource("logins", ID.posta, "password"), { message });
+    await assert.rejects(host.runSource("codes", ID.posta, "code"), { message });
+    const later = hostWith(sources, op, { now: START + 2_000 });
+    await later.list("logins");
+    assert.deepEqual(commands(later), ["whoami"]);
+  });
+
+  test("an unrelated failure of an item with a scary title stays a failed read, and the rows stay", async () => {
+    const sources = await newHelper();
+    const scary = idOf("scary");
+    const op = fakeOp({ items: [login(scary, "Unlock 1Password · Touch ID Integration")], fields: { [scary]: { password: PASSWORD } } });
+    await hostWith(sources, op).list("logins");
+    op.state.get = { exitCode: 1, stdout: "", stderr: ERROR(`could not read "Unlock 1Password · Touch ID Integration"`) };
+    const host = hostWith(sources, op, { now: START + 1_000 });
+    await assert.rejects(host.runSource("logins", scary, "password"), { message: READ_FAILED });
+    const later = hostWith(sources, op, { now: START + 2_000 });
+    await later.list("logins");
+    assert.deepEqual(commands(later), ["whoami"]);
+  });
+
+  test("a title with op’s own words in quotation marks of its own decides nothing either", async () => {
+    const sources = await newHelper();
+    const odd = idOf("odd");
+    const title = `Not "1Password is locked" sadece`;
+    const op = fakeOp({ items: [login(odd, title)], fields: { [odd]: { password: PASSWORD } } });
+    await hostWith(sources, op).list("logins");
+    op.state.get = { exitCode: 1, stdout: "", stderr: ERROR(`could not read "${title}"`) };
+    const host = hostWith(sources, op, { now: START + 1_000 });
+    await assert.rejects(host.runSource("logins", odd, "password"), { message: READ_FAILED }, "the listed title is taken out whole");
+    const later = hostWith(sources, op, { now: START + 2_000 });
+    await later.list("logins");
+    assert.deepEqual(commands(later), ["whoami"], "and the rows stay");
+  });
+
   test("row ids must be letters and digits", async () => {
     const host = hostWith(await newHelper(), fakeOp());
     for (const rowId of ["--otp", "-x", "", "ab cd", `${ID.posta}\n`, "１２", "a".repeat(65), "op://Kişisel/x/password", "../x"]) {
@@ -648,25 +752,58 @@ describe("run", () => {
 });
 
 describe("time", () => {
-  test("a listing op does not finish in time asks to approve 1Password’s prompt", WAITS, async () => {
-    mock.timers.enable({ apis: ["setTimeout"] });
+  const NOT_SIGNED_IN_YET = { exitCode: 1, stdout: "", stderr: ERROR("account is not signed in") };
+  const NO_ANSWER = { locked: true, message: "1Password didn’t answer in time. Approve its prompt if it shows one, then open this column again." };
+  const SLOW = { locked: true, message: "1Password took too long to list your logins. Choose one vault in Settings to list fewer." };
+
+  test("a listing that runs out of time while 1Password’s prompt waits asks to approve it", WAITS, async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"], now: START });
     try {
-      const host = hostWith(await newHelper(), fakeOp({ list: never }));
+      const host = hostWith(await newHelper(), fakeOp({ list: never, whoami: NOT_SIGNED_IN_YET }), { now: null });
       const listing = host.list("logins");
       await nextTurn();
       mock.timers.tick(DEADLINE - 1);
       await nextTurn();
       mock.timers.tick(1);
-      assert.deepEqual(await listing, { locked: true, message: "1Password didn’t answer in time. Approve its prompt if it shows one, then open this column again." });
+      assert.deepEqual(await listing, NO_ANSWER);
+      assert.deepEqual(commands(host), ["--version", "item list", "whoami"], "op whoami tells a waiting prompt from a slow op");
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  test("a listing that runs out of time once 1Password answers for the app says the vault is too large", WAITS, async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"], now: START });
+    try {
+      const host = hostWith(await newHelper(), fakeOp({ list: never }), { now: null });
+      const listing = host.list("codes");
+      await nextTurn();
+      mock.timers.tick(DEADLINE);
+      assert.deepEqual(await listing, SLOW);
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
+  test("an op whoami that does not answer either is stopped too, inside the app’s 10 seconds", WAITS, async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"], now: START });
+    try {
+      const host = hostWith(await newHelper(), fakeOp({ list: never, whoami: never() }), { now: null });
+      const listing = host.list("logins");
+      await nextTurn();
+      mock.timers.tick(DEADLINE);
+      await nextTurn();
+      mock.timers.tick(CHECK);
+      assert.deepEqual(await listing, NO_ANSWER);
     } finally {
       mock.timers.reset();
     }
   });
 
   test("a read op does not finish in time says so", WAITS, async () => {
-    mock.timers.enable({ apis: ["setTimeout"] });
+    mock.timers.enable({ apis: ["setTimeout", "Date"], now: START });
     try {
-      const host = hostWith(await newHelper(), fakeOp({ get: never }));
+      const host = hostWith(await newHelper(), fakeOp({ get: never }), { now: null });
       const read = host.runSource("codes", ID.posta, "code");
       await nextTurn();
       mock.timers.tick(DEADLINE);
@@ -676,8 +813,38 @@ describe("time", () => {
     }
   });
 
+  test("a column listing again after the other column’s cancel keeps to its own time", WAITS, async () => {
+    mock.timers.enable({ apis: ["setTimeout", "Date"], now: START });
+    try {
+      const sources = await newHelper();
+      const op = fakeOp({ list: never, whoami: NOT_SIGNED_IN_YET });
+      const first = hostWith(sources, op, { now: null });
+      const second = hostWith(sources, op, { now: null });
+      const cancelled = first.list("logins");
+      await nextTurn();
+      mock.timers.tick(2_000);
+      let answer;
+      const waiting = second.list("codes").then((listing) => { answer = listing; });
+      await nextTurn();
+      mock.timers.tick(3_000);
+      first.cancel();
+      await assert.rejects(cancelled, { code: "cancelled" });
+      await nextTurn();
+      assert.equal(listings(second), 1, "its own listing, after the shared one stopped");
+      mock.timers.tick(DEADLINE - 3_000 - 1);
+      await nextTurn();
+      assert.equal(answer, undefined, "still within its time");
+      mock.timers.tick(1);
+      for (let turn = 0; turn < 5; turn++) await nextTurn();
+      assert.deepEqual(answer, NO_ANSWER, "stopped 8 seconds after its own start, not 8 seconds after the retry");
+      await waiting;
+    } finally {
+      mock.timers.reset();
+    }
+  });
+
   test("op is stopped well inside the app’s 10 seconds", () => {
-    assert.ok(DEADLINE >= 5_000 && DEADLINE <= 9_000);
+    assert.ok(DEADLINE >= 5_000 && DEADLINE + CHECK <= 9_000);
   });
 });
 
@@ -722,7 +889,7 @@ describe("everywhere", () => {
     for (const host of await everyPath()) {
       assert.deepEqual(host.storage, {});
       assert.deepEqual(host.calls.filter((call) => call.api !== "exec"), []);
-      assert.ok(!leaks(JSON.stringify(host.results)), "no value is kept among the results");
+      for (const call of host.calls) assert.ok(!leaks(JSON.stringify(call.args)), "no value ever reaches op’s arguments");
     }
   });
 
@@ -756,9 +923,9 @@ describe("everywhere", () => {
   test("answers in Turkish", async () => {
     const tr = { language: "tr" };
     assert.deepEqual(await hostWith(await newHelper(), fakeOp({ integration: false }), tr).list("logins"),
-      { locked: true, message: "1Password’ü aç ve Settings › Developer’da “Integrate with 1Password CLI” ayarını aç." });
+      { locked: true, message: "1Password’ü aç ve Settings › Developer’da “Integrate with 1Password CLI” ayarını etkinleştir. macOS 27’de ayrıca Gizlilik ve Güvenlik › Dosyalar ve Klasörler’de yabbistir’e izin ver." });
     assert.deepEqual(await hostWith(await newHelper(), fakeOp({ unlocked: false }), tr).list("logins"),
-      { locked: true, message: "1Password kilitli ya da erişime izin vermedi. Kilidini aç ve isteğini onayla, sonra bu sütunu yeniden aç." });
+      { locked: true, message: "1Password kilitli ya da erişime izin vermedi. Kilidini aç ve çıkan onay isteğini kabul et, sonra sütunu yeniden aç." });
     assert.deepEqual(await hostWith(await newHelper(), fakeOp({ version: "2.1.0" }), tr).list("logins"),
       { locked: true, message: "op güncellenmeli", command: "brew upgrade 1password-cli" });
     const host = hostWith(await newHelper(), fakeOp(), tr);

@@ -7,10 +7,12 @@ import type { Context, ExecResult, SourceListing, SourceRow, Sources, SourceValu
 
 /** `--reveal`, which a field read asks for, came in op 2.30.0. */
 const MINIMUM_VERSION = [2, 30, 0];
-/** How long a listing is reused, while op still answers for the app without asking. */
+/** How long a listing may be reused, at most: only while `op whoami` still answers. */
 const LIFETIME = 5 * 60_000;
 /** op is stopped this far into a call: the app cuts `list` and `run` off at 10 seconds. */
-export const DEADLINE = 8_500;
+export const DEADLINE = 8_000;
+/** What a listing that ran out of time may still spend on `op whoami`, to tell a slow op from an unanswered prompt. */
+export const CHECK = 1_000;
 /** 1Password's ids are 26 letters and digits. Any letters and digits get through: op never reads them as an option. */
 const ITEM_ID = /^[A-Za-z0-9]{1,64}$/;
 /** A sign-in address (my.1password.com, with or without https://), or an account or user ID. */
@@ -23,14 +25,21 @@ const EDGE_SPACE = /^[\p{Z}\t-\r\u0085]+|[\p{Z}\t-\r\u0085]+$/gu;
 /** A host name as a person reads it: letters, digits, dots and dashes. */
 const HOST = /^[\p{L}\p{N}](?:[\p{L}\p{N}.-]*[\p{L}\p{N}])?$/u;
 
-// What op's error says, with the account, vault and id taken out of it first, so that a name never decides.
-/** 1Password is locked, or its prompt was dismissed or never answered. */
-const LOCKED = /authori[sz]|dismissed|\bunlock|\blocked\b|biometric|touch id/i;
-/** op cannot reach the app: the CLI integration is off, the app is not running, or no account is signed in through it. */
-const SETUP = /no accounts? configured|not (currently )?signed in|op signin|desktop app|1password app|connect|integrat/i;
+// op's own phrases in an error. The names op quotes there (an item's title, a vault, an account, an id) are taken out
+// first (see opWords), so a title such as "Slack Connect" or a vault named "Locked" decides nothing.
+/** The field asked for is not in the item, as in a login that has a passkey and no password. */
+const NO_FIELD = /isn[’']t a field|does not have a field|has no field|no (such )?fields?\b/i;
+const NO_CODE = /one-time password|\botp\b|totp/i;
+/** 1Password is locked, or its prompt was dismissed, refused or never answered. */
+const LOCKED = /authori[sz]ation (prompt )?(was )?(dismissed|denied|declined|refused|cancell?ed|timeout|timed out|failed|expired)|prompt (was )?dismissed|(1password|the app) is locked|unlock (the )?1password/i;
+/** op cannot reach the app: the CLI integration is off (or not allowed, on macOS 27), the app is not running, or no account is signed in through it. */
+const NO_APP = /no accounts configured|lostconnectiontoapp|connecting to (the )?desktop app|not currently signed in|account is not signed in/i;
+/** op cannot reach 1Password's servers: the Mac is offline. */
+const OFFLINE = /dial tcp|read tcp|write tcp|no such host|network is unreachable|no route to host|i\/o timeout|tls handshake/i;
+/** The app's connection dropped (1Password's troubleshooting calls it connectionreset); read after the network's own words. */
+const RESET = /connectionreset|connection reset/i;
 const NO_VAULT = /isn[’']t a vault|\bvault\b.*\bnot found|no vault/i;
 const NO_ACCOUNT = /\baccount\b.*\b(not found|isn[’']t|unknown|no such)|no account (found|matching|with)/i;
-const NO_CODE = /one-time password|\botp\b|totp/i;
 
 /** The fields `run` reads with `op item get --fields`: a Login's own username and password. */
 const FIELDS: Record<string, { label: string; purpose: string; empty: string }> = {
@@ -44,12 +53,10 @@ interface Choice {
   vault: string;
 }
 
-/** Stops op when its call is cancelled or runs too long, and tells which it was. */
+/** Stops op when the calls waiting for it are cancelled. Each op run has its own time besides (see `op`). */
 interface Watch {
   readonly signal: AbortSignal;
-  late(): boolean;
   stop(reason: unknown): void;
-  end(): void;
 }
 
 /** One `op item list` for every column that asks while it runs; op stops once none waits for it any more. */
@@ -85,26 +92,33 @@ function chosen(preferences: Record<string, unknown>): Choice | string {
 
 function watch(): Watch {
   const controller = new AbortController();
+  return { signal: controller.signal, stop: (reason) => controller.abort(reason) };
+}
+
+/**
+ * op's answer, or undefined when `until` (a time as Date.now() gives it) comes first: then op is stopped, or not
+ * started at all. Cancelling, and a missing op, go through.
+ */
+async function op(args: string[], watch: Watch, until: number, onLine?: (line: string, stream: "stdout" | "stderr") => void): Promise<ExecResult | undefined> {
+  const left = until - Date.now();
+  if (left <= 0) return undefined;
+  const controller = new AbortController();
   let late = false;
+  const cancel = () => controller.abort(watch.signal.reason);
+  watch.signal.addEventListener("abort", cancel);
+  if (watch.signal.aborted) cancel();
   const timer = setTimeout(() => {
     late = true;
     controller.abort();
-  }, DEADLINE);
-  return {
-    signal: controller.signal,
-    late: () => late,
-    stop: (reason) => controller.abort(reason),
-    end: () => clearTimeout(timer),
-  };
-}
-
-/** op's answer, or undefined when the watch stopped it for running too long. Cancelling, and a missing op, go through. */
-async function op(args: string[], watch: Watch, onLine?: (line: string, stream: "stdout" | "stderr") => void): Promise<ExecResult | undefined> {
+  }, left);
   try {
-    return await yab.exec("op", args, onLine === undefined ? { signal: watch.signal } : { signal: watch.signal, onLine });
+    return await yab.exec("op", args, onLine === undefined ? { signal: controller.signal } : { signal: controller.signal, onLine });
   } catch (error) {
-    if (watch.late()) return undefined;
+    if (late) return undefined;
     throw error;
+  } finally {
+    clearTimeout(timer);
+    watch.signal.removeEventListener("abort", cancel);
   }
 }
 
@@ -123,19 +137,28 @@ function recentEnough(output: string): boolean {
  * True once op is recent enough, false while it is not, undefined when it did not say in time. Asked once per helper,
  * and every time until it is, so the column works again after `brew upgrade` without a restart.
  */
-async function opIsRecent(watch: Watch): Promise<boolean | undefined> {
+async function opIsRecent(watch: Watch, until: number): Promise<boolean | undefined> {
   if (versionChecked) return true;
-  const version = await op(["--version"], watch);
+  const version = await op(["--version"], watch, until);
   if (version === undefined) return undefined;
   if (version.exitCode !== 0 || !recentEnough(version.stdout)) return false;
   versionChecked = true;
   return true;
 }
 
-/** op's error without the words that came from Settings or the row, so a vault named "Locked" decides nothing. */
-function said(stderr: string, ...names: string[]): string {
-  return names.filter((name) => name !== "").reduce((text, name) => text.split(name).join(" "), stderr);
+/**
+ * op's own words in an error: every name it quotes taken out ("Posta", a vault, an account, an id), and the given
+ * names first wherever op quotes them whole, quotation marks inside them included. Unquoted text is left as it is:
+ * the phrases above are op's own, which a name rarely spells out.
+ */
+function opWords(stderr: string, names: string[]): string {
+  let text = stderr;
+  for (const name of names) if (name !== "") text = text.split(`"${name}"`).join(" ");
+  return text.replace(/"[^"\n]*"/g, " ").replace(/“[^”\n]*”/g, " ");
 }
+
+/** The title the row was listed with, while the list is kept: op quotes it in some errors. */
+const titleOf = (rowId: string): string => cached?.rows.find((row) => row.id === rowId)?.title ?? "";
 
 /** A locked answer, which the rows go with. */
 function locked(message: string, command?: string): SourceListing {
@@ -143,23 +166,37 @@ function locked(message: string, command?: string): SourceListing {
   return command === undefined ? { locked: true, message } : { locked: true, message, command };
 }
 
+/** What op's error says is wrong with 1Password itself, if anything: locked, not set up, or offline. */
+function appTrouble(words: string): "locked" | "setup" | "offline" | undefined {
+  if (LOCKED.test(words)) return "locked";
+  if (NO_APP.test(words)) return "setup";
+  if (OFFLINE.test(words)) return "offline";
+  if (RESET.test(words)) return "setup";
+  return undefined;
+}
+
 /** The message for a failed `op item list` that the person can do something about, or undefined. */
 function listRefusal(stderr: string, choice: Choice): string | undefined {
-  const words = said(stderr, choice.account, choice.vault);
+  const words = opWords(stderr, [choice.account, choice.vault]);
   if (choice.vault !== "" && NO_VAULT.test(words)) return yab.t("unknownVault", { vault: choice.vault });
-  if (LOCKED.test(words)) return yab.t("locked");
-  if (SETUP.test(words)) return yab.t("setup");
+  const trouble = appTrouble(words);
+  if (trouble !== undefined) return yab.t(trouble);
   if (choice.account !== "" && NO_ACCOUNT.test(words)) return yab.t("unknownAccount", { account: choice.account });
   return undefined;
 }
 
-/** The message for a failed `op item get`. A lock, or a lost connection to the app, lets the rows go too. */
-function runRefusal(stderr: string, choice: Choice, rowId: string, code: boolean): string {
-  const words = said(stderr, choice.account, rowId);
-  if (code && NO_CODE.test(words)) return yab.t("noCode");
-  if (LOCKED.test(words) || SETUP.test(words)) {
+/**
+ * The message for a failed `op item get`. A missing field is the item's own answer, and the rows stay; a lock, or a
+ * lost connection to the app, lets them go.
+ */
+function runRefusal(stderr: string, choice: Choice, rowId: string, empty: string): string {
+  const words = opWords(stderr, [titleOf(rowId), choice.account, rowId]);
+  if (empty === "noCode" ? NO_CODE.test(words) || NO_FIELD.test(words) : NO_FIELD.test(words)) return yab.t(empty);
+  const trouble = appTrouble(words);
+  if (trouble === "offline") return yab.t("offlineRun");
+  if (trouble !== undefined) {
     cached = undefined;
-    return yab.t(LOCKED.test(words) ? "lockedRun" : "setup");
+    return yab.t(trouble === "locked" ? "lockedRun" : "setup");
   }
   if (choice.account !== "" && NO_ACCOUNT.test(words)) return yab.t("unknownAccount", { account: choice.account });
   return yab.t("readFailed");
@@ -230,18 +267,28 @@ function rowsOf(json: string): SourceRow[] {
   return entries.map((entry) => entry.row);
 }
 
-async function readListing(choice: Choice, key: string, watch: Watch): Promise<SourceListing> {
-  const recent = await opIsRecent(watch);
+/**
+ * Why a listing ran out of time. When op still answers for the app, 1Password was approved and op was only slow, as
+ * with a very large vault; otherwise its prompt is still waiting.
+ */
+async function lateListing(choice: Choice, watch: Watch, until: number): Promise<string> {
+  const signedIn = await op(["whoami", ...accountFlag(choice)], watch, until + CHECK);
+  return signedIn !== undefined && signedIn.exitCode === 0 ? yab.t("slowList") : yab.t("noAnswer");
+}
+
+async function readListing(choice: Choice, key: string, watch: Watch, until: number): Promise<SourceListing> {
+  const recent = await opIsRecent(watch, until);
   if (recent === undefined) return locked(yab.t("noAnswer"));
   // A calm row with the command, as for a lock.
   if (!recent) return locked(yab.t("updateNeeded"), "brew upgrade 1password-cli");
 
-  // Rows a few minutes old come back while op still answers for the app: `op whoami` never asks for Touch ID, and
-  // fails once 1Password locks or its approval runs out. Then the rows go, and the listing below asks again.
+  // Rows a few minutes old may come back, but only while op answers for the app without asking: `op whoami` never
+  // shows a prompt, and fails once 1Password locks (or before op has been approved at all). Then the rows go, and
+  // the listing below asks again.
   const age = cached !== undefined && cached.key === key ? Date.now() - cached.at : Infinity;
   if (cached !== undefined && age >= 0 && age <= LIFETIME) {
     const rows = cached.rows;
-    const signedIn = await op(["whoami", ...accountFlag(choice)], watch);
+    const signedIn = await op(["whoami", ...accountFlag(choice)], watch, until);
     if (signedIn === undefined) return locked(yab.t("noAnswer"));
     if (signedIn.exitCode === 0) return { rows };
   }
@@ -250,10 +297,10 @@ async function readListing(choice: Choice, key: string, watch: Watch): Promise<S
   // Every line through onLine: an exec result keeps only the last 64 KB, less than a large vault's JSON. Archived
   // items are left out by op itself.
   const lines: string[] = [];
-  const listed = await op(["item", "list", "--categories", "Login", "--format", "json", ...vaultFlag(choice), ...accountFlag(choice)], watch, (line, stream) => {
+  const listed = await op(["item", "list", "--categories", "Login", "--format", "json", ...vaultFlag(choice), ...accountFlag(choice)], watch, until, (line, stream) => {
     if (stream === "stdout") lines.push(line);
   });
-  if (listed === undefined) return locked(yab.t("noAnswer"));
+  if (listed === undefined) return locked(await lateListing(choice, watch, until));
   if (listed.exitCode !== 0) {
     const refusal = listRefusal(listed.stderr, choice);
     if (refusal !== undefined) return locked(refusal);
@@ -264,15 +311,17 @@ async function readListing(choice: Choice, key: string, watch: Watch): Promise<S
   return { rows };
 }
 
-/** The listing on its way for these settings, or a new one. Both columns open at once share it, and one prompt. */
-function listingFor(choice: Choice, key: string): Listing {
+/**
+ * The listing on its way for these settings, or a new one that stops op by `until`. Both columns open at once share
+ * it, and so one prompt.
+ */
+function listingFor(choice: Choice, key: string, until: number): Listing {
   if (pending !== undefined && pending.key === key) return pending;
-  const timer = watch();
-  const done = readListing(choice, key, timer).finally(() => {
-    timer.end();
+  const stopper = watch();
+  const done = readListing(choice, key, stopper, until).finally(() => {
     if (pending?.done === done) pending = undefined;
   });
-  pending = { key, watch: timer, done, waiting: 0 };
+  pending = { key, watch: stopper, done, waiting: 0 };
   return pending;
 }
 
@@ -306,16 +355,19 @@ function join(listing: Listing, signal: AbortSignal): Promise<SourceListing> {
 }
 
 async function list(ctx: Context): Promise<SourceListing> {
+  // This call's own time, from its start: a listing it starts, now or again below, stops op by then.
+  const until = Date.now() + DEADLINE;
   ctx.signal.throwIfAborted();
   const choice = chosen(ctx.preferences);
   if (typeof choice === "string") return locked(choice);
   const key = JSON.stringify([choice.account, choice.vault]);
   try {
-    return await join(listingFor(choice, key), ctx.signal);
+    return await join(listingFor(choice, key, until), ctx.signal);
   } catch (error) {
-    // The op this column waited on was stopped with the other column's call, not with this one: once more.
+    // The op this column waited on was stopped with the other column's call, not with this one: once more, in the
+    // time this call has left.
     if (ctx.signal.aborted || !isCancelled(error)) throw error;
-    return await join(listingFor(choice, key), ctx.signal);
+    return await join(listingFor(choice, key, until), ctx.signal);
   }
 }
 
@@ -339,30 +391,30 @@ function valueOf(stdout: string, field: { label: string; purpose: string }): str
 /** One row's value for one of `actions`, read by op as the person picks it. */
 async function read(rowId: string, actionId: string, ctx: Context, actions: readonly string[]): Promise<SourceValue> {
   // Ids are 1Password's letters and digits, and actions the manifest's: anything else never reaches op.
+  const until = Date.now() + DEADLINE;
   if (!actions.includes(actionId) || !ITEM_ID.test(rowId)) throw new Error(yab.t("readFailed"));
   const choice = chosen(ctx.preferences);
   if (typeof choice === "string") throw new Error(choice);
   ctx.signal.throwIfAborted();
-  const timer = watch();
-  const stop = () => timer.stop(ctx.signal.reason);
+  const stopper = watch();
+  const stop = () => stopper.stop(ctx.signal.reason);
   ctx.signal.addEventListener("abort", stop);
   try {
-    const recent = await opIsRecent(timer);
+    const recent = await opIsRecent(stopper, until);
     if (recent === undefined) throw new Error(yab.t("noAnswerRun"));
     if (!recent) throw new Error(yab.t("updateNeededRun"));
 
-    const code = actionId === "code";
     const field = FIELDS[actionId];
     // One field, or the current code that `--otp` works out; never the item's other fields. op prints nothing to the
     // clipboard: the app pastes the value itself, concealed, and gives the clipboard back.
-    const args = code || field === undefined
+    const args = field === undefined
       ? ["item", "get", rowId, "--otp", ...accountFlag(choice)]
       : ["item", "get", rowId, "--fields", `label=${field.label}`, "--format", "json", "--reveal", ...accountFlag(choice)];
-    const result = await op(args, timer);
+    const result = await op(args, stopper, until);
     if (result === undefined) throw new Error(yab.t("noAnswerRun"));
-    if (result.exitCode !== 0) throw new Error(runRefusal(result.stderr, choice, rowId, code));
+    if (result.exitCode !== 0) throw new Error(runRefusal(result.stderr, choice, rowId, field?.empty ?? "noCode"));
 
-    if (code || field === undefined) {
+    if (field === undefined) {
       const value = result.stdout.trim();
       if (value === "") throw new Error(yab.t("noCode"));
       return { secret: value };
@@ -373,7 +425,6 @@ async function read(rowId: string, actionId: string, ctx: Context, actions: read
     if (value === null || value.trim() === "") throw new Error(yab.t(field.empty));
     return actionId === "password" ? { secret: value } : { text: value };
   } finally {
-    timer.end();
     ctx.signal.removeEventListener("abort", stop);
   }
 }
