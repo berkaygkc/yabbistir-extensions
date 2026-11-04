@@ -98,6 +98,8 @@ export function includePath(folder: string, word: string): string | undefined {
 interface Collected {
   hosts: Map<string, Host>;
   files: number;
+  /** Names dropped because they are not plain words (spaces, a leading dash). Patterns do not count. */
+  skipped: number;
 }
 
 function parseText(text: string, folder: string, seen: Set<string>, state: Collected, depth: number): void {
@@ -111,7 +113,8 @@ function parseText(text: string, folder: string, seen: Set<string>, state: Colle
     if (key === "host") {
       current = [];
       for (const name of args) {
-        if (isPattern(name) || name.length > MAX_ALIAS || !SAFE_WORD.test(name)) continue;
+        if (isPattern(name)) continue;
+        if (name.length > MAX_ALIAS || !SAFE_WORD.test(name)) { state.skipped++; continue; }
         let host = state.hosts.get(name);
         if (host === undefined) { host = { alias: name }; state.hosts.set(name, host); }
         current.push(host);
@@ -155,10 +158,14 @@ function readFile(path: string): string | undefined {
 
 /** Every host in the config text and the files it includes inside `folder`, in the order they first appear. */
 export function parseConfig(text: string, folder: string): Host[] {
+  return parseAll(text, folder).hosts;
+}
+
+function parseAll(text: string, folder: string): { hosts: Host[]; skipped: number } {
   const root = trimSlash(folder);
-  const state: Collected = { hosts: new Map(), files: 1 };
+  const state: Collected = { hosts: new Map(), files: 1, skipped: 0 };
   parseText(text, root, new Set([root + "/config"]), state, 0);
-  return [...state.hosts.values()];
+  return { hosts: [...state.hosts.values()], skipped: state.skipped };
 }
 
 /** The host name with `%h` read as the alias; undefined when it is not a plain name. */
@@ -184,7 +191,9 @@ export function subtitleOf(host: Host): string | undefined {
   const user = userOf(host);
   const port = portOf(host);
   if (user === undefined && port === undefined && (name === undefined || name === host.alias)) return undefined;
-  return `${user === undefined ? "" : `${user}@`}${name ?? host.alias}${port === undefined ? "" : `:${port}`}`;
+  // An IPv6 address has colons of its own, so it is bracketed before the port is added.
+  const shown = name ?? host.alias;
+  return `${user === undefined ? "" : `${user}@`}${shown.includes(":") ? `[${shown}]` : shown}${port === undefined ? "" : `:${port}`}`;
 }
 
 /** `ssh alias`. */
@@ -201,7 +210,7 @@ export function fullCommand(host: Host): string {
   return `ssh ${user === undefined ? "" : `${user}@`}${name ?? host.alias}${port === undefined ? "" : ` -p ${port}`}`;
 }
 
-type Loaded = { hosts: Host[] } | { locked: string };
+type Loaded = { hosts: Host[]; skipped: number } | { locked: string };
 
 function load(): Loaded {
   const chosen = yab.preferences.folder;
@@ -214,7 +223,7 @@ function load(): Loaded {
   let bytes: Uint8Array;
   try { bytes = yab.files.read(config); } catch { throw new Error(yab.t("listFailed")); }
   if (bytes.length > MAX_FILE_BYTES) throw new Error(yab.t("listFailed"));
-  return { hosts: parseConfig(new TextDecoder("utf-8").decode(bytes), folder) };
+  return parseAll(new TextDecoder("utf-8").decode(bytes), folder);
 }
 
 export const sources: Sources = {
@@ -222,7 +231,7 @@ export const sources: Sources = {
     list() {
       const loaded = load();
       if ("locked" in loaded) return { locked: true, message: loaded.locked };
-      if (loaded.hosts.length === 0) return { locked: true, message: yab.t("noHosts") };
+      if (loaded.hosts.length === 0) return { locked: true, message: yab.t(loaded.skipped > 0 ? "noHostsSkipped" : "noHosts") };
       return { rows: loaded.hosts.map((host) => ({ id: host.alias, title: host.alias, subtitle: subtitleOf(host) })) };
     },
     run(rowId, actionId) {

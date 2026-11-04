@@ -27,6 +27,7 @@ open the panel in Terminal, move to the *SSH Hosts* column and type `prod`. The 
 - Like ssh, the first value of an option wins when a host appears twice.
 - `Match` blocks are ignored.
 - `Include` lines that name a file inside the same folder, relative (`Include work`) or absolute (`Include /Users/you/.ssh/work`), and `~/.ssh/work` when the folder you chose is `.ssh`. Includes inside included files are followed up to eight levels deep.
+- **Limit:** a config that is a symlink pointing out of the folder, or cannot be read, counts as missing. Host names with spaces or a leading dash get no row; when that leaves nothing, the column says so.
 - **Limit:** the extension cannot list a folder, so a glob such as `Include config.d/*` is not followed; name the files one by one. Files outside the chosen folder are never read.
 - Options from `Host *` blocks are not merged into the rows; ssh still applies them when you run the command.
 

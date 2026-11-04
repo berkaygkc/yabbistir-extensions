@@ -10,8 +10,9 @@
   "full.title": "Kullanıcı ve portla yapıştır",
   "full.label": "Tam komut",
   "noFolder": "Ayarlar’dan SSH klasörünü seç",
-  "noConfig": "SSH klasöründe config dosyası yok",
+  "noConfig": "SSH klasöründe okunabilir config dosyası yok",
   "noHosts": "Yapılandırmada sunucu bulunamadı",
   "listFailed": "SSH yapılandırması okunamadı.",
-  "gone": "Bu sunucu artık SSH yapılandırmasında yok."
+  "gone": "Bu sunucu artık SSH yapılandırmasında yok.",
+  "noHostsSkipped": "Kullanılabilir sunucu yok: boşluklu ya da tireyle başlayan adlar atlanır"
 }

@@ -228,12 +228,22 @@ describe("empty and failing", () => {
 
   test("noConfigFile", async () => {
     const listing = await hostWith({}).list("hosts");
-    assert.deepEqual(listing, { locked: true, message: "No config file in the SSH folder" });
+    assert.deepEqual(listing, { locked: true, message: "No readable config file in the SSH folder" });
   });
 
   test("noHosts", async () => {
     const listing = await hostWith({ [`${DIR}/config`]: "Host *\n  User x\n# nothing\n" }).list("hosts");
     assert.deepEqual(listing, { locked: true, message: "No hosts found in the config" });
+  });
+
+  test("onlyUnusableNamesSaySo", async () => {
+    const listing = await hostWith({ [`${DIR}/config`]: 'Host "my box" -bad\n  User x\n' }).list("hosts");
+    assert.deepEqual(listing, { locked: true, message: "No usable hosts: names with spaces or a leading dash are skipped" });
+  });
+
+  test("ipv6SubtitleIsBracketed", async () => {
+    const listing = await hostWith({ [`${DIR}/config`]: "Host v6\n  HostName ::1\n  User u\n  Port 22\n" }).list("hosts");
+    assert.equal(listing.rows[0].subtitle, "u@[::1]:22");
   });
 
   test("folderNotChosenInSettingsIsNotReadable", async () => {
@@ -253,7 +263,7 @@ describe("empty and failing", () => {
 
   test("turkish", async () => {
     const host = createFakeHost({ folder, sources, preferences: { folder: DIR }, context: { language: "tr" } });
-    assert.equal((await host.list("hosts")).message, "SSH klasöründe config dosyası yok");
+    assert.equal((await host.list("hosts")).message, "SSH klasöründe okunabilir config dosyası yok");
   });
 });
 
