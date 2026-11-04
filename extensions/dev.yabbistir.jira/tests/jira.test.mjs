@@ -272,9 +272,10 @@ describe("list", () => {
   });
 
   test("a CAPTCHA, a refused account and a site without Jira lock the column with their own words", async () => {
+    const captcha = "Jira wants you to sign in on the web first. Sign in at your-domain.atlassian.net once; the column tries again within 15 minutes.";
     const cases = [
-      [{ status: 403, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, text: "" }, "Jira wants you to sign in on the web first. Sign in at your-domain.atlassian.net once, then try again."],
-      [{ status: 200, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, json: { issues: [] } }, "Jira wants you to sign in on the web first. Sign in at your-domain.atlassian.net once, then try again."],
+      [{ status: 403, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, text: "" }, captcha],
+      [{ status: 200, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, json: { issues: [] } }, captcha],
       [{ status: 403, json: { errorMessages: ["You do not have access."] } }, "Your Jira account can’t use your-domain.atlassian.net. Check the site and email in Settings."],
       [{ status: 404, text: "<html>Site not found</html>" }, "There is no Jira at your-domain.atlassian.net. Check the site in Settings → Extensions → Jira."],
     ];
@@ -282,6 +283,137 @@ describe("list", () => {
       const host = hostWith(await newHelper(), fakeJira({ search }));
       assert.deepEqual(await host.list("issues"), { locked: true, message });
     }
+  });
+
+  test("a refused sign-in is not sent again on every opening", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira();
+    const message = "Jira didn’t accept your email and API token. Check them in Settings → Extensions → Jira.";
+    const wrong = { secrets: { apiToken: `${TOKEN}x` } };
+    for (let opening = 0; opening < 5; opening++) {
+      const host = hostWith(extension, jira, { ...wrong, now: START + opening * 61_000 });
+      assert.deepEqual(await host.list("issues"), { locked: true, message });
+    }
+    assert.equal(jira.state.requests.length, 1, "five openings, one failed sign-in");
+
+    const later = hostWith(extension, jira, { ...wrong, now: START + 15 * 60_000 });
+    assert.deepEqual(await later.list("issues"), { locked: true, message });
+    assert.equal(jira.state.requests.length, 2, "tried again after fifteen minutes");
+  });
+
+  test("a corrected token, email or site is tried at once", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira();
+    await hostWith(extension, jira, { secrets: { apiToken: `${TOKEN}x` } }).list("issues");
+    assert.deepEqual(await hostWith(extension, jira, { now: START + 1 }).list("issues"), { rows: ROWS });
+    assert.equal(jira.state.requests.length, 2);
+
+    const email = await newHelper();
+    const emailJira = fakeJira();
+    await hostWith(email, emailJira, { preferences: { ...PREFS, email: "denz@example.com" } }).list("issues");
+    assert.deepEqual(await hostWith(email, emailJira, { now: START + 1 }).list("issues"), { rows: ROWS });
+    assert.equal(emailJira.state.requests.length, 2);
+
+    const site = await newHelper();
+    const siteJira = fakeJira({ search: { status: 404, text: "" } });
+    await hostWith(site, siteJira, { preferences: { ...PREFS, site: "your-domain.atlassian.net" } }).list("issues");
+    const moved = (request) => (siteJira.state.requests.push(request), { json: { issues: [] } });
+    assert.deepEqual(await hostWith(site, moved, { preferences: { ...PREFS, site: "other-team.atlassian.net" }, now: START + 1 }).list("issues"), { rows: [] });
+    assert.equal(siteJira.state.requests.length, 2);
+  });
+
+  test("a CAPTCHA, a refused account and a missing site are not asked again within the window either", async () => {
+    for (const search of [
+      { status: 403, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, text: "" },
+      { status: 403, json: { errorMessages: ["You do not have access."] } },
+      { status: 404, text: "" },
+    ]) {
+      const extension = await newHelper();
+      const jira = fakeJira({ search });
+      const first = await hostWith(extension, jira).list("issues");
+      jira.state.search = undefined;
+      assert.deepEqual(await hostWith(extension, jira, { now: START + 15 * 60_000 - 1 }).list("issues"), first, JSON.stringify(search));
+      assert.equal(jira.state.requests.length, 1, JSON.stringify(search));
+      assert.deepEqual(await hostWith(extension, jira, { now: START + 15 * 60_000 }).list("issues"), { rows: ROWS });
+    }
+  });
+
+  test("a new issue made with the same sign-in lets the column try again", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira({ search: { status: 403, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, text: "" } });
+    assert.equal((await hostWith(extension, jira).list("issues")).locked, true);
+    jira.state.search = undefined;
+    await hostWith(extension, jira, { now: START + 60_000 }).run(extension.actions.create, { kind: "text", text: "Something" });
+    assert.deepEqual(await hostWith(extension, jira, { now: START + 61_000 }).list("issues"), { rows: ROWS });
+    assert.equal(jira.state.requests.length, 3);
+  });
+
+  test("a clock set back does not keep a sign-in refused", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira({ search: { status: 404, text: "" } });
+    await hostWith(extension, jira).list("issues");
+    jira.state.search = undefined;
+    assert.deepEqual(await hostWith(extension, jira, { now: START - 1 }).list("issues"), { rows: ROWS });
+  });
+
+  test("when Jira fails, the column waits a minute before asking again", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira({ search: { status: 503, text: "" } });
+    const message = "Jira isn’t answering right now (status 503). Try again later.";
+    for (let opening = 0; opening < 5; opening++) {
+      await assert.rejects(hostWith(extension, jira, { now: START + opening * 10_000 }).list("issues"), { message });
+    }
+    assert.equal(jira.state.requests.length, 1, "five openings in a minute, one request");
+    jira.state.search = undefined;
+    assert.deepEqual(await hostWith(extension, jira, { now: START + 60_000 }).list("issues"), { rows: ROWS });
+    assert.equal(jira.state.requests.length, 2);
+
+    for (const [search, failure] of [
+      [{ status: 400, json: {} }, "Jira couldn’t list your issues (status 400)."],
+      [{ text: "<html></html>" }, "Jira sent an answer that couldn’t be read."],
+    ]) {
+      const other = await newHelper();
+      const failing = fakeJira({ search });
+      await assert.rejects(hostWith(other, failing).list("issues"), { message: failure });
+      await assert.rejects(hostWith(other, failing, { now: START + 59_999 }).list("issues"), { message: failure });
+      assert.equal(failing.state.requests.length, 1, failure);
+    }
+  });
+
+  test("no connection does not make the column wait", async () => {
+    const extension = await newHelper();
+    await assert.rejects(hostWith(extension, () => yabError("networkError", "offline")).list("issues"), { code: "networkError" });
+    const jira = fakeJira();
+    assert.deepEqual(await hostWith(extension, jira, { now: START + 1 }).list("issues"), { rows: ROWS });
+  });
+
+  test("a wait belongs to the account Jira limited", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira({ search: { status: 429, headers: { "Retry-After": "600" }, text: "" } });
+    await assert.rejects(hostWith(extension, jira).list("issues"), { message: "Jira is limiting requests right now. Try again in 10 minutes." });
+    const other = { ...PREFS, email: "ada@example.com" };
+    const otherJira = (request) => (request.headers.authorization === basic("ada@example.com", TOKEN) ? { json: { issues: [] } } : REJECTED);
+    assert.deepEqual(await createFakeHost({ folder, sources: extension.sources, http: otherJira, preferences: other, secrets: { apiToken: TOKEN }, now: START + 1 }).list("issues"), { rows: [] });
+    jira.state.search = undefined;
+    await assert.rejects(hostWith(extension, jira, { now: START + 2 }).list("issues"), { message: "Jira is limiting requests right now. Try again in 10 minutes." });
+    assert.equal(jira.state.requests.length, 1);
+  });
+
+  test("Retry-After is waited at least a minute and at most a day", async () => {
+    const extension = await newHelper();
+    const jira = fakeJira({ search: { status: 429, headers: { "Retry-After": "999999999" }, text: "" } });
+    await assert.rejects(hostWith(extension, jira).list("issues"), { message: "Jira is limiting requests right now. Try again in 1440 minutes." });
+    jira.state.search = undefined;
+    await assert.rejects(hostWith(extension, jira, { now: START + 24 * 3_600_000 - 1 }).list("issues"), { message: "Jira is limiting requests right now. Try again in a minute." });
+    assert.equal(jira.state.requests.length, 1);
+    assert.deepEqual(await hostWith(extension, jira, { now: START + 24 * 3_600_000 }).list("issues"), { rows: ROWS });
+
+    const brief = await newHelper();
+    const briefJira = fakeJira({ search: { status: 429, headers: { "Retry-After": "5" }, text: "" } });
+    await assert.rejects(hostWith(brief, briefJira).list("issues"), { message: "Jira is limiting requests right now. Try again in a minute." });
+    briefJira.state.search = undefined;
+    await assert.rejects(hostWith(brief, briefJira, { now: START + 59_999 }).list("issues"));
+    assert.equal(briefJira.state.requests.length, 1, "asked at most once a minute");
   });
 
   test("when Jira limits requests the column waits as long as Jira asks", async () => {
@@ -320,7 +452,6 @@ describe("list", () => {
   });
 
   test("an answer that is not a search result is an error, and not kept", async () => {
-    const extension = await newHelper();
     for (const search of [
       { text: "<!doctype html><title>Log in</title>" },
       { text: "" },
@@ -329,11 +460,13 @@ describe("list", () => {
       { json: null },
       { json: { total: 3 } },
     ]) {
-      await assert.rejects(hostWith(extension, fakeJira({ search })).list("issues"), { message: "Jira sent an answer that couldn’t be read." }, JSON.stringify(search));
+      const extension = await newHelper();
+      const jira = fakeJira({ search });
+      await assert.rejects(hostWith(extension, jira).list("issues"), { message: "Jira sent an answer that couldn’t be read." }, JSON.stringify(search));
+      jira.state.search = undefined;
+      assert.deepEqual(await hostWith(extension, jira, { now: START + 60_000 }).list("issues"), { rows: ROWS });
+      assert.equal(jira.state.requests.length, 2, "the odd answer was not kept");
     }
-    const jira = fakeJira();
-    assert.deepEqual(await hostWith(extension, jira).list("issues"), { rows: ROWS });
-    assert.equal(jira.state.requests.length, 1);
   });
 
   test("no connection is let through, for the app to report", async () => {
@@ -346,6 +479,8 @@ describe("list", () => {
     await assert.rejects(host.list("issues"), { message: "Jira şu an istekleri sınırlıyor. 5 dakika sonra yeniden dene." });
     const locked = hostWith(await newHelper(), fakeJira(), { secrets: { apiToken: "wrong" }, language: "tr" });
     assert.deepEqual(await locked.list("issues"), { locked: true, message: "Jira e-postanı ve API token’ını kabul etmedi. Ayarlar → Uzantılar → Jira’dan kontrol et." });
+    const captcha = hostWith(await newHelper(), fakeJira({ search: { status: 403, headers: { "X-Seraph-LoginReason": "AUTHENTICATION_DENIED" }, text: "" } }), { language: "tr" });
+    assert.deepEqual(await captcha.list("issues"), { locked: true, message: "Jira önce web’de giriş yapmanı istiyor. your-domain.atlassian.net adresinde bir kez giriş yap; sütun 15 dakika içinde yeniden dener." });
   });
 });
 
@@ -559,11 +694,20 @@ describe("create Jira issue", () => {
     const { sent, host } = await created(text(long));
     const block = sent[0].fields.description.content[0];
     assert.equal(block.type, "codeBlock");
-    assert.ok(block.content[0].text.length <= 30_002);
+    assert.ok(JSON.stringify(sent[0].fields.description).length <= 30_000, "the document fits, as Jira counts it");
     assert.ok(block.content[0].text.endsWith("\n…"));
-    assert.deepEqual(host.notifications, ["The text was long, so the issue’s description holds its first 30,000 characters."]);
+    assert.ok(long.startsWith(block.content[0].text.slice(0, -2)));
+    const kept = new Intl.NumberFormat("en").format(block.content[0].text.length - 2);
+    assert.deepEqual(host.notifications, [`The text was long, so the issue’s description holds only its first ${kept} characters.`]);
     const short = await created(text("Build failed\nsecond line"));
     assert.deepEqual(short.host.notifications, []);
+  });
+
+  test("prose of many short lines is cut on its document too", async () => {
+    const notes = Array.from({ length: 1_200 }, (_, index) => `Line ${index + 1} of the notes`).join("\n");
+    const { sent, host } = await created(text(notes));
+    assert.ok(JSON.stringify(sent[0].fields.description).length <= 30_000);
+    assert.equal(host.notifications.length, 1);
   });
 
   test("the issue type defaults to Task, and the project key is upper-cased", async () => {
@@ -587,9 +731,9 @@ describe("create Jira issue", () => {
   test("missing or wrong settings say what to fix, and ask nothing", async () => {
     const cases = [
       [{ ...PREFS, project: "" }, undefined, "Add the project key for new issues, such as ENG, in Settings → Extensions → Jira."],
-      [{ ...PREFS, project: "1ENG" }, undefined, "The project key in Settings must be capital letters and digits, such as ENG."],
-      [{ ...PREFS, project: "EN G" }, undefined, "The project key in Settings must be capital letters and digits, such as ENG."],
-      [{ ...PREFS, project: "ENG-1" }, undefined, "The project key in Settings must be capital letters and digits, such as ENG."],
+      [{ ...PREFS, project: "1ENG" }, undefined, "The project key in Settings must start with a letter and use only A–Z, 0–9 and _, such as ENG."],
+      [{ ...PREFS, project: "EN G" }, undefined, "The project key in Settings must start with a letter and use only A–Z, 0–9 and _, such as ENG."],
+      [{ ...PREFS, project: "ENG-1" }, undefined, "The project key in Settings must start with a letter and use only A–Z, 0–9 and _, such as ENG."],
       [{ ...PREFS, site: "" }, undefined, "Add your Jira site, such as yourteam.atlassian.net, in Settings → Extensions → Jira."],
       [PREFS, {}, "Add a Jira API token in Settings → Extensions → Jira. Make one at id.atlassian.com › Security › API tokens."],
       [{ ...PREFS, site: "your-domain.atlassian.com" }, undefined, "The Jira site must be a Jira Cloud address, such as yourteam.atlassian.net."],
@@ -608,6 +752,9 @@ describe("create Jira issue", () => {
       [{ status: 400, json: { errorMessages: [], errors: { customfield_10011: "Epic Name is required.", components: "Component/s is required." } } }, "Jira refused some fields for new issues in ENG (customfield_10011, components). Create this one in Jira."],
       [{ status: 400, json: { errorMessages: ["Field 'priority' is required"], errors: {} } }, "Jira refused some fields for new issues in ENG (priority). Create this one in Jira."],
       [{ status: 400, json: { errorMessages: [], errors: { description: "Field 'description' cannot be set. It is not on the appropriate screen, or unknown." } } }, "Jira refused some fields for new issues in ENG (description). Create this one in Jira."],
+      [{ status: 400, json: { errorMessages: ["CONTENT_LIMIT_EXCEEDED"], errors: {} } }, "The text is too long for a Jira issue. Copy a shorter part, or create this one in Jira."],
+      [{ status: 400, json: { errorMessages: [], errors: { description: "The entered text is too long. It exceeds the allowed limit of 32,767 characters." } } }, "The text is too long for a Jira issue. Copy a shorter part, or create this one in Jira."],
+      [{ status: 400, json: { errorMessages: ["A CONTENT_LIMIT_EXCEEDED somewhere"], errors: {} } }, "Jira couldn’t create the issue (status 400)."],
       [{ status: 400, json: { errorMessages: ["Something about Fix the login button"], errors: { "a field with spaces": "x" } } }, "Jira couldn’t create the issue (status 400)."],
       [{ status: 400, text: "<html>Bad request</html>" }, "Jira couldn’t create the issue (status 400)."],
       [REJECTED, "Jira didn’t accept your email and API token. Check them in Settings → Extensions → Jira."],
@@ -658,7 +805,10 @@ describe("create Jira issue", () => {
     const { result } = await created(text("Something"), { jira: fakeJira({ create: { status: 400, json: { errors: { issuetype: "x" } } } }), language: "tr" });
     assert.deepEqual(result, { none: true, message: "ENG projesinde “Task” adında bir issue türü yok. Ayarlar’daki issue türünü kontrol et." });
     const long = await created(text(`a\n${"b".repeat(40_000)}`), { language: "tr" });
-    assert.deepEqual(long.host.notifications, ["Metin uzun olduğu için issue’nun açıklamasında yalnızca ilk 30.000 karakter var."]);
+    const kept = new Intl.NumberFormat("tr").format(long.sent[0].fields.description.content[0].content[2].text.length + 2);
+    assert.deepEqual(long.host.notifications, [`Metin uzun olduğu için issue’nun açıklamasına yalnızca ilk ${kept} karakteri sığdı.`]);
+    const tooLong = await created(text("Something"), { jira: fakeJira({ create: { status: 400, json: { errorMessages: ["CONTENT_LIMIT_EXCEEDED"], errors: {} } } }), language: "tr" });
+    assert.deepEqual(tooLong.result, { none: true, message: "Metin bir Jira issue’su için fazla uzun. Daha kısa bir bölümünü kopyala ya da bu issue’yu Jira’da oluştur." });
   });
 });
 
@@ -703,6 +853,8 @@ describe("everywhere", () => {
     await on({}, (host, extension) => host.run(extension.actions.create, text("Leak check")), { secrets: { apiToken: "wrong" } });
     await on({ create: { status: 400, json: { errorMessages: [`Field '${TOKEN}' is required`], errors: { [EMAIL]: TOKEN } } } }, (host, extension) => host.run(extension.actions.create, text("Leak check")));
     await on({ create: { status: 500, text: TOKEN } }, (host, extension) => host.run(extension.actions.create, text("Leak check")));
+    await on({ create: { status: 400, json: { errorMessages: ["CONTENT_LIMIT_EXCEEDED"], errors: { description: `The entered text is too long ${TOKEN}` } } } }, (host, extension) => host.run(extension.actions.create, text("Leak check")));
+    await on({}, async (host) => (await host.list("issues"), host.list("issues")), { secrets: { apiToken: `${TOKEN}x` } });
     await on({}, (host, extension) => host.run(extension.actions.create, text(`a\n${"b".repeat(40_000)}`)));
     return { hosts, messages };
   }

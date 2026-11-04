@@ -1,12 +1,13 @@
 import type { Actions, Context, HttpResponse, SourceRow, Sources } from "@yabbistir/api";
 
-import { cutAt, draftOf, hasWords, oneLine, type Draft, DESCRIPTION_LIMIT } from "./draft.ts";
+import { cutAt, draftOf, hasWords, oneLine, type Draft } from "./draft.ts";
 
 // Jira Cloud through its REST API v3, signed in with the person's email and an API token (HTTP basic auth). Requests
-// go only to the site in Settings, which must be a *.atlassian.net address. The token is read with yab.secrets.get for
-// the request that needs it, and neither it nor the email is ever logged, kept anywhere but in memory for that request,
-// or put in a message: messages name the site, the project key and the issue type at most, never the item's text or
-// Jira's own answer.
+// go only to the site in Settings, which must be a *.atlassian.net address. The token is read with yab.secrets.get each
+// time the column is listed and when an action sends a request. Neither the token nor the email is ever logged, written
+// to storage or a file, or put in a message: messages name the site, the project key and the issue type at most, never
+// the item's text or Jira's own answer. The helper's memory holds the email, to tell one account's listing from
+// another's, and after Jira refuses a sign-in a fingerprint of it that cannot be turned back into it.
 
 /**
  * The person's open issues, the most recently updated first. A status category rather than a resolution, so an issue
@@ -21,9 +22,19 @@ const FIELDS = "summary,status,project";
 const LIFETIME = 60_000;
 /** How long the summaries of a listing serve ⇧↵ before Jira is asked for the issue's summary again. */
 const SUMMARY_LIFETIME = 5 * 60_000;
-/** How long the column waits after Jira limited it without saying for how long, and the longest it ever waits. */
-const DEFAULT_PAUSE = 60;
+/**
+ * How many seconds the column waits after Jira limited it, at least and at most: Jira's Retry-After is the shortest wait
+ * it asks for, and the column never asks more than once a minute.
+ */
+const SHORTEST_PAUSE = 60;
 const LONGEST_PAUSE = 24 * 60 * 60;
+/** How long the column waits after Jira answered with an error, so that even a failing Jira is asked once a minute. */
+const FAILURE_PAUSE = LIFETIME;
+/**
+ * How long the column does not send a sign-in that Jira refused. Several failed sign-ins in a row make Jira ask for a
+ * CAPTCHA and refuse API tokens until the person signs in on the web; a changed site, email or token is tried at once.
+ */
+const REFUSAL_PAUSE = 15 * 60_000;
 /** A project key, then a number: ENG-42. Older sites may have keys with underscores. */
 export const ISSUE_KEY = /^[A-Z][A-Z0-9_]{1,19}-[1-9][0-9]{0,8}$/;
 const PROJECT_KEY = /^[A-Z][A-Z0-9_]{1,19}$/;
@@ -74,8 +85,21 @@ interface Account {
   host: string;
   /** Who the caches belong to: the site and the email, never the token. */
   owner: string;
-  /** The Authorization header's value. Never logged and never kept beyond the call. */
+  /** The Authorization header's value. Never logged and never kept beyond the call; see fingerprintOf. */
   authorization: string;
+}
+
+/**
+ * A short fingerprint of the site and the sign-in, to know a refused sign-in when it comes again: 32-bit FNV-1a, which
+ * many sign-ins share and none can be read back from. It is kept in the helper's memory only.
+ */
+function fingerprintOf(account: Account): string {
+  const text = `${account.host}\n${account.authorization}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193) >>> 0;
+  }
+  return hash.toString(16);
 }
 
 /** The account in Settings, or the message that says what is missing or wrong. */
@@ -137,10 +161,10 @@ function failureOf(response: HttpResponse): Failure | undefined {
   return undefined;
 }
 
-/** How many seconds Jira asked to wait, from Retry-After; a minute when it did not say. */
+/** How many seconds to wait after Jira limited requests: its Retry-After, kept within a minute and a day. */
 function pauseOf(response: HttpResponse): number {
   const value = (response.headers["retry-after"] ?? "").trim();
-  return /^\d{1,9}$/.test(value) ? Math.min(Number(value), LONGEST_PAUSE) : DEFAULT_PAUSE;
+  return /^\d{1,9}$/.test(value) ? Math.min(Math.max(Number(value), SHORTEST_PAUSE), LONGEST_PAUSE) : SHORTEST_PAUSE;
 }
 
 function rateLimited(seconds: number): string {
@@ -198,12 +222,25 @@ const rowOf = (issue: Issue): SourceRow => {
 };
 
 // The helper's memory only, never yab.storage or a file: the last listing for a minute, its summaries for ⇧↵ a little
-// longer, and when Jira asked the column to wait. Each belongs to one site and email.
+// longer, when the column asks Jira again after an error, and a sign-in Jira refused. Each is dropped once past its
+// time, and belongs to one site and email.
 let cached: { at: number; owner: string; rows: SourceRow[]; summaries: Map<string, string> } | undefined;
-let paused: { owner: string; until: number } | undefined;
+/** Until when the column does not ask Jira, and what it says meanwhile; without a message, Jira limited requests. */
+let paused: { owner: string; at: number; until: number; message?: string } | undefined;
+/** A sign-in Jira refused, by its fingerprint, and the locked row the column shows until it is tried again. */
+let refused: { fingerprint: string; at: number; until: number; message: string } | undefined;
 
 function forget(): void {
   cached = undefined;
+}
+
+const during = (span: { at: number; until: number } | undefined, now: number): boolean =>
+  span !== undefined && span.at <= now && now < span.until;
+
+/** Waits a minute before Jira is asked again after an error, and gives the error. */
+function failed(owner: string, now: number, message: string): Error {
+  paused = { owner, at: now, until: now + FAILURE_PAUSE, message };
+  return new Error(message);
 }
 
 /** Characters that would end a Markdown link's text, start a tag, an entity, emphasis or a code span, or a table cell. */
@@ -223,6 +260,10 @@ function lockMessage(failure: Failure, host: string): string | undefined {
   if (failure === "missing") return yab.t("noJira", { site: host });
   return undefined;
 }
+
+/** The locked row for a failure: as lockMessage, but a CAPTCHA says when the column tries again by itself. */
+const columnLock = (failure: Failure, host: string): string | undefined =>
+  failure === "captcha" ? yab.t("captcha.column", { site: host }) : lockMessage(failure, host);
 
 /**
  * An issue's summary for its Markdown link: from the last listing when it is recent, or else from Jira. Without one
@@ -261,33 +302,43 @@ export const sources: Sources = {
         return { locked: true, message: account.problem };
       }
       const now = Date.now();
-      // A listing of another account, or one too old even for a summary, is dropped rather than kept around.
+      // A listing of another account, one too old even for a summary, and a wait that is over are dropped rather than
+      // kept around.
       const age = cached === undefined ? Infinity : now - cached.at;
       if (cached !== undefined && (cached.owner !== account.owner || age < 0 || age > SUMMARY_LIFETIME)) cached = undefined;
+      if (!during(paused, now)) paused = undefined;
+      if (!during(refused, now)) refused = undefined;
+
+      // The panel opens many times a day, and each failed sign-in brings Jira's CAPTCHA closer, so a refused sign-in is
+      // not sent again for a while. A changed site, email or token has another fingerprint and is tried at once.
+      const fingerprint = fingerprintOf(account);
+      if (refused !== undefined && refused.fingerprint === fingerprint) return { locked: true, message: refused.message };
+      refused = undefined;
       if (cached !== undefined && age <= LIFETIME) return { rows: cached.rows };
-      // Jira asked to wait: the app keeps the rows it has, and Jira is not asked again until then.
-      if (paused !== undefined && paused.owner === account.owner && now < paused.until) {
-        throw new Error(rateLimited((paused.until - now) / 1000));
+      // Jira asked to wait, or just failed: the app keeps the rows it has, and Jira is not asked again until then.
+      if (paused !== undefined && paused.owner === account.owner) {
+        throw new Error(paused.message ?? rateLimited((paused.until - now) / 1000));
       }
 
       const response = await request(account, searchPath(), ctx.signal);
       const failure = failureOf(response);
       if (failure !== undefined) {
-        const locked = lockMessage(failure, account.host);
+        const locked = columnLock(failure, account.host);
         if (locked !== undefined) {
           forget();
+          refused = { fingerprint, at: now, until: now + REFUSAL_PAUSE, message: locked };
           return { locked: true, message: locked };
         }
         if (failure === "rateLimited") {
           const seconds = pauseOf(response);
-          paused = { owner: account.owner, until: now + seconds * 1000 };
+          paused = { owner: account.owner, at: now, until: now + seconds * 1000 };
           throw new Error(rateLimited(seconds));
         }
-        throw new Error(yab.t(failure === "unavailable" ? "unavailable" : "listFailed", { status: response.status }));
+        throw failed(account.owner, now, yab.t(failure === "unavailable" ? "unavailable" : "listFailed", { status: response.status }));
       }
       const issues = issuesOf(response.text);
-      if (issues === undefined) throw new Error(yab.t("unreadable"));
-      paused = undefined;
+      if (issues === undefined) throw failed(account.owner, now, yab.t("unreadable"));
+      if (paused?.owner === account.owner) paused = undefined;
       const rows = issues.map(rowOf);
       cached = { at: now, owner: account.owner, rows, summaries: new Map(issues.map((issue) => [issue.key, issue.summary])) };
       return { rows };
@@ -307,14 +358,25 @@ export const sources: Sources = {
 
 // ---- Actions ----
 
-/** Why Jira refused a new issue, from the field names of its 400 answer; never from its messages, which may quote. */
+/**
+ * Jira's own words for a description over its limit: the code it sends alone (JRACLOUD-78553), and the sentence its text
+ * fields use. Only matched, never shown.
+ */
+const TOO_LONG = /^CONTENT_LIMIT_EXCEEDED$|The entered text is too long|exceeds the allowed limit/;
+
+/**
+ * Why Jira refused a new issue, from the field names of its 400 answer and the codes it is known to send; never from its
+ * messages, which may quote.
+ */
 function refusal(text: string | undefined, project: string, issueType: string): string {
   const body = parsed(text);
   const errors = isObject(body) && isObject(body.errors) ? Object.keys(body.errors) : [];
   if (errors.includes("project") || errors.includes("pid")) return yab.t("projectRefused", { project });
   if (errors.includes("issuetype")) return yab.t("issueTypeRefused", { project, issueType });
-  const fields = new Set(errors.filter((name) => /^[A-Za-z0-9_.-]{1,40}$/.test(name)));
   const messages = isObject(body) && Array.isArray(body.errorMessages) ? body.errorMessages : [];
+  const said = [...messages, ...(isObject(body) && isObject(body.errors) ? Object.values(body.errors) : [])];
+  if (said.some((message) => typeof message === "string" && TOO_LONG.test(message.slice(0, 200)))) return yab.t("tooLong");
+  const fields = new Set(errors.filter((name) => /^[A-Za-z0-9_.-]{1,40}$/.test(name)));
   for (const message of messages) {
     const field = typeof message === "string" ? /^Field '([A-Za-z0-9_.-]{1,40})' is required\.?$/.exec(message)?.[1] : undefined;
     if (field !== undefined) fields.add(field);
@@ -323,7 +385,7 @@ function refusal(text: string | undefined, project: string, issueType: string): 
   return yab.t("createFailed", { status: 400 });
 }
 
-/** "30,000" in the app's language. */
+/** "29,950" in the app's language. */
 function formatted(value: number, language: string): string {
   try {
     return new Intl.NumberFormat(language).format(value);
@@ -379,9 +441,11 @@ export const actions: Actions = {
       const body = parsed(response.text);
       const key = isObject(body) && typeof body.key === "string" && ISSUE_KEY.test(body.key) ? body.key : undefined;
       if (key === undefined) return { none: true, message: yab.t("createdUnreadable") };
-      // The column asks Jira again next time, in case the new issue is assigned to the person.
+      // The column asks Jira again next time, in case the new issue is assigned to the person; the sign-in just worked,
+      // so one the column holds as refused is tried again too.
       forget();
-      if (draft.cut) yab.notify(yab.t("cut", { limit: formatted(DESCRIPTION_LIMIT, ctx.language) }));
+      refused = undefined;
+      if (draft.kept !== undefined) yab.notify(yab.t("cut", { count: formatted(draft.kept, ctx.language) }));
       return { link: { url: browseURL(account.host, key), title: `${key}: ${draft.summary}` } };
     },
   },

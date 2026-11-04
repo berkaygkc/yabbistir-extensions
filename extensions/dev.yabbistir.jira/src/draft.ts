@@ -1,11 +1,15 @@
 // A new issue made from copied text: the summary is its first line, and the description holds the whole text in
 // Atlassian Document Format (ADF), in a code block when the text looks like code or a log. Everything here is pure and
-// linear in the text's length: no regular expression below can backtrack over more than one line, and lines are looked
-// at only up to a fixed count.
+// close to linear in the text's length: no regular expression below can backtrack over more than one line, lines are
+// looked at only up to a fixed count, and a cut builds a document of at most DESCRIPTION_LIMIT characters some fifteen
+// times.
 
 /** Jira refuses a summary of 255 characters or more. Counted in UTF-16 units, as Jira counts them. */
 export const SUMMARY_LIMIT = 254;
-/** Jira's text fields hold 32,767 characters; this leaves room for the document's own structure. */
+/**
+ * The longest description, counted as Jira counts it: on its document written out as JSON, structure included, not on
+ * the text alone. Jira refuses one over 32,767 (JRACLOUD-78553, JRACLOUD-98152); this leaves room for what it adds.
+ */
 export const DESCRIPTION_LIMIT = 30_000;
 /** How much of a copied text is read at all: far more than a description holds. */
 const SOURCE_LIMIT = 100_000;
@@ -26,9 +30,14 @@ export interface Draft {
   summary: string;
   /** Left out when the text is one line that fits in the summary. */
   description?: Doc;
-  /** Whether the description holds only the first DESCRIPTION_LIMIT characters of the text. */
+  /** Whether the description holds only the beginning of the text, so that its document fits in DESCRIPTION_LIMIT. */
   cut: boolean;
+  /** When it is cut: how many characters of the text it holds, in Unicode characters. */
+  kept?: number;
 }
+
+/** How long a document is as Jira counts it: written out as JSON. */
+export const sizeOf = (doc: Doc): number => JSON.stringify(doc).length;
 
 /** A terminal's color and cursor codes, which logs copied from a raw output carry. */
 const ANSI = /\u001B\[[0-9;?]*[ -/]*[@-~]/g;
@@ -67,9 +76,14 @@ export function summaryOf(line: string): string {
   return text.length > SUMMARY_LIMIT ? `${cutAt(text, SUMMARY_LIMIT - 1)}…` : text;
 }
 
-/** Stack frames and crash headers: one is enough to call the text a log. */
+/**
+ * Stack frames and crash headers: one is enough to call the text a log. A JavaScript or Java frame is "at", a function
+ * and where it is, in brackets: a file and line ("app.js:1:2", "Shop.java:12"), <anonymous>, native or Native Method.
+ * Indented, the place may stand alone ("at /srv/app.js:1:2"). A line such as "at the office" or "at noon (12:30)" is no
+ * frame: a frame's line number follows a file's name, never a digit.
+ */
 const STACK_FRAME =
-  /^\s+at\s\S|^at\s[^\s(]+\s\(|^Traceback \(most recent call last\)|^\s*File "[^"]*", line \d|^\s*#\d+\s+0x[0-9A-Fa-f]|^[\s*]*frame #\d+: 0x[0-9A-Fa-f]|^\d+\s+\S+\s+0x[0-9A-Fa-f]|^\s*Caused by:\s|^Exception in thread\s|^goroutine \d+ \[|^thread '[^']*' panicked at\s/;
+  /^\s*at\s(?:(?:async|new)\s)?[^\s(]+\s?\((?:[^()]*[^\d\s():]:\d+(?::\d+)?|<anonymous>|native|Native Method|Unknown Source)\)(?:\s|$)|^\s+at\s(?:\S*[^\d\s:]:\d+:\d+|<anonymous>)\s*$|^Traceback \(most recent call last\)|^\s*File "[^"]*", line \d|^\s*#\d+\s+0x[0-9A-Fa-f]|^[\s*]*frame #\d+: 0x[0-9A-Fa-f]|^\d+\s+\S+\s+0x[0-9A-Fa-f]|^\s*Caused by:\s|^Exception in thread\s|^goroutine \d+ \[|^thread '[^']*' panicked at\s/;
 /** Lines a log writes: a timestamp, a level, an error class at the start. */
 const LOG_LINE =
   /^\[?\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}|^\[?\d{2}:\d{2}:\d{2}\b|^\s*\[?(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|ERR|FATAL|CRITICAL|SEVERE)\]?(?:[\s:]|$)|^npm (?:ERR!|WARN)\s|^\S*(?:Error|Exception)(?::|$)/;
@@ -78,10 +92,12 @@ const LOG_LINE =
  * a line's first 40 characters only.
  */
 const CODE_START =
-  /^(?:(?:import|export|def|class|function|const|var|elif|func|fn|namespace|struct|enum|interface)\b|#include\b|#!|\/\/|\/\*|\$ \S|<\/?[A-Za-z][\w:-]*[\s>/])/;
+  /^(?:(?:import|export|def|class|function|const|var|elif|func|fn|namespace|struct|enum|interface|return)\b|#include\b|#!|\/\/|\/\*|\$ \S|<\/?[A-Za-z][\w:-]*[\s>/])/;
+/** A list item's marker, a bullet or a number, then a space: indented, it is a nested list rather than code. */
+const LIST_ITEM = /^(?:[-*+•◦▪‣–]|\d{1,3}[.)])\s/;
 
+/** Whether the line reads as code by what it holds. */
 function codeLine(line: string): boolean {
-  if (line.startsWith("\t") || line.startsWith("    ")) return true;
   const start = line.trimStart();
   const end = start.trimEnd();
   if ("{}])".includes(end[0] ?? " ")) return true;
@@ -90,9 +106,15 @@ function codeLine(line: string): boolean {
   return CODE_START.test(start.slice(0, 40));
 }
 
+/** Whether the line is indented as code is, by a tab or four spaces, and is not a nested list item. */
+function indentedLine(line: string): boolean {
+  return (line.startsWith("\t") || line.startsWith("    ")) && !LIST_ITEM.test(line.trimStart().slice(0, 8));
+}
+
 /**
  * Whether the text reads as code or a log rather than prose: an item the app marked as code, a JSON document, a stack
- * frame, two log lines, or lines of code making up two fifths of the text.
+ * frame, two log lines, or lines of code making up two fifths of the text. Indented lines count toward those two fifths
+ * only beside a line that is code or a log by what it holds: a note with an indented list is prose.
  */
 export function looksLikeCode(text: string, kind: string | undefined): boolean {
   if (kind === "code") return true;
@@ -108,6 +130,7 @@ export function looksLikeCode(text: string, kind: string | undefined): boolean {
   let lines = 0;
   let logs = 0;
   let code = 0;
+  let indented = 0;
   let from = 0;
   while (from <= text.length && lines < SAMPLE_LINES) {
     const next = text.indexOf("\n", from);
@@ -118,9 +141,11 @@ export function looksLikeCode(text: string, kind: string | undefined): boolean {
     if (STACK_FRAME.test(line)) return true;
     if (LOG_LINE.test(line)) logs += 1;
     else if (codeLine(line)) code += 1;
+    else if (indentedLine(line)) indented += 1;
   }
   if (logs >= 2) return true;
-  return logs + code >= 2 && (logs + code) * 5 >= lines * 2;
+  const signs = logs + code + indented;
+  return logs + code >= 1 && signs >= 2 && signs * 5 >= lines * 2;
 }
 
 /** The text in one code block. */
@@ -162,11 +187,14 @@ function withoutBlankEnds(text: string): string {
   return text.slice(from).trimEnd();
 }
 
+/** How many characters the text has, counted in Unicode characters rather than UTF-16 units: 😀 is one. */
+const charactersIn = (text: string): number => Array.from(text).length;
+
 /**
  * The summary and description of a new issue made from `text`, or undefined when no line has a letter or a digit in
  * it. Only the first SOURCE_LIMIT characters are read. The summary is the first line with a letter or a digit, so a
  * line holding only `{` is skipped. The description is the whole text, unless the text is that one line and it fits in
- * the summary.
+ * the summary, or its longest beginning whose document fits in DESCRIPTION_LIMIT, followed by "…".
  */
 export function draftOf(text: string, kind: string | undefined): Draft | undefined {
   const source = cleaned(cutAt(text, SOURCE_LIMIT));
@@ -180,8 +208,23 @@ export function draftOf(text: string, kind: string | undefined): Draft | undefin
   }
   if (filled === 1 && oneLine(first).length <= SUMMARY_LIMIT) return { summary, cut: false };
 
-  let body = withoutBlankEnds(source);
-  const cut = body.length > DESCRIPTION_LIMIT;
-  if (cut) body = `${cutAt(body, DESCRIPTION_LIMIT).trimEnd()}\n…`;
-  return { summary, description: looksLikeCode(body, kind) ? codeDoc(body) : proseDoc(body), cut };
+  const body = withoutBlankEnds(source);
+  const docOf = looksLikeCode(body, kind) ? codeDoc : proseDoc;
+  // A document is never shorter than its text, so a longer text is cut without building its document.
+  if (body.length <= DESCRIPTION_LIMIT) {
+    const description = docOf(body);
+    if (sizeOf(description) <= DESCRIPTION_LIMIT) return { summary, description, cut: false };
+  }
+  // Each line of prose adds a node or two, and each quote or line end in code an escape, so the cut is found on the
+  // document itself: it grows with the text, so halving the range a few times finds the longest beginning that fits.
+  const beginning = (length: number) => cutAt(body, length).trimEnd();
+  let low = 0;
+  let high = Math.min(body.length, DESCRIPTION_LIMIT);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (sizeOf(docOf(`${beginning(middle)}\n…`)) <= DESCRIPTION_LIMIT) low = middle;
+    else high = middle - 1;
+  }
+  const kept = beginning(low);
+  return { summary, description: docOf(`${kept}\n…`), cut: true, kept: charactersIn(kept) };
 }

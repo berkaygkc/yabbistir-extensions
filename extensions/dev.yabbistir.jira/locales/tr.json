@@ -26,6 +26,7 @@
   "badEmail": "Ayarlar → Uzantılar → Jira’daki e-posta bir e-posta adresine benzemiyor.",
   "badCredentials": "Jira e-postanı ve API token’ını kabul etmedi. Ayarlar → Uzantılar → Jira’dan kontrol et.",
   "captcha": "Jira önce web’de giriş yapmanı istiyor. {site} adresinde bir kez giriş yap, sonra yeniden dene.",
+  "captcha.column": "Jira önce web’de giriş yapmanı istiyor. {site} adresinde bir kez giriş yap; sütun 15 dakika içinde yeniden dener.",
   "forbidden": "Jira hesabın {site} sitesini kullanamıyor. Ayarlar’daki siteyi ve e-postayı kontrol et.",
   "noJira": "{site} adresinde Jira yok. Ayarlar → Uzantılar → Jira’daki siteyi kontrol et.",
   "rateLimited.minute": "Jira şu an istekleri sınırlıyor. Bir dakika sonra yeniden dene.",
@@ -38,12 +39,13 @@
   "notAKey": "Bu bir Jira issue anahtarı değil (örneğin ENG-42).",
   "empty": "Bu öğede issue oluşturacak bir metin yok.",
   "noProject": "Yeni issue’lar için proje anahtarını (örneğin ENG) Ayarlar → Uzantılar → Jira’ya ekle.",
-  "badProject": "Ayarlar’daki proje anahtarı ENG gibi büyük harf ve rakamlardan oluşmalı.",
+  "badProject": "Ayarlar’daki proje anahtarı bir harfle başlamalı ve yalnızca A–Z, 0–9 ve _ içermeli (örneğin ENG).",
   "projectRefused": "Jira’da issue oluşturabileceğin bir {project} projesi yok. Ayarlar’daki proje anahtarını kontrol et.",
   "issueTypeRefused": "{project} projesinde “{issueType}” adında bir issue türü yok. Ayarlar’daki issue türünü kontrol et.",
   "fieldsRefused": "Jira, {project} projesindeki yeni issue’lar için bazı alanları kabul etmedi ({fields}). Bu issue’yu Jira’da oluştur.",
+  "tooLong": "Metin bir Jira issue’su için fazla uzun. Daha kısa bir bölümünü kopyala ya da bu issue’yu Jira’da oluştur.",
   "cannotCreate": "Jira hesabın {project} projesinde issue oluşturamıyor.",
   "createFailed": "Jira issue’yu oluşturamadı (durum {status}).",
   "createdUnreadable": "Jira issue’yu oluşturdu ama yanıtı okunamadı. Jira’da bakabilirsin.",
-  "cut": "Metin uzun olduğu için issue’nun açıklamasında yalnızca ilk {limit} karakter var."
+  "cut": "Metin uzun olduğu için issue’nun açıklamasına yalnızca ilk {count} karakteri sığdı."
 }

@@ -2,7 +2,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createFakeHost } from "@yabbistir/api/fake-host";
 
-import { cleaned, codeDoc, cutAt, draftOf, looksLikeCode, proseDoc, summaryOf } from "../src/draft.ts";
+import { cleaned, codeDoc, cutAt, DESCRIPTION_LIMIT, draftOf, looksLikeCode, proseDoc, sizeOf, summaryOf } from "../src/draft.ts";
 import { actions, issuesOf, markdownLink, siteHost } from "../src/index.ts";
 
 const folder = new URL("..", import.meta.url);
@@ -27,7 +27,15 @@ describe("what looks like code or a log", () => {
     ["HTML", "<div class=\"row\">\n  <span>Name</span>\n</div>"],
     ["a JSON document", '{"status": "error", "code": 42}'],
     ["a JSON list", "[1, 2, 3]"],
-    ["tab-indented lines", "Config:\n\tport 8080\n\thost local"],
+    ["indented lines under a line of code", "server {\n\tlisten 8080\n\troot /srv/www"],
+    ["a Java frame without its header", "java.lang.IllegalStateException: closed\n\tat com.example.Shop.run(Shop.java:12)"],
+    ["a Java frame in a module", "Caught it\n\tat java.base/java.lang.Thread.run(Thread.java:833)"],
+    ["a Kotlin frame without its indentation", "Crash\nat kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:108)"],
+    ["a JavaScript frame with only its place", "Error: boom\n    at /srv/app/index.js:10:5"],
+    ["an async JavaScript frame", "Failed\n    at async handler (file:///srv/app.mjs:4:11)"],
+    ["a constructor frame", "Failed\n    at new Promise (<anonymous>)"],
+    ["a Node internal frame", "Failed\n    at Module._compile (node:internal/modules/cjs/loader:1256:14)"],
+    ["Python without its def", "    if ready:\n        return start()\n    return None"],
   ];
   for (const [name, text] of code) {
     test(name, () => assert.equal(looksLikeCode(text, "text"), true));
@@ -40,6 +48,13 @@ describe("what looks like code or a log", () => {
     ["one timestamp among sentences", "2026-03-02 09:00 meeting notes\nWe agreed to ship on Friday.\nDeniz writes the notes."],
     ["a sentence with brackets", "Please check the (new) settings page and the [beta] flag."],
     ["a short note", "Rotate the staging certificates before Friday."],
+    ["an indented line that starts with at", "Meet me at noon\n  at the office lobby"],
+    ["a time in brackets after at", "Standup moved\n    at noon (12:30)\nSee you there."],
+    ["a place after at, in brackets", "Offsite\n    at the venue (Building 2)"],
+    ["an indented list without markers", "We need:\n    milk\n    eggs\nthanks"],
+    ["nested bullets", "Notes from the call\n- ship on Friday\n    - update the changelog\n    - tag the version\n- tell the team"],
+    ["tab-indented bullets", "Plan:\n\t• write the tests\n\t• fix the build\n\t1. ship it"],
+    ["an indented quote", "From the customer:\n    The page stays blank after I log in.\n    It started this week."],
   ];
   for (const [name, text] of prose) {
     test(name, () => assert.equal(looksLikeCode(text, "text"), false));
@@ -93,6 +108,56 @@ describe("the description", () => {
     assert.deepEqual(two.description.content, [{ type: "paragraph", content: [{ type: "text", text: "Fix the login" }, { type: "hardBreak" }, { type: "text", text: "On Safari only" }] }]);
     assert.equal(draftOf("{\n}\n", "code"), undefined);
     assert.equal(draftOf("", "text"), undefined);
+  });
+
+  test("a description fits as Jira counts it: on its document, not its text", () => {
+    // One paragraph's document is its text plus 97 characters; Jira refuses one over 32,767 (a 32,670-character line).
+    const overhead = sizeOf(proseDoc("x")) - 1;
+    assert.equal(overhead, 97);
+    const fits = draftOf("x".repeat(DESCRIPTION_LIMIT - overhead), "text");
+    assert.equal(fits.cut, false);
+    assert.equal(sizeOf(fits.description), DESCRIPTION_LIMIT);
+    assert.equal(fits.kept, undefined);
+
+    const over = draftOf("x".repeat(DESCRIPTION_LIMIT - overhead + 1), "text");
+    assert.equal(over.cut, true);
+    assert.ok(sizeOf(over.description) <= DESCRIPTION_LIMIT);
+    const text = over.description.content[0].content;
+    assert.deepEqual(text.slice(1), [{ type: "hardBreak" }, { type: "text", text: "…" }]);
+    assert.equal(over.kept, text[0].text.length);
+  });
+
+  test("short lines of prose are cut on their document, which holds a node or two for each", () => {
+    const notes = Array.from({ length: 1_200 }, (_, index) => `Line ${index + 1} of the notes`).join("\n");
+    assert.ok(notes.length < DESCRIPTION_LIMIT, "the text alone would fit");
+    const draft = draftOf(notes, "text");
+    assert.equal(draft.cut, true);
+    const size = sizeOf(draft.description);
+    assert.ok(size <= DESCRIPTION_LIMIT && size > DESCRIPTION_LIMIT - 100, String(size));
+    const inline = draft.description.content[0].content;
+    assert.deepEqual(inline.at(-1), { type: "text", text: "…" });
+    const kept = inline.filter((node) => node.type === "text").slice(0, -1).map((node) => node.text).join("\n");
+    assert.ok(notes.startsWith(kept));
+    assert.equal(draft.kept, kept.length);
+  });
+
+  test("quotes and line ends in code count as Jira counts them, escaped", () => {
+    const log = '{"level":"error","msg":"step failed"}\n'.repeat(1_000);
+    const draft = draftOf(`Build failed\n${log}`, "text");
+    const block = draft.description.content[0];
+    assert.equal(block.type, "codeBlock");
+    assert.equal(draft.cut, true);
+    assert.ok(sizeOf(draft.description) <= DESCRIPTION_LIMIT);
+    assert.ok(block.content[0].text.length < 25_000, "each quote and line end is two characters in the document");
+    assert.ok(block.content[0].text.endsWith("\n…"));
+  });
+
+  test("a cut counts characters as a person sees them", () => {
+    const draft = draftOf(`Emoji\n${"😀".repeat(20_000)}`, "text");
+    assert.equal(draft.cut, true);
+    const text = draft.description.content[0].content.find((node) => node.type === "text" && node.text.startsWith("😀")).text;
+    assert.equal(draft.kept, "Emoji\n".length + Array.from(text).length);
+    assert.ok(!/[\uD800-\uDBFF]$/.test(text), "no half emoji at the cut");
   });
 
   test("the first line with words is the summary, and the code keeps its first indentation", () => {
@@ -151,6 +216,14 @@ describe("time", () => {
     "surrogate halves": "\uD800".repeat(50_000),
     "colons and digits": "1:".repeat(50_000),
     "dates": "2026-03-02 ".repeat(9_000),
+    "a frame without its end": `   at x (${"a:".repeat(50_000)}`,
+    "a frame of numbers": `   at x (${"a:1".repeat(33_000)}`,
+    "a place of colons": `   at ${":1".repeat(50_000)}`,
+    "a place of digits": `   at x:${"1".repeat(50_000)}:${"1".repeat(49_000)}x`,
+    "brackets after at": `at ${"(".repeat(100_000)}`,
+    "indented bullets": "    - x\n".repeat(16_000),
+    "short lines of prose": "word\n".repeat(20_000),
+    "quotes in a log": '"\\"\n'.repeat(25_000),
   };
   for (const [name, text] of Object.entries(adversarial)) {
     test(`a new issue's draft: ${name}`, () => {
