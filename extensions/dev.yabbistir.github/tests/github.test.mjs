@@ -258,6 +258,17 @@ describe("row actions", () => {
     assert.equal(await markdownOf("Add `--dry-run` flag"), "[ornek/uygulama#4: Add `--dry-run` flag](https://github.com/ornek/uygulama/pull/4)");
   });
 
+  test("inside a code span nothing is escaped; outside it everything is", async () => {
+    assert.equal(await markdownOf("`foo_bar` fix"), "[ornek/uygulama#4: `foo_bar` fix](https://github.com/ornek/uygulama/pull/4)");
+    assert.equal(await markdownOf("`a<b>` and a<b> and `x_y` z_w"), "[ornek/uygulama#4: `a<b>` and a\\<b\\> and `x_y` z\\_w](https://github.com/ornek/uygulama/pull/4)");
+    assert.equal(await markdownOf("``a`b_c`` d_e"), "[ornek/uygulama#4: ``a`b_c`` d\\_e](https://github.com/ornek/uygulama/pull/4)");
+  });
+
+  test("an unclosed backtick is plain text and the rest is escaped", async () => {
+    assert.equal(await markdownOf("it`s a_b <c>"), "[ornek/uygulama#4: it`s a\\_b \\<c\\>](https://github.com/ornek/uygulama/pull/4)");
+    assert.equal(await markdownOf("`a_b ``c_d``"), "[ornek/uygulama#4: `a\\_b ``c_d``](https://github.com/ornek/uygulama/pull/4)");
+  });
+
   test("a mixed title", async () => {
     assert.equal(await markdownOf("[WIP] Fix <Foo> & a\\b"), "[ornek/uygulama#4: \\[WIP\\] Fix \\<Foo\\> \\& a\\\\b](https://github.com/ornek/uygulama/pull/4)");
   });
@@ -373,7 +384,8 @@ describe("gist", () => {
       [{ kind: "code", text: "package main\n\nfunc main() {\n\tx := 1\n}" }, "txt"],
       [{ kind: "code", text: "import kotlinx.coroutines.*\n\nfun main() = runBlocking {}" }, "txt"],
       [{ kind: "code", text: "fn main() {\n    let x = 5;\n    let f = |a| a;\n}" }, "txt"],
-      [{ kind: "code", text: "<?php\n$a = ['x' => 1];" }, "txt"],
+      [{ kind: "code", text: "<?php\n$a = ['x' => 1];" }, "php"],
+      [{ kind: "code", text: "<h1><?php echo $a; ?></h1>" }, "php"],
       [{ kind: "code", text: "import java.util.List;\n\nclass A {}" }, "txt"],
       [{ kind: "code", text: "struct Point { x: i32 }\nlet p = Point { x: 1 };" }, "txt"],
       [{ kind: "code", text: "{ a => 1 }" }, "txt"],

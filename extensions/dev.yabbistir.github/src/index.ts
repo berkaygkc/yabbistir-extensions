@@ -74,8 +74,42 @@ function parseRow(rowId: string): { url: string; reference: string } | undefined
   return { url: rowId, reference: `${match[1]}/${match[2]}#${match[4]}` };
 }
 
-/** Text inside the brackets of a Markdown link: these would end the link, start a tag, an entity or emphasis. Code spans stay. */
-const markdownText = (text: string): string => text.replace(/[\\[\]<>&*_]/g, "\\$&");
+const MARKDOWN_SPECIAL = /[\\[\]<>&*_]/g;
+
+/**
+ * Text inside the brackets of a Markdown link: these characters would end the link, start a tag, an entity or
+ * emphasis, so they get a backslash. A backtick code span is kept as it is (inside it they mean nothing); a backtick
+ * run with no matching closing run is plain text.
+ */
+function markdownText(text: string): string {
+  let out = "";
+  let plain = 0;
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (text[end] === "`") end += 1;
+    const fence = text.slice(index, end);
+    // The closing run must be exactly as long as the opening one.
+    let close = -1;
+    for (let from = text.indexOf(fence, end); from !== -1; from = text.indexOf(fence, from + 1)) {
+      if (text[from - 1] !== "`" && text[from + fence.length] !== "`") {
+        close = from;
+        break;
+      }
+    }
+    if (close === -1) {
+      index = end;
+      continue;
+    }
+    out += text.slice(plain, index).replace(MARKDOWN_SPECIAL, "\\$&") + text.slice(index, close + fence.length);
+    index = plain = close + fence.length;
+  }
+  return out + text.slice(plain).replace(MARKDOWN_SPECIAL, "\\$&");
+}
 
 export const sources: Sources = {
   work: {
@@ -153,6 +187,7 @@ function extensionFor(kind: string | undefined, text: string): string {
   if (shebang !== null) return { python: "py", python3: "py", node: "js", ruby: "rb" }[shebang[1] ?? ""] ?? "sh";
   if (/^<!doctype html|^<html[\s>]/i.test(trimmed)) return "html";
   if (/^<\?xml/i.test(trimmed)) return "xml";
+  if (trimmed.startsWith("<?php") || trimmed.includes("<?php")) return "php";
   if (/^import (SwiftUI|AppKit|UIKit|Foundation)\s*$/m.test(trimmed)) return "swift";
   if (/^def \w+\(.*\):\s*$/m.test(trimmed) || /^from [\w.]+ import \w+/m.test(trimmed)) return "py";
   const script = /^import .+ from ["'].+["'];?\s*$|^export (default |const |function |async |interface |type )|^\s*(const|let) \w+ = (require\(|async\b|function\b|\([^)]*\) =>)|^\s*function \w*\(.*\)\s*\{/m.test(trimmed);

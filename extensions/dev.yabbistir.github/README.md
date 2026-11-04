@@ -45,5 +45,4 @@ Signing in always happens in Terminal. Sign in with `gh auth login`: yabbistir s
 - Team review requests are not included; only reviews requested from you. GitHub drops a pull request from "review requested" once you have posted a review, until you are requested again, so it can seem to go missing.
 - If one or two of the three searches fail (a rate limit, say), the groups that worked are shown and the next opening asks again.
 - In a Markdown link, `\ [ ] < > & * _` in the title are escaped so the link pastes as written; backticks are kept, so a `code` span in a title stays one.
-- Titles over about 180 characters are cut in the Markdown link.
 - Written against `gh` 2.67; it needs `gh search` with `--json`, so keep `gh` up to date (`brew upgrade gh`).
