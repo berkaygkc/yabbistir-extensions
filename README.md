@@ -1,18 +1,19 @@
 # yabbistir extensions
 
-The open extension store for [yabbistir](https://github.com/berkaygkc/yabbistir), a clipboard history app for macOS. This repository holds the extensions, the tools to write, test and build them, and the docs. An extension adds commands to the panel, recognizes what you copy, or cleans copies before they are stored. It is TypeScript bundled into one file that runs inside yabbistir, which draws everything, so every extension looks like part of the app. Each one asks for only the permissions it needs, and you decide before it is installed.
+The open extension store for [yabbistir](https://github.com/berkaygkc/yabbistir), a clipboard history app for macOS. This repository holds the extensions, the tools to write, test and build them, and the docs. An extension adds commands to the panel, recognizes what you copy, cleans copies before they are stored, fills a column of its own, or runs a long job under the menu bar icon. It is TypeScript bundled into one file that runs inside yabbistir, which draws everything, so every extension looks like part of the app. Each one asks for only the permissions it needs, and you decide before it is installed.
 
 ## Install extensions
 
-In yabbistir, open Settings → Extensions → Store, pick the extensions you want, and press Install. The Store is coming in yabbistir 0.2.0. The Store reads a signed catalog only when you open it or press Refresh; yabbistir never checks in the background.
+In yabbistir, open Settings → Extensions → Store, pick the extensions you want, and press Install. The Store reads a signed catalog only when you open it or press Refresh; yabbistir never checks in the background.
 
-Until then, build an extension here (`npm run build -- <id>`) and install `dist/<id>-<version>.yabext` from Settings → Extensions → Development → Install .yabext….
+To try an extension that isn't in the store yet, build it here (`npm run build -- <id>`) and install `dist/<id>-<version>.yabext` from Settings → Extensions → Development → Install .yabext….
 
 | Extension | What it does | Permissions |
 |---|---|---|
 | [Download Video](extensions/dev.yabbistir.video-download) | Downloads YouTube, Instagram and X links as MP4 video or M4A audio with yt-dlp; drops the file into Finder | network, exec |
 | [Link Cleaner](extensions/dev.yabbistir.link-clean) | Strips tracking parameters from links as you copy them | capture |
 | [JWT](extensions/dev.yabbistir.jwt) | Recognizes copied JSON Web Tokens and shows what is inside | none |
+| [LastPass](extensions/dev.yabbistir.lastpass) | Lists your LastPass entries in a column of their own: ↵ pastes the password, ⇧↵ the username, through the `lpass` command-line tool | exec |
 | [Translate](extensions/dev.yabbistir.translate) | Translates and summarizes text on your Mac | none |
 
 ## Write one
