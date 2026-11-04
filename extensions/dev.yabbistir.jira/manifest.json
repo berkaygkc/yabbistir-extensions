@@ -1,0 +1,39 @@
+{
+  "id": "dev.yabbistir.jira",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:ticket",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer", "productivity"],
+  "permissions": ["network"],
+  "network": { "domains": ["atlassian.net"] },
+  "preferences": [
+    { "id": "site", "type": "text", "title": "site.title" },
+    { "id": "email", "type": "text", "title": "email.title" },
+    { "id": "apiToken", "type": "secret", "title": "apiToken.title" },
+    { "id": "project", "type": "text", "title": "project.title" },
+    { "id": "issueType", "type": "text", "title": "issueType.title", "default": "Task" }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "issues", "title": "source.title", "actions": [
+        { "id": "link", "kind": "text", "title": "link.title", "label": "link.label",
+          "copyTitle": "link.copyTitle", "copied": "link.copied" },
+        { "id": "markdown", "kind": "text", "title": "markdown.title", "label": "markdown.label" }
+      ] }
+    ],
+    "actions": [
+      { "id": "keyLink", "title": "keyLink.title", "keywords": "keyLink.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^[A-Z][A-Z0-9_]{1,19}-[1-9][0-9]{0,8}$" },
+        "output": "link", "hint": true },
+      { "id": "create", "title": "create.title", "subtitle": "create.subtitle", "keywords": "create.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "[\\p{L}\\p{N}]" },
+        "output": "link" }
+    ]
+  }
+}
