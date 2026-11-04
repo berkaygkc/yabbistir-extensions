@@ -149,12 +149,20 @@ describe("Turkish casing rules", () => {
     assert.equal(await pick("istanbul", "upper", { context: { language: "tr" }, preferences: { casing: "klingon" } }), "İSTANBUL");
   });
 
-  test("identifierCasesFollowTheRulesToo", async () => {
+  test("identifierCasesAlwaysUseEnglishRules", async () => {
     const tr = { context: { language: "tr" } };
-    assert.equal(await pick("istanbul şehri", "constant", tr), "İSTANBUL_ŞEHRİ");
-    assert.equal(await pick("istanbul şehri", "pascal", tr), "İstanbulŞehri");
-    assert.equal(await pick("IŞIK ilk", "camel", tr), "ışıkİlk");
-    assert.equal(await pick("istanbul", "pascal", { context: { language: "en" } }), "Istanbul");
+    assert.equal(await pick("istanbul", "constant", tr), "ISTANBUL");
+    assert.equal(await pick("getUserID", "snake", tr), "get_user_id");
+    assert.equal(await pick("id", "pascal", tr), "Id");
+    assert.equal(await pick("input", "constant", tr), "INPUT");
+    assert.equal(await pick("istanbul şehri", "kebab", tr), "istanbul-şehri");
+    assert.equal(await pick("istanbul", "upper", tr), "İSTANBUL");
+  });
+
+  test("aLoneLeadingLetterStaysWithItsWord", async () => {
+    assert.equal(await pick("iPhone", "title"), "Iphone");
+    assert.equal(await pick("iPhone", "sentence"), "Iphone");
+    assert.equal(await pick("helloWorld", "title"), "Hello World");
   });
 
   test("theManifestDeclaresTheChoice", () => {

@@ -26,11 +26,11 @@ Copy `parseHTTPResponse2Json`, open the actions, type `snake`: the row shows `pa
 - Digits stay with the letters beside them (`base64Encode` is *base64, encode*), and split only before a capital (`v2Beta` is *v2, beta*).
 - Emoji and CJK text are treated as part of a word and passed through unchanged.
 
-Title Case and Sentence case keep your punctuation and spacing. They split camelCase and `_ - .` only when the whole line is one token (`helloWorld` becomes `Hello World`); in a sentence, a word like `iPhone` is only lower-cased and capitalized as a whole.
+Title Case and Sentence case keep your punctuation and spacing. They split camelCase and `_ - .` only when the whole line is one token (`helloWorld` becomes `Hello World`); a single leading lower-case letter stays with its word (`iPhone` becomes `Iphone`, not `I Phone`); in a sentence, a word like `iPhone` is only lower-cased and capitalized as a whole.
 
 ## Casing rules (Turkish)
 
-The *Casing rules* setting is **Automatic** (the app's language), **Turkish** or **English**. Turkish rules map `i` to `İ` and `ı` to `I` (`istanbul` becomes `İSTANBUL`, `IŞIK` becomes `ışık`); English rules do not (`ISTANBUL`). Title Case keeps these words small in the middle of a title: English *a, an, and, as, at, but, by, for, in, nor, of, on, or, the, to, via, vs*; Turkish *ve, ile, veya*. The rules apply to every variant, so with Turkish rules `istanbul` in CONSTANT_CASE is `İSTANBUL`; choose English in Settings if you mostly convert code.
+The *Casing rules* setting is **Automatic** (the app's language), **Turkish** or **English**. Turkish rules map `i` to `İ` and `ı` to `I` (`istanbul` becomes `İSTANBUL`, `IŞIK` becomes `ışık`); English rules do not (`ISTANBUL`). Title Case keeps these words small in the middle of a title: English *a, an, and, as, at, but, by, for, in, nor, of, on, or, the, to, via, vs*; Turkish *ve, ile, veya*. The rules apply to UPPERCASE, lowercase, Title Case, Sentence case and the slug. The code variants (camelCase, PascalCase, snake_case, CONSTANT_CASE, kebab-case, dot.case) always use English rules so identifiers stay plain ASCII-safe (`getUserID` becomes `get_user_id`, never `get_user_ıd`).
 
 ## Slug
 

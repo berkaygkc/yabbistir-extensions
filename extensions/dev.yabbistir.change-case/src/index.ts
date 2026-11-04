@@ -120,6 +120,11 @@ function proseCase(core: string, kind: "title" | "sentence", rules: Rules): stri
   if (identifierLike) {
     // One token such as "my-var_name" or "helloWorld" is an identifier: split it and join with spaces.
     const words = scan(core, true, true).filter((token) => token.w);
+    // A lone leading lower-case letter before a capital ("iPhone", "eBay") is part of the name, not a word.
+    if (words.length > 1 && !/[_\-.]/.test(core) && Array.from(words[0].t).length === 1 && lowerLetter.test(words[0].t)) {
+      const merged = { w: true, t: words[0].t + words[1].t };
+      words.splice(0, 2, merged);
+    }
     tokens = [];
     words.forEach((word, index) => {
       if (index > 0) tokens.push({ w: false, t: " " });
@@ -162,12 +167,11 @@ export const variants: readonly Variant[] = [
 
 /** One line, without its leading and trailing whitespace. */
 function convertCore(core: string, variant: Variant, rules: Rules): string {
-  const { lower, upper, capital } = casing(rules);
   switch (variant) {
     case "upper":
-      return upper(core);
+      return casing(rules).upper(core);
     case "lower":
-      return lower(core);
+      return casing(rules).lower(core);
     case "title":
     case "sentence":
       return proseCase(core, variant, rules);
@@ -175,6 +179,8 @@ function convertCore(core: string, variant: Variant, rules: Rules): string {
       break;
   }
   const words = scan(core, true, false).filter((token) => token.w).map((token) => token.t);
+  // Identifiers always use English rules: Turkish rules would turn "getUserID" into "get_user_ıd".
+  const { lower, upper, capital } = casing(variant === "slug" ? rules : "en");
   if (variant === "slug") return words.map((word) => slugWord(lower(word))).filter((word) => word !== "").join("-");
   if (words.length === 0) return core;
   switch (variant) {
