@@ -1,0 +1,14 @@
+{
+  "name": "Geliştirme Sunucuları",
+  "description": "Mac’inde dinleyen yerel sunucular, bir sütunda. ↵ http://localhost:3000, ⇧↵ localhost:3000 yapıştırır.",
+  "source.title": "Geliştirme sunucuları",
+  "url.title": "localhost bağlantısını yapıştır",
+  "url.label": "Bağlantı",
+  "url.copyTitle": "localhost bağlantısını kopyala",
+  "url.copied": "Bağlantı kopyalandı.",
+  "address.title": "localhost adresini yapıştır",
+  "address.label": "Adres",
+  "allInterfaces": "tüm arayüzler",
+  "listFailed": "lsof sunucuları listeleyemedi.",
+  "gone": "Bu sunucu artık listede yok."
+}
