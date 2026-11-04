@@ -25,7 +25,7 @@ const white: Rgb = [255, 255, 255];
 const black: Rgb = [0, 0, 0];
 
 function distance(value: number): string {
-  return value < 0.05 ? yab.t("exact") : yab.t("delta", { n: value.toFixed(1) });
+  return value < 0.05 ? yab.t("exact") : yab.t("delta", { n: Math.max(0.1, value).toFixed(1) });
 }
 
 function levelText(level: string): string {

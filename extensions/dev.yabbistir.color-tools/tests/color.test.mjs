@@ -176,6 +176,12 @@ describe("variants", () => {
     assert.ok(sum(d[0]) < sum("#336699") && sum(d[1]) < sum(d[0]) && sum(d[2]) < sum(d[1]));
   });
 
+  test("variantsMatchKnownValues", async () => {
+    assert.deepEqual(await run("darker", color("#777777"), "20"), { text: "#575757" });
+    assert.deepEqual(await run("lighter", color("#ff0000"), "30"), { text: "#ff7765" });
+    assert.deepEqual(await run("darker", color("#ff0000"), "30"), { text: "#9e0000" });
+  });
+
   test("whiteAndBlackAreFixedPoints", async () => {
     assert.deepEqual(await run("lighter", color("#ffffff"), "30"), { text: "#ffffff" });
     assert.deepEqual(await run("darker", color("#000000"), "30"), { text: "#000000" });
@@ -263,7 +269,23 @@ describe("offers", () => {
   });
 });
 
+describe("readme claims", () => {
+  test("theExampleNumbersAreChecked", async () => {
+    const sections = await preview(color("#777777"));
+    const near = rows(sections, "Nearest");
+    assert.ok(near[0][1].endsWith("ΔE 3.1"), near[0][1]);
+    assert.ok(near[1][1].includes("neutral-500") && near[1][1].endsWith("ΔE 1.4"), near[1][1]);
+    assert.deepEqual(await run("darker", color("#777777"), "20"), { text: "#575757" });
+  });
+
+  test("aTinyDistanceIsNeverShownAsZero", async () => {
+    const near = rows(await preview(color("#010101")), "Nearest");
+    assert.ok(!/ΔE 0\.0/.test(near[0][1] + near[1][1]));
+  });
+});
+
 describe("timing and locale", () => {
+  // No regular expression reads untrusted text here: the input is numeric channels, so there is nothing to time against adversarial strings.
   test("aPreviewIsFarInsideItsLimit", async () => {
     const start = performance.now();
     for (let i = 0; i < 50; i++) await preview(color("#" + (i * 5000000 % 0xffffff).toString(16).padStart(6, "0")));

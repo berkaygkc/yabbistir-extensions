@@ -7,7 +7,7 @@
   "css": "CSS adı",
   "white": "Beyaz üzerinde",
   "black": "Siyah üzerinde",
-  "luminance": "Parlaklık",
+  "luminance": "Göreli ışıklık",
   "exact": "tam eşleşme",
   "delta": "ΔE {n}",
   "levels": "Normal metin {normal} · Büyük metin {large}",
