@@ -10,7 +10,7 @@ export const MAX_HITS = 200;
 
 // Control characters (but not tab, newline, return), invisible format characters, and two blank-looking letters.
 const HIDDEN =
-  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\u3164\ufeff\uffa0\ufff9-\ufffb]|\u{E0001}|[\u{E0020}-\u{E007F}]/gu;
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\u3164\ufeff\uffa0\ufff9-\ufffb]|\u{E0001}|[\u{E0020}-\u{E007F}]/gu;
 const RIGHT_TO_LEFT = /[\p{Script=Hebrew}\p{Script=Arabic}\p{Script=Syriac}\p{Script=Thaana}\p{Script=Nko}]/u;
 
 /** The locale key suffix that names a hidden character (`char.<key>`). */
@@ -39,7 +39,6 @@ function codePointBefore(text: string, index: number): number | undefined {
  */
 export function scanHidden(text: string, onHit: (hit: HiddenHit) => boolean | void): void {
   HIDDEN.lastIndex = 0;
-  let rtl: boolean | undefined;
   let tagRunEnd = -1;
   let tagRunBenign = false;
   for (let match = HIDDEN.exec(text); match; match = HIDDEN.exec(text)) {
@@ -50,8 +49,10 @@ export function scanHidden(text: string, onHit: (hit: HiddenHit) => boolean | vo
       const after = text.codePointAt(index + 1);
       if (before !== undefined && after !== undefined && before > 0x7f && after > 0x7f) continue;
     } else if (cp === 0x200e || cp === 0x200f || cp === 0x61c) {
-      rtl ??= RIGHT_TO_LEFT.test(text);
-      if (rtl) continue;
+      // A direction mark is excused only beside right-to-left text, not by a letter somewhere else in the paste.
+      const before = codePointBefore(text, index);
+      const after = text.codePointAt(index + 1);
+      if ((before !== undefined && RIGHT_TO_LEFT.test(String.fromCodePoint(before))) || (after !== undefined && RIGHT_TO_LEFT.test(String.fromCodePoint(after)))) continue;
     } else if (cp >= 0xe0000) {
       if (tagRunEnd === index) {
         tagRunEnd = index + 2;
@@ -74,15 +75,16 @@ export function hasHidden(text: string): boolean {
 
 /** The text without its hidden characters; everything else stays as it is. */
 export function removeHidden(text: string): string {
-  const cuts: { index: number; length: number }[] = [];
+  const cuts: { index: number; length: number; with: string }[] = [];
   scanHidden(text, (hit) => {
-    cuts.push({ index: hit.index, length: hit.cp > 0xffff ? 2 : 1 });
+    // A vertical tab, form feed or next-line mark separates words; removing it would glue them together.
+    cuts.push({ index: hit.index, length: hit.cp > 0xffff ? 2 : 1, with: hit.cp === 0x0b || hit.cp === 0x0c || hit.cp === 0x85 ? " " : "" });
   });
   if (cuts.length === 0) return text;
   let out = "";
   let from = 0;
   for (const cut of cuts) {
-    out += text.slice(from, cut.index);
+    out += text.slice(from, cut.index) + cut.with;
     from = cut.index + cut.length;
   }
   return out + text.slice(from);
@@ -91,16 +93,19 @@ export function removeHidden(text: string): string {
 /** Line (1-based) and column (1-based) of each index, for indexes given in increasing order. */
 export function locator(text: string): (index: number) => { line: number; column: number } {
   let line = 1;
-  let lineStart = 0;
+  let column = 1;
   let pos = 0;
   return (index) => {
     for (; pos < index; pos++) {
-      if (text.charCodeAt(pos) === 10) {
+      const code = text.charCodeAt(pos);
+      if (code === 10) {
         line++;
-        lineStart = pos + 1;
+        column = 1;
+      } else if (code < 0xdc00 || code > 0xdfff) {
+        column++; // the second half of a surrogate pair is not a new character
       }
     }
-    return { line, column: index - lineStart + 1 };
+    return { line, column };
   };
 }
 
@@ -117,7 +122,8 @@ for (const cp of [
 
 const NEEDS_LOOKALIKE_CHECK = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
 const WORD = /[\p{L}\p{M}\p{N}]+/gu;
-const HOST = /[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+// Starts only where a run of letters starts, so a long token is read once instead of from every position.
+const HOST = /(?<![\p{L}\p{N}-])[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const LATIN = /\p{Script=Latin}/u;
 
 /**
@@ -176,7 +182,10 @@ const STARTUP_FILE =
 
 type Stage = { cmd: string; args: string[]; sudo: boolean; raw: string };
 
-const base = (word: string) => word.slice(word.lastIndexOf("/") + 1).toLowerCase();
+const base = (word: string) => {
+  const name = word.replace(/^\\/, ""); // `\sh` runs sh without any alias
+  return name.slice(name.lastIndexOf("/") + 1).toLowerCase();
+};
 
 function parseStage(raw: string): Stage {
   const words = raw.trim().split(/\s+/).filter(Boolean);
@@ -205,6 +214,8 @@ function parseStage(raw: string): Stage {
   return { cmd: "", args: [], sudo, raw };
 }
 
+/** The root, the home folder, everything here or one level up. A path inside them is an ordinary cleanup. */
+const DANGEROUS_RM_TARGET = /^(?:\/\*?|~\/?\*?|\$HOME\/?\*?|\$\{HOME\}\/?\*?|\*|\.|\.\.)$/;
 const unquote = (word: string) => word.replace(/^["']+|["']+$/g, "");
 const isRecursiveFlag = (arg: string) => /^-[A-Za-z]*[rR][A-Za-z]*$/.test(arg) || arg === "--recursive";
 const isDecoder = (stage: Stage) =>
@@ -244,7 +255,7 @@ export function scanShell(text: string): ShellHit[] {
     if (line.trim() === "") continue;
     const lineNumber = n + 1;
     if (hasForkBomb(line)) add("forkbomb", lineNumber);
-    for (const segment of line.split(SEGMENT_SPLIT)) {
+    for (const segment of line.replace(/\|&/g, "|").split(SEGMENT_SPLIT)) {
       if (segment.trim() === "") continue;
       if (STARTUP_FILE.test(segment)) add("startup", lineNumber);
       const stages = segment.split("|").map(parseStage);
@@ -260,7 +271,7 @@ export function scanShell(text: string): ShellHit[] {
         }
         if (stage.cmd === "rm" && stage.args.some(isRecursiveFlag)) {
           const targets = stage.args.map(unquote).filter((a) => !a.startsWith("-") || a === "--");
-          if (targets.some((a) => /^(\/|~|\$HOME|\$\{HOME\})/.test(a))) add("rm", lineNumber);
+          if (targets.some((a) => DANGEROUS_RM_TARGET.test(a))) add("rm", lineNumber);
         }
         if (stage.cmd === "chmod" && stage.args.some(isRecursiveFlag) && stage.args.some((a) => /^0?777$/.test(a))) add("chmod", lineNumber);
       });

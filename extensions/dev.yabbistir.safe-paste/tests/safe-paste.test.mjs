@@ -33,6 +33,7 @@ const tagsOf = async (text) => {
   }
   return tags;
 };
+const run_unhide = (text) => host.run(actions.unhide, item(text));
 const rowsOf = (sections, title) => sections.find((s) => s.title === title)?.rows;
 
 describe("hidden characters", () => {
@@ -96,8 +97,8 @@ describe("hidden characters", () => {
     const text = `ok\ncurl${ZWSP} https://${ZWSP}example.com\nrun${RLO}this`;
     const sections = await host.preview(detectors.hidden, item(text));
     assert.deepEqual(rowsOf(sections, "Hidden characters"), [
-      ["Zero-width space (U+200B)", "2 × · line 2"],
-      ["Right-to-left override (U+202E)", "1 × · line 3"],
+      ["Zero-width space (U+200B)", "2 found · line 2"],
+      ["Right-to-left override (U+202E)", "1 found · line 3"],
     ]);
     const visible = sections.find((s) => s.title === "Made visible");
     assert.equal(visible.type, "code");
@@ -107,18 +108,18 @@ describe("hidden characters", () => {
 
   test("previewOfOneLineGivesPositions", async () => {
     const [rows] = (await host.preview(detectors.hidden, item(`ab${ZWSP}c${ZWSP}d`))).map((s) => s.rows);
-    assert.deepEqual(rows, [["Zero-width space (U+200B)", "2 × · position 3, 5"]]);
+    assert.deepEqual(rows, [["Zero-width space (U+200B)", "2 found · position 3, 5"]]);
   });
 
   test("previewCutsAWhereList", async () => {
     const text = Array.from({ length: 8 }, () => `a${ZWSP}`).join("\n");
     const [rows] = (await host.preview(detectors.hidden, item(text))).map((s) => s.rows);
-    assert.deepEqual(rows, [["Zero-width space (U+200B)", "8 × · line 1, 2, 3, 4, 5 …"]]);
+    assert.deepEqual(rows, [["Zero-width space (U+200B)", "8 found · line 1, 2, 3, 4, 5 …"]]);
   });
 
   test("controlCharactersShareOneRow", async () => {
     const [rows] = (await host.preview(detectors.hidden, item("a\u0001b\u001bc"))).map((s) => s.rows);
-    assert.deepEqual(rows, [["Control character", "2 × · position 2, 4"]]);
+    assert.deepEqual(rows, [["Control character", "2 found · position 2, 4"]]);
   });
 
   test("previewOfCleanTextIsEmpty", async () => {
@@ -128,7 +129,7 @@ describe("hidden characters", () => {
   test("previewSpeaksTurkish", async () => {
     const sections = await tr.preview(detectors.hidden, item(`a${ZWSP}b`), { language: "tr" });
     assert.equal(sections[0].title, "Gizli karakterler");
-    assert.deepEqual(sections[0].rows, [["Sıfır genişlikli boşluk (U+200B)", "1 × · konum 2"]]);
+    assert.deepEqual(sections[0].rows, [["Sıfır genişlikli boşluk (U+200B)", "1 adet · konum 2"]]);
   });
 });
 
@@ -208,18 +209,26 @@ describe("risky commands", () => {
     assert.equal(await risky("cat key | sudo tee /etc/x"), true);
   });
 
-  test("recursiveRmOfAHomeOrRootPathIsTagged", async () => {
-    for (const text of ["rm -rf /", "rm -rf ~", "rm -rf ~/Documents", "rm -fr $HOME/x", "rm -r -f /usr/local/x", "rm -Rf /tmp/build", 'rm -rf "/Users/test/x"', "rm --recursive --force /var/x", "sudo rm -rf /*"]) {
-      assert.equal(await risky(text), true, text);
+  test("recursiveRmOfADangerousTargetIsTagged", async () => {
+    const targets = ["/", "/*", "~", "~/", "~/*", "$HOME", "${HOME}", "$HOME/", "${HOME}/*", "*", ".", "..", '"$HOME"', '"~"'];
+    for (const target of targets) {
+      for (const flags of ["-rf", "-fr", "-Rf", "-r -f", "-f -r", "--recursive --force", "-r"]) {
+        const text = `rm ${flags} ${target}`;
+        assert.equal(await risky(text), true, text);
+      }
     }
+    assert.equal(await risky("sudo rm -rf /*"), true);
+    assert.equal(await risky("rm -rf -- /"), true);
+    assert.equal(await risky("rm -rf build ~"), true, "any one dangerous target");
   });
-
-  test("localRmIsNot", async () => {
-    for (const text of ["rm file.txt", "rm -rf node_modules", "rm -rf ./build dist", "rm -f /tmp/x.lock", "echo rm -rf /"]) {
-      assert.equal(await risky(text), false, text);
-    }
+  test("ordinaryRmIsNot", async () => {
+    const texts = [
+      "rm file.txt", "rm -rf node_modules", "rm -rf ./build dist", "rm -f /tmp/x.lock", "echo rm -rf /",
+      "rm -rf /tmp/build", "rm -Rf /tmp/build", "rm -rf ./dist", "rm -rf ~/Documents", "rm -rf ~/proj/node_modules", "rm -fr $HOME/x",
+      'rm -rf "/Users/test/x"', "rm -r -f /usr/local/x", "rm --recursive --force /var/x", "rm -f /", "rm /", "rm -rf ./",
+    ];
+    for (const text of texts) assert.equal(await risky(text), false, text);
   });
-
   test("forkBombsAreTagged", async () => {
     assert.equal(await risky(":(){ :|:& };:"), true);
     assert.equal(await risky(":() { : | : & } ; :"), true);
@@ -273,7 +282,7 @@ describe("risky commands", () => {
   });
 
   test("severalLinesPointToTheRightLine", async () => {
-    const text = "cd /tmp\nsudo make install\nrm -rf ~/old\n";
+    const text = "cd /tmp\nsudo make install\nrm -rf ~/*\n";
     const sections = await host.preview(detectors.risky, item(text));
     assert.deepEqual(rowsOf(sections, "Risky parts"), [
       ["Runs as administrator (sudo)", "line 2"],
@@ -283,7 +292,7 @@ describe("risky commands", () => {
       ["Newline at the end", "A terminal runs it at once"],
       ["Lines", "3 commands, one after another"],
     ]);
-    assert.equal(sections.at(-1).text, "yabbistir never changes a command. Read it before you paste.");
+    assert.equal(sections.at(-1).text, "yabbistir never fixes a dangerous command. Read it before you paste.");
   });
 
   test("aSingleLineHasNoPasteSection", async () => {
@@ -341,35 +350,47 @@ describe("Paste safely", () => {
 
   test("outputIsByteForByte", async () => {
     const input = [
-      `  echo${NBSP}“hi ${ZWSP}there”  `,
-      `  ls ${"\u2011"}${"\u2011"}all   `,
-      `printf ‘%s’ x\t`,
+      `echo${NBSP}“hi ${ZWSP}there”`,
+      `  ls ${"\u2011"}${"\u2011"}all`,
+      `printf ‘%s’ x  \t`,
       "",
       "",
     ].join("\r\n");
     const result = await run(input);
-    assert.equal(result.text, ['  echo "hi there"', "  ls --all", "printf '%s' x"].join("\n"));
+    assert.equal(result.text, "echo \u201chi there\u201d\n  ls --all\nprintf \u2018%s\u2019 x");
   });
-
-  test("normalizesSpacesAndQuotes", async () => {
+  test("normalizesSpacesAndLeavesQuotesAlone", async () => {
     assert.equal((await run(`a${NBSP}b\u202fc\u2003d\u3000e`)).text, "a b c d e");
-    assert.equal((await run("‘a’ ‚b‛ “c” „d‟")).text, `'a' 'b' "c" "d"`);
+    const quoted = "‘a’ ‚b‛ “c” „d‟";
+    assert.equal((await run(quoted)).text, quoted, "curly quotes are never changed");
+    assert.equal((await run("echo 'it’s fine'; touch x")).text, "echo 'it’s fine'; touch x");
+    assert.equal((await run("git commit -m 'don’t'")).text, "git commit -m 'don’t'");
+    assert.equal((await run('echo “it’s”')).text, 'echo “it’s”');
   });
-
-  test("stripsTrailingWhitespaceOnEveryLineAndTheEnd", async () => {
-    assert.equal((await run("one  \n\ttwo\t\nthree \n\n\n")).text, "one\n\ttwo\nthree");
+  test("stripsTrailingWhitespaceOnlyAtTheVeryEnd", async () => {
+    assert.equal((await run("one  \n\ttwo\t\nthree \n\n\n")).text, "one  \n\ttwo\t\nthree");
     assert.equal((await run("x\n \n")).text, "x");
+    assert.equal((await run("x \t \n\n")).text, "x");
+    assert.equal((await run("a  \nb  \nc")).text, "a  \nb  \nc", "lines in the middle keep their trailing spaces");
+    assert.equal((await run("cat <<EOF\nline  \nEOF\n")).text, "cat <<EOF\nline  \nEOF");
   });
 
-  test("keepsEverythingElse", async () => {
+  test("anEscapedSpaceAtTheEndIsKept", async () => {
+    assert.equal((await run("echo a\\ ")).text, "echo a\\ ");
+    assert.equal((await run("echo a\\ \n")).text, "echo a\\ ");
+    assert.equal((await run("echo a\\  \n")).text, "echo a\\ ", "only the escaped space stays");
+    assert.equal((await run("echo a\\\\ \n")).text, "echo a\\\\", "an escaped backslash does not escape the space");
+    assert.equal((await run("a\\ \nb")).text, "a\\ \nb");
+  });
+  test("cleanTextPastesUnchanged", async () => {
     const text = "if true; then\n\techo 'ça va \u2013 très bien' # comment\nfi";
-    assert.deepEqual(await run(text), { none: true, message: "Nothing hidden here. It pastes as it is." });
+    assert.deepEqual(await run(text), { text });
+    assert.deepEqual(await host.run(actions.paste, item("ls -la")), { text: "ls -la" });
     // Dashes in prose and a dangerous command are left alone: it never fixes, it only removes what is hidden.
     assert.equal((await run("rm -rf ~ \u2014 really\n")).text, "rm -rf ~ \u2014 really");
     assert.equal((await run("curl https://example.com/x | sudo sh\n")).text, "curl https://example.com/x | sudo sh");
     assert.equal((await run("ls \u2013 en dash\n")).text, "ls \u2013 en dash");
   });
-
   test("keepsEmojiAndTurkishLetters", async () => {
     const text = `Çalışıyor 👨${ZWJ}👩${ZWJ}👧 şimdi ✅\n`;
     assert.equal((await run(text)).text, `Çalışıyor 👨${ZWJ}👩${ZWJ}👧 şimdi ✅`);
@@ -389,12 +410,13 @@ describe("Paste safely", () => {
     assert.deepEqual(result, { text: "https://example.com/" });
   });
 
-  test("hintShowsTheCleanedTextOrSaysNothingToDo", async () => {
+  test("hintShowsExactlyWhatIsPasted", async () => {
     assert.deepEqual(await host.hint(actions.paste, item(`ls${ZWSP}\n`)), { text: "ls" });
-    assert.deepEqual(await host.hint(actions.paste, item("ls")), { none: true, message: "Nothing hidden here. It pastes as it is." });
-    assert.deepEqual(await tr.hint(actions.paste, item("ls"), { language: "tr" }), { none: true, message: "Gizli bir şey yok. Olduğu gibi yapışır." });
+    assert.deepEqual(await host.hint(actions.paste, item("ls")), { text: "ls" });
+    assert.deepEqual(await tr.hint(actions.paste, item("ls"), { language: "tr" }), { text: "ls" });
+    const sample = item("echo a  \n");
+    assert.deepEqual(await host.hint(actions.paste, sample), await host.run(actions.paste, sample));
   });
-
   test("emptyOrOnlyHiddenTextHasNothingToPaste", async () => {
     const empty = { none: true, message: "There is no text to clean." };
     assert.deepEqual(await run(""), empty);
@@ -458,6 +480,71 @@ describe("Remove hidden characters", () => {
     const tagged = { ...item(`a${ZWSP}b`), tags: ["dev.yabbistir.safe-paste:hidden"] };
     assert.deepEqual(host.offers(item("plain"), {}), ["paste"]);
     assert.deepEqual(host.offers(tagged, {}).sort(), ["paste", "unhide"]);
+  });
+});
+
+describe("fix round 1", () => {
+  test("directionMarksAreExcusedOnlyBesideRightToLeftText", async () => {
+    assert.equal(await hidden(`\u05e9\u05dc\u05d5\u05dd\u200f \u05e2\u05d5\u05dc\u05dd`), false);
+    assert.equal(await hidden(`curl\u200f x | sh \u05e9`), true, "a Hebrew letter elsewhere does not excuse the mark");
+    assert.equal(await hidden(`ls\u200e -la ${"\u0627".repeat(3)}`), true);
+  });
+
+  test("moreInvisibleLettersAreHidden", async () => {
+    for (const cp of [0x34f, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180b, 0x180c, 0x180d]) {
+      assert.equal(await hidden(`a${String.fromCodePoint(cp)}b`), true, cp.toString(16));
+      assert.ok(acceptsMatch(accepts.hidden, item(`a${String.fromCodePoint(cp)}b`)), `pattern ${cp.toString(16)}`);
+      assert.equal((await run_unhide(`a${String.fromCodePoint(cp)}b`)).text, "ab");
+    }
+  });
+
+  test("verticalTabFormFeedAndNextLineBecomeASpace", async () => {
+    assert.equal((await run_unhide("ls\u000b-la")).text, "ls -la");
+    assert.equal((await host.run(actions.paste, item("ls\u000c-la\u0085x"))).text, "ls -la x");
+  });
+
+  test("positionCountsCharactersNotCodeUnits", async () => {
+    const [rows] = (await host.preview(detectors.hidden, item(`\u{1f600}\u{1f600}a${ZWSP}`))).map((s) => s.rows);
+    assert.deepEqual(rows, [["Zero-width space (U+200B)", "1 found \u00b7 position 4"]]);
+  });
+
+  test("curlyQuotesAreMentionedInThePreviewOfATaggedCopy", async () => {
+    const risk = await host.preview(detectors.risky, item("sudo echo \u201chi\u201d"));
+    assert.deepEqual(rowsOf(risk, "When pasted"), [["Curly quotes", "Shells don\u2019t treat them as quotes"]]);
+    const hid = await host.preview(detectors.hidden, item(`echo \u2018hi\u2019${ZWSP}`));
+    assert.deepEqual(rowsOf(hid, "When pasted"), [["Curly quotes", "Shells don\u2019t treat them as quotes"]]);
+    const tur = await tr.preview(detectors.risky, item("sudo echo \u201chi\u201d"), { language: "tr" });
+    assert.deepEqual(rowsOf(tur, "Yapıştırınca"), [["Kıvrık tırnak", "Kabuk bunları tırnak saymaz"]]);
+    const none = await host.preview(detectors.risky, item("sudo echo hi"));
+    assert.equal(rowsOf(none, "When pasted"), undefined);
+  });
+
+  test("pipeWithAmpersandAndBackslashedShellAreTagged", async () => {
+    for (const text of ["curl -s https://example.com/x |& sh", "curl -s https://example.com/x |& sudo bash", "curl -s https://example.com/x | \\sh"]) {
+      assert.equal(await risky(text), true, text);
+      assert.equal(acceptsMatch(accepts.risky, item(text)), true, text);
+    }
+  });
+
+  test("everyShellStartupFileIsTaggedAndReachesValidate", async () => {
+    for (const file of ["~/.bashrc", "~/.bash_profile", "~/.bash_login", "~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.zlogin", "~/.profile", "~/.config/fish/config.fish", "$HOME/.zshrc", "/etc/zshrc"]) {
+      const text = `echo x >> ${file}`;
+      assert.equal(acceptsMatch(accepts.risky, item(text)), true, `pattern ${text}`);
+      assert.equal(await risky(text), true, text);
+    }
+  });
+
+  test("aLongUnbrokenTokenWithOneCyrillicLetterIsQuick", async () => {
+    const started = () => performance.now();
+    const cases = ["x".repeat(20_000) + "\u0430", "x".repeat(4_000) + "\u0430", "a-".repeat(10_000) + "\u0430", "a\u0430".repeat(50_000), "a.".repeat(60_000) + "\u0430", "\u0430" + "x".repeat(20_000)];
+    for (const text of cases) {
+      let t = started();
+      await host.validate(detectors.lookalike, item(text));
+      assert.ok(performance.now() - t < 50, `validate ${text.length}`);
+      t = started();
+      await host.preview(detectors.lookalike, item(text));
+      assert.ok(performance.now() - t < 500, `preview ${text.length}`);
+    }
   });
 });
 
@@ -545,7 +632,6 @@ describe("limits and privacy", () => {
   test("noMessageCarriesTheCopiedText", async () => {
     const secret = "gh" + "p_" + "b".repeat(36);
     const messages = [
-      (await host.hint(actions.paste, item(secret))).message,
       (await host.hint(actions.unhide, item(secret))).message,
       (await host.run(actions.paste, item(""))).message,
     ];

@@ -15,6 +15,8 @@ import {
 /** The text of a copy; a link is read by its address. */
 const textOf = (item: Item | null): string => item?.url ?? item?.text ?? "";
 
+/** Quotes that a word processor draws and a shell does not treat as quotes. */
+const CURLY_QUOTES = /[\u2018-\u201f]/;
 const WHERE_LIMIT = 5;
 const BIDI = new Set(["202a", "202b", "202c", "202d", "202e", "2066", "2067", "2068", "2069"]);
 /** Characters that share one row and one name, because they are many and alike. */
@@ -87,6 +89,7 @@ export const detectors: Detectors = {
         { type: "code", title: yab.t("preview.visible"), code: visible },
         { type: "text", title: yab.t("preview.why"), text: yab.t(hits.some((h) => BIDI.has(h.key)) ? "hidden.noteBidi" : "hidden.note") },
       ];
+      if (CURLY_QUOTES.test(text)) sections.splice(2, 0, { type: "keyValue", title: yab.t("preview.paste"), rows: [[yab.t("paste.quotes"), yab.t("paste.quotes.value")]] });
       return sections;
     },
   },
@@ -126,6 +129,7 @@ export const detectors: Detectors = {
       const paste: [string, string][] = [];
       if (trailingNewline) paste.push([yab.t("paste.newline"), yab.t("paste.newline.value")]);
       if (commandLines > 1) paste.push([yab.t("paste.lines"), yab.t("paste.lines.value", { n: commandLines })]);
+      if (CURLY_QUOTES.test(text)) paste.push([yab.t("paste.quotes"), yab.t("paste.quotes.value")]);
       if (paste.length > 0) sections.push({ type: "keyValue", title: yab.t("preview.paste"), rows: paste });
       sections.push({ type: "text", title: yab.t("preview.why"), text: yab.t("risky.note") });
       return sections;
@@ -140,7 +144,6 @@ export const actions: Actions = {
       if (text.trim() === "") return { none: true, message: yab.t("empty") };
       const cleaned = cleanForTerminal(text);
       if (cleaned === "") return { none: true, message: yab.t("empty") };
-      if (cleaned === text) return { none: true, message: yab.t("paste.nothing") };
       return { text: cleaned };
     },
   },

@@ -5,7 +5,7 @@
   "tag.lookalike": "Benzer harf",
   "tag.risky": "Riskli komut",
   "paste.title": "Güvenli yapıştır",
-  "paste.subtitle": "Gizli karakter, kıvrık tırnak ve son satır sonu olmadan",
+  "paste.subtitle": "Gizli karakter ve son satır sonu olmadan",
   "paste.keywords": [
     "yapıştır",
     "güvenli",
@@ -30,7 +30,6 @@
     "hidden"
   ],
   "empty": "Temizlenecek metin yok.",
-  "paste.nothing": "Gizli bir şey yok. Olduğu gibi yapışır.",
   "unhide.nothing": "Gizli karakter bulunamadı.",
   "preview.hidden": "Gizli karakterler",
   "preview.visible": "Görünür hali",
@@ -38,11 +37,11 @@
   "preview.risky": "Riskli kısımlar",
   "preview.paste": "Yapıştırınca",
   "preview.why": "Neden önemli",
-  "hidden.value": "{n} × · {where}",
+  "hidden.value": "{n} adet · {where}",
   "hidden.note": "Bunlar görünmez ama bir komutun ya da adresin gerçekte ne olduğunu değiştirir. Güvenli yapıştır bunları kaldırır.",
   "hidden.noteBidi": "Yön denetimleri, metnin bilgisayarın çalıştırdığından farklı bir sırada okunmasına yol açar. Güvenli yapıştır bunları kaldırır.",
   "lookalike.note": "Bu harfler başka bir alfabeden gelir ama Latin harfler gibi görünür. Bunlarla yazılmış bir adres ya da komut göründüğü gibi değildir.",
-  "risky.note": "yabbistir hiçbir komutu değiştirmez. Yapıştırmadan önce oku.",
+  "risky.note": "yabbistir tehlikeli bir komutu asla düzeltmez. Yapıştırmadan önce oku.",
   "where.line": "satır {list}",
   "where.position": "konum {list}",
   "shell.pipe": "Bir betik indirir ve çalıştırır",
@@ -87,5 +86,15 @@
   "char.2069": "Yön yalıtımını kapat",
   "char.3164": "Hangul dolgusu",
   "char.feff": "Sıfır genişlikli bölünmez boşluk",
-  "char.ffa0": "Yarım genişlikli Hangul dolgusu"
+  "char.ffa0": "Yarım genişlikli Hangul dolgusu",
+  "char.34f": "Birleşik harf birleştirici",
+  "char.115f": "Hangul başlangıç dolgusu",
+  "char.1160": "Hangul ortası dolgusu",
+  "char.17b4": "Khmer gömülü ünlü",
+  "char.17b5": "Khmer gömülü ünlü",
+  "char.180b": "Moğolca serbest değişke seçici",
+  "char.180c": "Moğolca serbest değişke seçici",
+  "char.180d": "Moğolca serbest değişke seçici",
+  "paste.quotes": "Kıvrık tırnak",
+  "paste.quotes.value": "Kabuk bunları tırnak saymaz"
 }
