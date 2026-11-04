@@ -28,11 +28,15 @@ export function jxaError(number, message) {
 export const notAuthorized = (browser) => jxaError(-1743, `Not authorized to send Apple events to ${NAME[browser]}.`);
 const cantGet = () => jxaError(-1728, "Can’t get object.");
 
-/** The properties each dictionary has: on the window, on `active tab` / `current tab`, and on every tab. */
+/**
+ * The properties each dictionary has: on the window, on `active tab` / `current tab`, and on every tab, as JXA names
+ * them. Safari's and Arc's are the ones their shipped dictionaries list (Safari 26.6, Arc 1.153.1); Arc's window also
+ * has a `mode`, which the script must not read (see "Arc is asked only `incognito`").
+ */
 const DICTIONARY = {
   safari: { window: ["id"], current: ["index"], tab: ["url", "name", "visible"] },
   chromium: { window: ["id", "mode", "activeTabIndex"], active: [], tab: ["id", "title", "url"] },
-  arc: { window: ["id", "incognito"], active: ["id"], tab: ["id", "title", "url"] },
+  arc: { window: ["id", "incognito", "mode"], active: ["id"], tab: ["id", "title", "url"] },
 };
 /** A browser's dictionary, without the properties its test says it `lacks` (as an older or changed version might). */
 function dictionaryOf(browser, lacks = []) {
@@ -97,7 +101,7 @@ export function fakeJXA(browsers) {
       };
       return {
         id: own("id", window.id),
-        mode: own("mode", window.mode ?? "normal"),
+        mode: own("mode", window.mode ?? (window.incognito === true ? "incognito" : "normal")),
         incognito: own("incognito", window.incognito ?? false),
         activeTabIndex: own("activeTabIndex", (window.active ?? 0) + 1),
         activeTab: { id: property(dictionary.active?.includes("id") ?? false, activeTab?.id) },

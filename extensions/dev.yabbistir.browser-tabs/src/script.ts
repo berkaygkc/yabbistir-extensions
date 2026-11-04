@@ -25,9 +25,11 @@
 // The dictionaries it reads:
 // - Chromium (Chrome, Brave, Edge, Vivaldi): window `id`, `mode` ("normal" or "incognito"), `active tab index` (from
 //   1); tab `id`, `title`, `URL` (chromium/src chrome/browser/ui/cocoa/applescript/scripting.sdef).
-// - Arc: window `id`, `incognito` (true or false), `active tab`; tab `id` (a UUID string), `title`, `URL`.
-// - Safari: window `id`; tab `name`, `URL`, `visible`, and window `current tab` as a fallback. Safari does not say
-//   which windows are private.
+// - Arc: window `id` (text), `incognito` (boolean), `active tab`; tab `id` (text, a UUID), `title`, `URL` (the
+//   dictionary Arc 1.153.1 ships, Arc.sdef, as Script Editor's File › Open Dictionary shows it; it also has a window
+//   `mode`, which is not read).
+// - Safari: window `id` (the standard suite's); tab `name`, `URL`, `visible`, and window `current tab` as a fallback
+//   (Safari.sdef in Safari 26.6). Safari does not say which windows are private.
 // Private windows: Arc is asked only `incognito`, the Chromium four only `mode`. A private window (true, or a mode other
 // than "normal") is left out and counted in x. A window that does not answer is left out too, counted in e, rather
 // than risk listing a private window's tabs.

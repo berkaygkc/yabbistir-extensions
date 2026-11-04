@@ -49,7 +49,8 @@ Private windows are left out where the browser says which windows are private: C
 ## Sources
 
 - Chromium's scripting dictionary, shared by Chrome, Brave, Edge and Vivaldi: [`scripting.sdef`](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/browser/ui/cocoa/applescript/scripting.sdef), and the window modes `normal` and `incognito` in [`constants_applescript.mm`](https://github.com/chromium/chromium/blob/main/chrome/browser/ui/cocoa/applescript/constants_applescript.mm).
-- Arc's scripting: [Arc AppleScript API](https://browserinc.notion.site/Arc-AppleScript-API-897272210c784627ba3925a7610b02b6).
+- Arc's scripting: [Arc AppleScript API](https://browserinc.notion.site/Arc-AppleScript-API-897272210c784627ba3925a7610b02b6), and the dictionary Arc 1.153.1 ships (Script Editor › File › Open Dictionary › Arc): a window's `id`, `incognito` and `active tab`, and a tab's `id`, `title` and `URL`.
+- Safari's scripting: the dictionary Safari 26.6 ships (Script Editor › File › Open Dictionary › Safari): a window's `current tab`, and a tab's `name`, `URL` and `visible`.
 - How osascript hands the script its argument: the `osascript(1)` manual page ("Any arguments following the script will be passed as a list of strings to the direct parameter of the run handler").
 - JavaScript for Automation, `Application(bundleID)` and `running()`: Apple's JXA release notes for [OS X 10.10](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/OSX10-10.html) and [OS X 10.11](https://developer.apple.com/library/archive/releasenotes/InterapplicationCommunication/RN-JavaScriptForAutomation/Articles/OSX10-11.html).
 - What macOS answers when Automation is off, "Not authorized to send Apple events to …" (-1743): [Avoiding AppleScript security and privacy requests](https://scriptingosx.com/2020/09/avoiding-applescript-security-and-privacy-requests/), Scripting OS X.
