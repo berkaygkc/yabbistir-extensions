@@ -1,0 +1,17 @@
+{
+  "name": "SSH Hosts",
+  "description": "The hosts in your SSH config as a column. ↵ pastes ssh <alias>, ⇧↵ pastes the full command. Reads only the folder you choose.",
+  "folder.title": "SSH folder",
+  "source.title": "SSH Hosts",
+  "alias.title": "Paste ssh command",
+  "alias.label": "Command",
+  "alias.copyTitle": "Copy ssh command",
+  "alias.copied": "Command copied.",
+  "full.title": "Paste with user and port",
+  "full.label": "Full command",
+  "noFolder": "Choose your SSH folder in Settings",
+  "noConfig": "No config file in the SSH folder",
+  "noHosts": "No hosts found in the config",
+  "listFailed": "The SSH config could not be read.",
+  "gone": "This host is no longer in the SSH config."
+}
