@@ -27,6 +27,9 @@ const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const GROUP_HEADING = /^# +(\S.*)$/;
 const SNIPPET_HEADING = /^## +(\S.*)$/;
 
+/** A heading's text without its optional closing hashes (`## Title ##`) and trailing space. */
+const withoutClosing = (text: string): string => text.replace(/\s+#+\s*$/, "").trimEnd();
+
 /** Two 32-bit FNV-1a hashes of `text`, as 16 hex digits: a row id that stays the same and is short. */
 function hashOf(text: string): string {
   let a = 0x811c9dc5;
@@ -76,13 +79,13 @@ export function parseSnippets(source: string): Snippet[] {
     }
     const groupHeading = GROUP_HEADING.exec(line);
     if (groupHeading !== null) {
-      group = cleaned(groupHeading[1]!);
+      group = cleaned(withoutClosing(groupHeading[1]!));
       current = undefined;
       continue;
     }
     const snippetHeading = SNIPPET_HEADING.exec(line);
     if (snippetHeading !== null) {
-      current = { group, title: snippetHeading[1]!.trimEnd(), lines: [] };
+      current = { group, title: withoutClosing(snippetHeading[1]!), lines: [] };
       found.push(current);
       continue;
     }
@@ -132,7 +135,14 @@ const PLACEHOLDER = /\{\{|\}\}|\{(datetime|date|time|weekday)\}/g;
  * as written. One pass, so a filled value (a copied `{date}`) is never filled again.
  */
 export function fill(body: string, values: { language: string; now: Date }): string {
-  const format = (options: Intl.DateTimeFormatOptions): string => new Intl.DateTimeFormat(values.language, options).format(values.now);
+  const format = (options: Intl.DateTimeFormatOptions): string => {
+    try {
+      return new Intl.DateTimeFormat(values.language, options).format(values.now);
+    } catch {
+      // An invalid language tag: English formatting.
+      return new Intl.DateTimeFormat("en", options).format(values.now);
+    }
+  };
   return body.replace(PLACEHOLDER, (match, name?: string) => {
     switch (name) {
       case undefined: return match === "{{" ? "{" : "}";
@@ -185,7 +195,6 @@ export const sources: Sources = {
       const snippet = result.snippets.find((entry) => entry.id === rowId);
       if (snippet === undefined) throw new Error(yab.t("gone"));
       const text = fill(snippet.body, { language: ctx.language, now: new Date() });
-      if (text.trim() === "") throw new Error(yab.t("emptyResult"));
       return { text };
     },
   },

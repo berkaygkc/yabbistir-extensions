@@ -99,6 +99,12 @@ describe("parsing", () => {
     assert.equal(found[0].group, "Müşteri");
   });
 
+  test("closingHashesAreNotPartOfATitleOrGroup", () => {
+    const [snippet] = parseSnippets("# Replies ##\n## Thanks ##  \nbody\n");
+    assert.deepEqual([snippet.group, snippet.title], ["Replies", "Thanks"]);
+    assert.deepEqual(parseSnippets("## C#\nbody").map((s) => s.title), ["C#"]);
+  });
+
   test("hashesWithoutASpaceAreText", () => {
     const [snippet] = parseSnippets("## Tags\n#hashtag\n###### deep\n##notAHeading");
     assert.equal(snippet.body, "#hashtag\n###### deep\n##notAHeading");
@@ -207,12 +213,26 @@ describe("states", () => {
   });
 
   test("aDefaultFolderAloneGrantsNothing", async () => {
-    // Not chosen in Settings: the host refuses the read, and the person is told what to do.
+    // Not chosen in Settings: the host refuses to see the file, and the person is told it is missing.
     const host = createFakeHost({ folder, sources, files: { [FILE]: "## A\na" }, manifest: { preferences: [
       { id: "folder", type: "folder", title: "folder.title", default: DIR }, { id: "file", type: "text", title: "file.title", default: "snippets.md" }] } });
-    const listing = await host.list("snippets");
-    assert.equal(listing.locked, true);
-    assert.match(listing.message, /There is no snippets\.md|could not be read/);
+    assert.deepEqual(await host.list("snippets"), { locked: true, message: `There is no snippets.md in that folder. Create it there, or pick another folder in ${settings}.` });
+  });
+
+  test("anUnreadableFileSaysWhatToCheck", async () => {
+    const failing = { snippets: { ...sources.snippets, list(ctx) {
+      const original = yab.files.read;
+      yab.files.read = () => { throw new Error("denied"); };
+      try { return sources.snippets.list(ctx); } finally { yab.files.read = original; }
+    }, run(rowId, actionId, ctx) {
+      const original = yab.files.read;
+      yab.files.read = () => { throw new Error("denied"); };
+      try { return sources.snippets.run(rowId, actionId, ctx); } finally { yab.files.read = original; }
+    } } };
+    const make = (language) => createFakeHost({ folder, sources: failing, files: { [FILE]: "## A\na" }, preferences: { folder: DIR }, context: { language } });
+    assert.deepEqual(await make("en").list("snippets"), { locked: true, message: `snippets.md could not be read. Check the file and the folder in ${settings}.` });
+    assert.equal((await make("tr").list("snippets")).message, "snippets.md okunamadı. Ayarlar › Eklentiler › Snippets içindeki klasörü ve dosyayı kontrol et.");
+    await assert.rejects(make("en").runSource("snippets", "x", "paste"), /could not be read/);
   });
 
   test("fileMissing", async () => {
@@ -286,6 +306,15 @@ describe("placeholders", () => {
     const [{ id }] = (await english.list("snippets")).rows;
     assert.deepEqual(await english.runSource("snippets", id, "paste"), { text: "Wednesday, November 4, 2026" });
     assert.deepEqual(await turkish.runSource("snippets", id, "paste"), { text: "Çarşamba, 4 Kasım 2026" });
+  });
+
+  test("placeholdersAndBracesAreFilledInsideFencesToo", () => {
+    const [snippet] = parseSnippets("## T\n```\nday {weekday} and {{{{ x }}}}\n```");
+    assert.equal(fill(snippet.body, values("en")), "```\nday Wednesday and {{ x }}\n```");
+  });
+
+  test("anInvalidLanguageFallsBackToEnglish", () => {
+    assert.equal(fill("{weekday}", values("not a language!")), "Wednesday");
   });
 
   test("clipboardIsNotAPlaceholder", async () => {

@@ -44,9 +44,10 @@ In Settings › Extensions › Snippets, choose that folder. The panel gets a *S
 
 - Every `## Title` line starts a snippet. Its body runs until the next `##` or `#` heading.
 - An optional `# Group` line names the snippets after it. The group is shown in front of the preview in the row's second line, so searching for a group name finds its snippets.
-- Fenced code blocks (three or more backticks or tildes) are kept as they are, and a `##` inside one is not a heading.
+- Fenced code blocks (three or more backticks or tildes) are kept as they are, and a `##` inside one is not a heading. Placeholders and `{{`/`}}` are still filled inside a fence, so write `{{{{` for a literal `{{` in code. A fence that is never closed swallows the rest of the file, hiding the snippets after it.
+- Only `#` and `##` followed by a space are headings; `###` and deeper lines are ordinary body text. Closing hashes (`## Title ##`) are dropped from the title.
 - Blank lines at the start and end of a body are trimmed; everything else is pasted exactly as written. A `#` or `##` without a space after it (`#hashtag`) is ordinary text.
-- A snippet with an empty body is left out, since there would be nothing to paste. Text before the first heading is ignored. Windows (CRLF) line endings are fine.
+- A snippet with an empty body is left out, since there would be nothing to paste. Text before the first heading, and between a `# Group` line and the first `##` after it, is ignored. Windows (CRLF) line endings are fine.
 - Rows are identified by their group and title, so renaming a snippet or moving it to another group makes it a new row; editing its body does not. Two snippets with the same title in the same group stay separate rows.
 - The file is read again every time the panel opens and every time you paste, so an edit shows at once. A few thousand snippets list in a fraction of a second.
 

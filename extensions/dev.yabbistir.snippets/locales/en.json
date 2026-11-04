@@ -11,8 +11,7 @@
   "noFolder": "Choose a folder in Settings › Extensions › Snippets.",
   "badFileName": "The file name in Settings › Extensions › Snippets must be a plain name like snippets.md.",
   "noFile": "There is no {file} in that folder. Create it there, or pick another folder in Settings › Extensions › Snippets.",
-  "unreadable": "{file} could not be read. Check the folder in Settings › Extensions › Snippets.",
+  "unreadable": "{file} could not be read. Check the file and the folder in Settings › Extensions › Snippets.",
   "noSnippets": "{file} has no snippets yet. Start one with a line like ## Thanks.",
-  "gone": "This snippet is no longer in the file.",
-  "emptyResult": "This snippet came out empty, so nothing was pasted."
+  "gone": "This snippet is no longer in the file."
 }
