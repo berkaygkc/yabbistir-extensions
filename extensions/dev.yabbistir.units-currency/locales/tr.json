@@ -18,7 +18,7 @@
   "to.gbp": "GBP’ye çevir",
   "to.subtitle": "Avrupa Merkez Bankası kurları",
   "preview.rates": "Kurlar",
-  "preview.noRates": "Kurlar, ilk çevirişinde Avrupa Merkez Bankası’ndan yüklenir.",
+  "preview.noRates": "Kurlar, ilk çevirdiğinde Avrupa Merkez Bankası’ndan yüklenir.",
   "preview.source": "Avrupa Merkez Bankası · {date}",
   "notUnit": "Bu, birimli bir sayı değil.",
   "notMoney": "Bu, bir para tutarı değil.",

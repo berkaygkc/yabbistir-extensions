@@ -146,7 +146,7 @@ export async function loadRates(signal?: AbortSignal): Promise<Loaded | null> {
     const parsed = response.status === 200 && response.text !== undefined ? parseEcb(response.text) : null;
     if (parsed) {
       try {
-        yab.storage.set("ecb", { date: parsed.date, fetchedAt: now, rates: parsed.rates });
+        yab.storage.set("ecb", { date: parsed.date, fetchedAt: Date.now(), rates: parsed.rates });
       } catch {
         // A full store only costs the cache.
       }

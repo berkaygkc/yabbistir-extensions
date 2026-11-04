@@ -528,3 +528,29 @@ describe("localization", () => {
     assert.match(none.message, /Avrupa Merkez Bankası/);
   });
 });
+
+describe("false positives (fix round 1)", () => {
+  const run = (action, text) => hostWith().run(action, item(text), {});
+  test("ordinary copies are not tagged as units", async () => {
+    for (const text of ["10k", "1st", "2nd", "3rd", "5sa", "2d", "3w", "7dk", "4sn"]) {
+      assert.equal(parseQuantity(text), null, text);
+      assert.ok(!(await unit(text)), text);
+    }
+  });
+  test("spaced or capital forms still work", () => {
+    assert.ok(parseQuantity("10 K"));
+    assert.ok(parseQuantity("300K"));
+    assert.ok(parseQuantity("1 st"));
+    assert.ok(parseQuantity("2 d"));
+    assert.equal(parseQuantity("10k"), null);
+  });
+  test("two-letter currency codes lead the amount in the manifest pattern", () => {
+    const pattern = new RegExp(manifest.contributes.detectors.find((d) => d.id === "currency").accepts.pattern, "u");
+    assert.ok(pattern.test("TL 100"));
+    assert.ok(parseMoney("tl 5"));
+  });
+  test("byte values do not list vanishingly small conversions", async () => {
+    const result = await run(actions.convertUnitAll, "5 B");
+    assert.ok(!/0\.0000/.test(result.text), result.text);
+  });
+});

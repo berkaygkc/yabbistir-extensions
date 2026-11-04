@@ -108,6 +108,8 @@ export function normalizeUnit(text: string): string {
   return text.toLowerCase().replace(/[\s. ]/g, "").replace(/²/g, "2").replace(/\^2/g, "2");
 }
 
+const needsSpace = new Set(["st", "w", "d", "sa", "sn", "dk"]);
+
 export function findUnit(text: string): Unit | null {
   const raw = text.trim();
   if (raw === "" || raw.length > 24) return null;
@@ -115,6 +117,8 @@ export function findUnit(text: string): Unit | null {
   if (/^[KMGT]b$/.test(raw)) return null;
   // A bare F or C is a temperature only in capitals; "°C" and the word forms are in the table.
   if (raw === "c" || raw === "f") return null;
+  // "10k" is a thousand, not Kelvin: the bare letter needs a capital.
+  if (raw === "k") return null;
   return byAlias.get(normalizeUnit(raw)) ?? null;
 }
 
@@ -249,6 +253,9 @@ export function parseQuantity(input: string, commaDecimal = false): Quantity | n
   const value = parseNumber(numeric, commaDecimal);
   if (value === null || unitText === "") return null;
   const unit = findUnit(unitText);
+  // Short word-like units ("1st", "2d", "5sa") must stand apart from the number, or ordinary copies get tagged.
+  const spaced = /^\s/.test(rest.slice(lastDigit + 1));
+  if (unit && !spaced && needsSpace.has(normalizeUnit(unitText))) return null;
   if (!unit) {
     if (/[0-9]/.test(rest.slice(lastDigit + 1))) {
       const compound = parseCompound(rest);
@@ -312,6 +319,8 @@ export function conversionsOf(quantity: Quantity): Conversion[] {
   const rule = caps[unit.dim];
   const all = unitsOf(unit.dim)
     .filter((candidate) => candidate.id !== unit.id)
+    // Bytes in terabytes read as noise: keep a data conversion only when it is not vanishingly small.
+    .filter((candidate) => unit.dim !== "data" || value === 0 || Math.abs(convert(value, unit, candidate)) >= 1e-3)
     .map((candidate, order) => ({
       unit: candidate,
       value: convert(value, unit, candidate),
