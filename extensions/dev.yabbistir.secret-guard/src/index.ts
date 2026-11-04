@@ -35,14 +35,41 @@ function decode(segment: string): string | null {
 }
 
 /**
- * The matches of the global `pattern` that do not start right after a `word` character: what a lookbehind would say,
- * which JavaScriptCore runs slowly enough (a few ms per regular expression over 256 KB) to matter here.
+ * Where a token may start: at the start of the text, after a character that is not part of a token, or after an escape
+ * that ends in a letter or digit, such as `\n` in a JSON string or `%3D` in an address.
  */
-function* matches(text: string, pattern: RegExp, word?: RegExp): Iterable<RegExpExecArray> {
+const START = String.raw`(?:^|[^A-Za-z0-9_-]|\\[nrt]|%[0-9A-Fa-f]{2})`;
+
+/**
+ * A global pattern for a token whose body has no upper bound: `prefix` as group 1, checked to sit where a token may
+ * start, then `body`. The check comes right after the prefix, so the search still jumps from prefix to prefix, and a
+ * prefix repeated inside one long run is tried once instead of once per repetition: the search stays linear.
+ */
+function unbounded(prefix: string, body: string): RegExp {
+  return new RegExp(`(${prefix})(?<=${START}${prefix})${body}`, "g");
+}
+
+/** Whether a token may start at `index`: the character before it is not in `word`, or ends an escape (`\n`, `%3D`). */
+function startsHere(text: string, index: number, word: RegExp): boolean {
+  if (index === 0 || !word.test(text[index - 1])) return true;
+  return /\\[nrt]$|%[0-9A-Fa-f]{2}$/.test(text.slice(Math.max(0, index - 3), index));
+}
+
+/**
+ * The matches of the global `pattern` that start where a token may (`startsHere`), or right after `after`. After one
+ * that does not, the search goes on past the run of `word` characters it starts in: no token can start inside that run,
+ * and going on one character at a time would read a long run once per character.
+ */
+function* matches(text: string, pattern: RegExp, word?: RegExp, after?: string): Iterable<RegExpExecArray> {
   pattern.lastIndex = 0;
   for (let match = pattern.exec(text); match !== null; match = pattern.exec(text)) {
-    if (word && match.index > 0 && word.test(text[match.index - 1])) pattern.lastIndex = match.index + 1;
-    else yield match;
+    if (!word || startsHere(text, match.index, word) || (after !== undefined && text.endsWith(after, match.index))) {
+      yield match;
+      continue;
+    }
+    let next = match.index + 1;
+    while (next < text.length && word.test(text[next])) next++;
+    pattern.lastIndex = next;
   }
 }
 
@@ -50,6 +77,9 @@ function* matches(text: string, pattern: RegExp, word?: RegExp): Iterable<RegExp
 const WORD = /[A-Za-z0-9_]/;
 const WORD_DASH = /[A-Za-z0-9_-]/;
 const WORD_DASH_DOT = /[A-Za-z0-9_.-]/;
+
+/** Random-looking: capitals and small letters, or letters and digits. A placeholder such as `XXXX` is neither. */
+const random = (text: string): boolean => mixed(text) || (/\d/.test(text) && /[A-Za-z]/.test(text));
 
 // ---- Tokens with a prefix ----
 // Group 1 of each pattern is the prefix; `check` looks at what follows it. A pattern's end keeps a token from ending
@@ -59,46 +89,50 @@ interface Token {
   kind: string;
   pattern: RegExp;
   before?: RegExp;
+  /** Where else a token may start: right after this text (Telegram's `/bot`). */
+  after?: string;
   /** Checks the part after the prefix. */
   check?: (body: string) => boolean;
-  /** What a match may end with that belongs to the text after it. */
-  trim?: RegExp;
 }
 
 const tokens: Token[] = [
   { kind: "github", pattern: /(gh[pousr]_)[A-Za-z0-9]{36,251}(?![A-Za-z0-9_])/g, before: WORD, check: mixed },
   { kind: "github", pattern: /(github_pat_)[A-Za-z0-9_]{36,244}(?![A-Za-z0-9_])/g, before: WORD, check: mixed },
-  { kind: "gitlab", pattern: /(gl(?:pat|dt|rtr?|ptt|oas|soat)-)[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])/g, before: WORD_DASH, check: mixed },
-  // Bot, user, app, refresh and workflow tokens: the part after the prefix starts with a number.
-  { kind: "slack", pattern: /((?:xoxe\.)?(?:xox[abposre]|xapp|xwfp)-)\d+-[A-Za-z0-9-]+/g, before: WORD_DASH_DOT, check: (body) => body.length >= 16, trim: /-+$/ },
-  { kind: "slack", pattern: /((?:https?:\/\/)?hooks\.slack\.com\/(?:services|workflows|triggers)\/)[A-Za-z0-9_\/-]{20,}/g, trim: /[\/-]+$/ },
+  { kind: "gitlab", pattern: unbounded(String.raw`gl(?:pat|dt|rtr?|ptt|oas|soat)-`, String.raw`[A-Za-z0-9_-]{20,}(?:\.[A-Za-z0-9_-]+)*(?![A-Za-z0-9_-])`),
+    before: WORD_DASH, check: mixed },
+  // Bot, user, app, refresh and workflow tokens: a number, then a few dash-separated parts, the last one long and random.
+  { kind: "slack", pattern: unbounded(String.raw`(?:xoxe\.)?(?:xox[abposre]|xapp|xwfp)-`, String.raw`\d+-(?:[A-Za-z0-9]+-){0,6}[A-Za-z0-9]{10,}(?![A-Za-z0-9])`),
+    before: WORD_DASH_DOT },
+  // A webhook's last part is its secret; the documentation's `XXXXXXXXXXXXXXXXXXXXXXXX` is not.
+  { kind: "slack", pattern: /((?:https?:\/\/)?hooks\.slack\.com\/(?:services|workflows|triggers)\/)[A-Za-z0-9_\/-]*[A-Za-z0-9]/g,
+    check: (body) => { const last = body.slice(body.lastIndexOf("/") + 1); return last.length >= 16 && random(last) && !isPlaceholder(last); } },
   { kind: "stripe", pattern: /([rs]k_(?:live|test)_)[A-Za-z0-9]{20,247}(?![A-Za-z0-9_])/g, before: WORD, check: mixed },
   { kind: "google", pattern: /(AIza)[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])/g, before: WORD_DASH, check: mixed },
-  { kind: "anthropic", pattern: /(sk-ant-(?:[a-z]+\d*-)?)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g, before: WORD_DASH, check: mixed },
-  { kind: "openai", pattern: /(sk-(?:proj|svcacct|admin)-)[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/g, before: WORD_DASH, check: mixed },
+  { kind: "anthropic", pattern: unbounded(String.raw`sk-ant-(?:[a-z]+\d*-)?`, String.raw`[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])`), before: WORD_DASH, check: mixed },
+  { kind: "openai", pattern: unbounded(String.raw`sk-(?:proj|svcacct|admin)-`, String.raw`[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])`), before: WORD_DASH, check: mixed },
   // The older keys: sk- and exactly 48 letters and digits.
   { kind: "openai", pattern: /(sk-)[A-Za-z0-9]{48}(?![A-Za-z0-9_-])/g, before: WORD_DASH, check: mixed },
   { kind: "npm", pattern: /(npm_)[A-Za-z0-9]{36}(?![A-Za-z0-9_])/g, before: WORD, check: mixed },
   // A PyPI token is a macaroon, whose base64 always starts with AgE.
-  { kind: "pypi", pattern: /(pypi-)AgE[A-Za-z0-9_-]{50,}(?![A-Za-z0-9_-])/g, before: WORD_DASH },
+  { kind: "pypi", pattern: unbounded("pypi-", String.raw`AgE[A-Za-z0-9_-]{50,}(?![A-Za-z0-9_-])`), before: WORD_DASH },
   { kind: "sendgrid", pattern: /(SG\.)[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g, before: WORD_DASH },
   { kind: "twilio", pattern: /(SK)[0-9a-fA-F]{32}(?![A-Za-z0-9_])/g, before: WORD },
-  // AWS's own documentation ends its sample keys with EXAMPLE.
+  // AWS's own documentation ends its sample keys with EXAMPLE. A presigned S3 link carries a key id too, and is dropped:
+  // it opens the object for anyone until it expires.
   { kind: "aws", pattern: /(AKIA|ASIA)[A-Z2-7]{16}(?![A-Za-z0-9_])/g, before: WORD, check: (body) => !body.endsWith("EXAMPLE") },
   // A Discord bot token starts with the bot's id, 17 to 20 digits, in base64.
   { kind: "discord", pattern: /()[MNO][A-Za-z0-9]{22,26}\.[A-Za-z0-9_-]{6,7}\.[A-Za-z0-9_-]{25,40}(?![A-Za-z0-9_-])/g, before: WORD_DASH_DOT,
     check: (body) => /^\d{17,20}$/.test(decode(body.slice(0, body.indexOf("."))) ?? "") },
-  // A Telegram bot token: the bot's id, a colon, and 35 characters that start with A.
-  { kind: "telegram", pattern: /(\d{5,16}:)A[A-Za-z0-9_-]{34}(?![A-Za-z0-9_-])/g, before: /[A-Za-z0-9_:]/, check: mixed },
+  // A Telegram bot token: the bot's id, a colon, and 35 characters that start with A. In the Bot API's addresses it
+  // follows `/bot`.
+  { kind: "telegram", pattern: /(\d{5,16}:)A[A-Za-z0-9_-]{34}(?![A-Za-z0-9_-])/g, before: /[A-Za-z0-9_:]/, after: "/bot", check: mixed },
 ];
 
 function* prefixed(text: string): Iterable<Finding> {
   for (const token of tokens) {
-    for (const match of matches(text, token.pattern, token.before)) {
-      const prefix = match[1] ?? "";
-      const value = token.trim ? match[0].replace(token.trim, "") : match[0];
-      if (token.check && !token.check(value.slice(prefix.length))) continue;
-      yield { kind: token.kind, start: match.index, end: match.index + value.length };
+    for (const match of matches(text, token.pattern, token.before, token.after)) {
+      if (token.check && !token.check(match[0].slice(match[1].length))) continue;
+      yield { kind: token.kind, start: match.index, end: match.index + match[0].length };
     }
   }
 }
@@ -111,24 +145,23 @@ const pemLines = /(?:\r?\n(?:[A-Za-z0-9+\/=]*|[A-Za-z][A-Za-z-]*: [^\r\n]*)(?=\r
 const keyMaterial = /[A-Za-z0-9+\/]{16}/;
 
 /**
- * The body of a private key, between its BEGIN and END lines. The search goes on
- * after each key, and an END line that is not there is looked for once, so the text is read about once however many
- * BEGIN lines it has.
+ * The body of a private key, between its BEGIN line and the END line that matches it. The next `-----END ` is looked
+ * for once, and once none is left it is not looked for again, so the text is read about once however many BEGIN lines
+ * it has. A key whose END line was not copied ends with its last line of key material.
  */
 function* privateKeys(text: string): Iterable<Finding> {
-  const missing = new Set<string>();
+  /** The next `-----END ` at or after the current BEGIN line; -1 when there is none, -2 before the first look. */
+  let end = -2;
   pemBegin.lastIndex = 0;
   for (let match = pemBegin.exec(text); match !== null; match = pemBegin.exec(text)) {
     const start = match.index + match[0].length;
+    if (end !== -1 && end < start) end = text.indexOf("-----END ", start);
     const footer = `-----END ${match[1]}PRIVATE KEY${match[2] ?? ""}-----`;
-    const end = missing.has(footer) ? -1 : text.indexOf(footer, start);
-    if (end >= 0) {
-      const body = text.slice(start, end);
-      if (keyMaterial.test(body)) yield { kind: "privateKey", start, end };
+    if (end >= 0 && text.startsWith(footer, end)) {
+      if (keyMaterial.test(text.slice(start, end))) yield { kind: "privateKey", start, end };
       pemBegin.lastIndex = end + footer.length;
       continue;
     }
-    missing.add(footer);
     pemLines.lastIndex = start;
     const lines = pemLines.exec(text)?.[0].trimEnd() ?? "";
     if (keyMaterial.test(lines)) yield { kind: "privateKey", start, end: start + lines.length };
@@ -139,17 +172,19 @@ function* privateKeys(text: string): Iterable<Finding> {
 // ---- Values a label names ----
 
 const placeholderWords = new Set([
-  "changeme", "change_me", "change-me", "secret", "password", "passwd", "token", "apikey", "api_key", "api-key",
+  "changeme", "change_me", "change-me", "secret", "password", "passwd", "pass", "token", "apikey", "api_key", "api-key",
   "undefined", "example", "placeholder", "dummy", "redacted", "hidden", "default", "required",
+  // Default passwords from documentation and tutorials: PostgreSQL's and MySQL's images, RabbitMQ, Redis's sample.
+  "postgres", "root", "guest", "admin", "mysecretpassword", "foobared",
 ]);
 
-/** A value that only stands in for a secret: empty, a reference, a template or a sample. */
+/** A value that only stands in for a secret: empty, a reference, a template, an instruction or a sample. */
 export function isPlaceholder(value: string): boolean {
   const text = value.trim();
   if (text === "" || text.startsWith("$") || /\$[{(]|^%\w+%$/.test(text)) return true; // $VAR, ${VAR}, $(command), %VAR%
   if (/^<[^<>]*>$/.test(text) || /^\{\{.*\}\}$/.test(text)) return true; // <password>, {{ secret }}
   if (/^(.)\1*$/.test(text) || /xxxx|\*\*\*|•|\.\.\.|…/i.test(text)) return true; // ******, sk-xxxx, sk_live_…, ••••
-  if (/^your[-_ ]|[-_ ]here$/i.test(text)) return true; // your-api-key, put_it_here
+  if (/^(?:your|paste|insert|enter|replace|generate|put|add|change)[-_ ]|[-_ ]here$/i.test(text)) return true; // your-api-key, paste_it_here
   return placeholderWords.has(text.toLowerCase());
 }
 
@@ -181,7 +216,10 @@ function decoded(text: string): string {
   }
 }
 
-/** The password in `postgres://user:password@host`; the user and the host stay. */
+/**
+ * The password in `postgres://user:password@host`. A sample's password is not one: a placeholder, the user's own name
+ * (`guest:guest`), or a password that says it is one (`johndoe:randompassword`).
+ */
 function* connectionPasswords(text: string): Iterable<Finding> {
   for (const match of matches(text, connection, /[A-Za-z0-9+.-]/)) {
     const authority = match[1];
@@ -189,7 +227,9 @@ function* connectionPasswords(text: string): Iterable<Finding> {
     const colon = authority.indexOf(":");
     if (at < 0 || colon < 0 || colon > at) continue;
     const password = authority.slice(colon + 1, at);
-    if (isPlaceholder(decoded(password))) continue;
+    const plain = decoded(password);
+    if (isPlaceholder(plain) || plain.toLowerCase() === decoded(authority.slice(0, colon)).toLowerCase()) continue;
+    if (/password|passwd|secret/i.test(plain)) continue;
     const start = match.index + match[0].length - authority.length + colon + 1;
     yield { kind: "connection", start, end: start + password.length };
   }
@@ -197,7 +237,13 @@ function* connectionPasswords(text: string): Iterable<Finding> {
 
 /** Two-factor addresses. The seed is `secret=`, base32, or `data=` in a migration address, base64 of several. */
 const otpauth = /otpauth(-migration)?:\/\/[^\s"'<>`\\]+/gi;
-const base32 = (value: string): boolean => /^[A-Za-z2-7]{16,}$/.test(value.replace(/[\s=]/g, ""));
+/** The seed in Google's description of otpauth addresses, in countless documents and tests. */
+const SAMPLE_SEED = "JBSWY3DP" + "EHPK3PXP";
+/** A base32 seed of 16 characters or more, other than the sample. */
+const base32 = (value: string): boolean => {
+  const seed = value.replace(/[\s=]/g, "");
+  return /^[A-Za-z2-7]{16,}$/.test(seed) && seed.toUpperCase() !== SAMPLE_SEED;
+};
 const base64 = (value: string): boolean => /^[A-Za-z0-9+\/_-]{16,}={0,2}$/.test(value);
 
 function* otpSeeds(text: string): Iterable<Finding> {
@@ -236,30 +282,48 @@ function* exportSeeds(text: string): Iterable<Finding> {
 
 /**
  * `.env` lines, `export` lines and compose `- KEY=value` lines; group 4 is the value. A value may go unquoted only when
- * `=` has no spaces around it, as in a .env file: `key = value` is code unless the value is a quoted string.
+ * `=` has no spaces around it, as in a .env file: `key = value` is code unless the value is a quoted string. Either
+ * way the value must look like a key or a password (`tokenLike`), not like the words a program shows.
  */
 const envLine = /^([ \t]*(?:-[ \t]+)?(?:export[ \t]+)?)([A-Za-z_][A-Za-z0-9_]*)([ \t]*=[ \t]*)("[^"\r\n]*"|'[^'\r\n]*'|[^\s"'#]\S*)/gm;
-/** Key names that say the value is a secret, by their last word or two. */
-const secretKey = /(?:^|_)(?:SECRET|TOKEN|PASSWORD|PASSWD|PASS|PASSPHRASE|API_?KEY|SECRET_?KEY|PRIVATE_?KEY|SECRET_ACCESS_KEY|SIGNING_KEY|ENCRYPTION_KEY|MASTER_KEY|SECRET_KEY_BASE)$/;
+/** Key names that say the value is a secret, by their last word or two; group 1 is that ending. */
+const secretKey = /(?:^|_)(SECRET|TOKEN|PASSWORD|PASSWD|PASS|PASSPHRASE|API_?KEY|SECRET_?KEY|PRIVATE_?KEY|SECRET_ACCESS_KEY|SIGNING_KEY|ENCRYPTION_KEY|MASTER_KEY|SECRET_KEY_BASE)$/;
 /** An unquoted value that is code: a call, an index, an argument, a property such as `settings.API_KEY`. */
 const codeValue = /[()[\]{}]|[,;]$|^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
+
+/**
+ * Shaped like a key or a password rather than like words: no spaces, and a digit, a symbol between letters, or a long
+ * run that mixes capitals and small letters. `Forgot your password?`, `X-Api-Key` and `#mesondefine` are words.
+ */
+function tokenLike(value: string): boolean {
+  if (/\s/.test(value)) return false;
+  return /\d/.test(value) || /[A-Za-z][!@#$%^&*+=\/~|]+[A-Za-z0-9]/.test(value) || (value.length >= 16 && mixed(value) && !/[-.]/.test(value));
+}
+
+/** The words of a key's ending (`password`, and `pass`) that its secret would not spell out: `csrftoken`, `dbpassword`. */
+function ownWords(ending: string): string[] {
+  const whole = ending.replace(/_/g, "").toLowerCase();
+  return [whole, ...["secret", "token", "pass"].filter((word) => whole.includes(word))];
+}
 
 function* envValues(text: string): Iterable<Finding> {
   for (const match of text.matchAll(envLine)) {
     const [, lead, key, equals, raw] = match;
     const quoted = raw.startsWith('"') || raw.startsWith("'");
     if (!quoted && equals !== "=") continue;
-    const name = key.toUpperCase();
-    if (!secretKey.test(name)) continue;
+    const ending = secretKey.exec(key.toUpperCase())?.[1];
+    if (ending === undefined) continue;
     const value = quoted ? raw.slice(1, -1) : raw;
-    if (value.length < 6 || isPlaceholder(value) || value.toUpperCase() === name || (!quoted && codeValue.test(value))) continue;
+    if (value.length < 6 || isPlaceholder(value) || !tokenLike(value) || (!quoted && codeValue.test(value))) continue;
+    const plain = value.replace(/[-_.]/g, "").toLowerCase();
+    if (ownWords(ending).some((word) => plain.includes(word))) continue;
     const start = (match.index ?? 0) + lead.length + key.length + equals.length + (quoted ? 1 : 0);
     yield { kind: "env", start, end: start + value.length };
   }
 }
 
 /** A JSON Web Token: three base64url parts, the first a JSON header with an `alg`. */
-const jwtPattern = /(eyJ)[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}(?![A-Za-z0-9_-])/g;
+const jwtPattern = unbounded("eyJ", String.raw`[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{16,}(?![A-Za-z0-9_-])`);
 
 function* jsonWebTokens(text: string): Iterable<Finding> {
   for (const match of matches(text, jwtPattern, WORD_DASH)) {

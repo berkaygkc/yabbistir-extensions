@@ -1,15 +1,20 @@
 // Synthetic secrets for the tests. Every one is built here at run time, from a seeded generator and split prefixes, so no
 // file holds anything shaped like a real credential (code hosts reject pushes that do).
 
-let seed = 20261104;
+let state = 20261104;
+
+/** A number in [0, 1) from a small seeded generator (mulberry32): the same sequence on every run. */
+function next() {
+  state = (state + 0x6d2b79f5) | 0;
+  let mixed = Math.imul(state ^ (state >>> 15), state | 1);
+  mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+  return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+}
 
 /** `count` characters from `alphabet`, the same ones on every run. */
 export function chars(alphabet, count) {
   let out = "";
-  for (let index = 0; index < count; index++) {
-    seed = (seed * 1103515245 + 12345) % 2147483648;
-    out += alphabet[seed % alphabet.length];
-  }
+  for (let index = 0; index < count; index++) out += alphabet[Math.floor(next() * alphabet.length)];
   return out;
 }
 

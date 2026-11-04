@@ -490,14 +490,6 @@ describe("theRule", () => {
     assert.deepEqual(await capture(text(huge)), KEPT);
   });
 
-  test("aLargeCopyIsQuick", () => {
-    const big = Array.from({ length: 3000 }, (_, index) => `${index} ${key(B64, 60)} KEY_${index}=${chars(B62, 12)}`).join("\n");
-    const started = performance.now();
-    findSecrets(big, { jwt: true });
-    // The app allows 200 ms; this takes a few.
-    assert.ok(performance.now() - started < 150);
-  });
-
   test("findsComeInOrderWithoutOverlaps", () => {
     const { githubClassic, twilio, telegram } = formats;
     const found = find(`${telegram} then ${githubClassic} and ${twilio}`);
@@ -569,5 +561,171 @@ describe("manifest", () => {
     const tr = JSON.parse(fs.readFileSync(new URL("../locales/tr.json", import.meta.url), "utf8"));
     assert.deepEqual(Object.keys(tr).sort(), Object.keys(en).sort());
     assert.equal(tr.name, "Sır Bekçisi");
+  });
+});
+
+describe("adversarialCopies", () => {
+  // A crafted copy must not run the rule past its 200 ms: three timeouts in a row would turn Secret Guard off. Each
+  // input is about 250 KB, the most the app sends a rule; every detector has to stay linear in it.
+  const SIZE = 250_000;
+  const fill = (unit, lead = "") => lead + unit.repeat(Math.floor((SIZE - lead.length) / unit.length));
+  const B64URL_ALPHABET = B62 + "-_";
+  const inputs = {
+    gitlabRepeated: fill("gl" + "pat-", "x"),
+    slackRepeated: fill("xo" + "xb-1-", "x"),
+    anthropicRepeated: fill("sk-" + "ant-", "x"),
+    openaiRepeated: fill("sk-" + "proj-", "x"),
+    pypiRepeated: fill("py" + "pi-AgE", "x"),
+    githubRepeated: fill("gh" + "p_", "x"),
+    finegrainedRepeated: fill("github" + "_pat_", "x"),
+    stripeRepeated: fill("sk" + "_live_", "x"),
+    googleRepeated: fill("AI" + "za", "x"),
+    npmRepeated: fill("np" + "m_", "x"),
+    sendgridRepeated: fill("S" + "G.", "x"),
+    twilioRepeated: fill("S" + "K", "x"),
+    awsRepeated: fill("AK" + "IA", "x"),
+    telegramRepeated: fill("12345:", "x"),
+    connectionRepeated: fill("mysql://", "x"),
+    webhookRepeated: fill("hooks." + "slack.com/services/", "x"),
+    jwtRepeated: fill("ey" + "J"),
+    jwtRepeatedWithDots: fill("ey" + "Jaaaaaaaa."),
+    pemDistinctLabels: Array.from({ length: 7000 }, (_, index) => `-----BEGIN A${index} PRIVATE` + " KEY-----\n").join(""),
+    pemOneHeaderManyLines: `-----BEGIN RSA PRIVATE${" KEY-----"}${`\n${key(B64, 64)}`.repeat(3800)}`,
+    pemOneHeaderBlankLines: `-----BEGIN RSA PRIVATE${" KEY-----"}${"\n".repeat(SIZE)}`,
+    base64urlBlob: chars(B64URL_ALPHABET, SIZE),
+    base64Blob: chars(B64, SIZE),
+    envManyLines: fill("API_KEY=xxxxxxxxxxxx\n"),
+    secretJsonWithoutKeys: fill(`{"secret":"${chars(B32, 20)}"},`),
+    otpauthLong: "otpauth://totp/x?" + fill("a=b&"),
+    digits: fill("1234567890"),
+    hexDump: chars(HEX, SIZE),
+  };
+
+  for (const [name, input] of Object.entries(inputs)) {
+    test(`${name}IsQuick`, () => {
+      assert.ok(input.length > 200_000 && input.length <= 256_000, `${name}: ${input.length}`);
+      for (const first of [true, false]) {
+        const started = performance.now();
+        findSecrets(input, { jwt: true }, first);
+        const took = performance.now() - started;
+        assert.ok(took < 50, `${name} took ${took.toFixed(1)} ms`);
+      }
+    });
+  }
+});
+
+describe("regressions", () => {
+  test("wordsThatAProgramShowsAreKept", async () => {
+    for (const line of [
+      'FORGOT_PASSWORD = "Forgot your password?"',
+      'INVALID_TOKEN = "The token is invalid or has expired."',
+      'WRONG_PASSWORD = "Wrong password, try again"',
+      'export PROMPT_PASSWORD="Enter password:"',
+      'CSRF_TOKEN = "csrftoken"',
+      'HEADER_API_KEY = "X-Api-Key"',
+      'CSRF_HEADER_TOKEN = "X-CSRF-Token"',
+      'REFRESH_TOKEN = "refresh-token"',
+      "search_token = '#mesondefine'",
+      "RESET_PASSWORD=Reset your password\nSHOW_PASSWORD=Show password",
+      "DEBUG=true\nPASSWORD_MIN_LENGTH=8\nLOG_LEVEL=info",
+    ]) {
+      assert.deepEqual(await capture(code(line)), KEPT, line);
+    }
+  });
+
+  test("aValueWithSpacesIsNeverASecret", async () => {
+    // A passphrase of words is a secret to a person, but a value with spaces reads as text, and text is kept.
+    assert.deepEqual(await capture(text('GPG_PASSPHRASE="correct horse battery staple"')), KEPT);
+  });
+
+  test("valuesShapedLikeSecretsStillCount", () => {
+    for (const [line, value] of [
+      ['password = "hunter22"', "hunter22"],
+      ["DB_PASSWORD=Tr0ub4dor&3", "Tr0ub4dor&3"],
+      ["API_KEY=AbCdEfGhIjKlMnOpQr", "AbCdEfGhIjKlMnOpQr"],
+      ["ADMIN_PASSWORD=hunt!ng@Home", "hunt!ng@Home"],
+    ]) {
+      assert.deepEqual(spans(line), [value], line);
+    }
+  });
+
+  test("valuesThatSpellOutTheirKeyAreKept", async () => {
+    for (const line of ["JWT_SECRET=supersecret", "password=dbpassword1", "POSTGRES_PASSWORD=mysecretpassword", "AUTH_TOKEN=token-2026-v1"]) {
+      assert.deepEqual(await capture(text(line)), KEPT, line);
+    }
+  });
+
+  test("instructionsInAnExampleFileAreKept", async () => {
+    assert.deepEqual(await capture(text("SECRET_KEY=generate-a-long-random-string\nAPI_KEY=paste_your_key\nJWT_SECRET=supersecret")), KEPT);
+    assert.deepEqual(await capture(text("API_KEY=insert-key-2\nTOKEN=replace_with_token\nSECRET=enter-your-secret")), KEPT);
+  });
+
+  test("windowsLineEndsInAnEnvFile", async () => {
+    const value = key(B62, 24);
+    assert.deepEqual(spans(`A=1\r\nAPI_KEY=${value}\r\nB=2\r\n`), [value]);
+    assert.deepEqual(spans(`API_KEY="${value}"\r\n`), [value]);
+    assert.deepEqual(await capture(text(`A=1\r\nAPI_KEY=${value}\r\n`)), DROPPED);
+  });
+
+  test("slacksDocumentationWebhookIsKept", async () => {
+    const sample = "https://hooks." + "slack.com/services/T00000000/B00000000/" + "X".repeat(24);
+    assert.deepEqual(await capture(link(sample)), KEPT);
+    assert.deepEqual(await capture(code(`curl -X POST -H 'Content-type: application/json' --data '{"text":"Hello"}' ${sample}`)), KEPT);
+  });
+
+  test("aWorkflowTriggerWithAHexSecretIsDropped", async () => {
+    const trigger = "https://hooks." + `slack.com/triggers/T${chars(B32, 10)}/${chars("0123456789", 13)}/${chars(HEX, 32)}`;
+    assert.deepEqual(await capture(link(trigger)), DROPPED);
+  });
+
+  test("defaultCredentialsFromDocumentationAreKept", async () => {
+    for (const address of [
+      "postgres://postgres:postgres@localhost:5432/app", "amqp://guest:guest@localhost:5672/", "mysql://root:root@127.0.0.1/app",
+      "postgres://user:pass@localhost/app", "postgresql://johndoe:randompassword@localhost:5432/mydb?schema=public",
+      "redis://:foobared@localhost:6379", "mongodb://admin:admin@localhost:27017", "mysql://app:App@db/app",
+    ]) {
+      assert.deepEqual(await capture(text(address)), KEPT, address);
+    }
+    assert.deepEqual(await capture(text("POSTGRES_PASSWORD=postgres\nPOSTGRES_PASSWORD=mysecretpassword\npassword=dbpassword")), KEPT);
+  });
+
+  test("aTelegramTokenInABotApiAddressIsDropped", async () => {
+    const { telegram } = formats;
+    const address = `https://api.telegram.org/bot${telegram}/getMe`;
+    assert.deepEqual(await capture(code(`curl ${address}`)), DROPPED);
+    assert.deepEqual(spans(address), [telegram]);
+    // Only `/bot` counts: a word that ends in "bot" is still a word.
+    assert.equal(find(`robot${telegram}`).length, 0);
+  });
+
+  test("slackLookalikesAreKept", async () => {
+    for (const line of ["love you, xo" + "xo-4-ever-and-always-my-dear", "xo" + "xp-2026-11-04-rotation-notes"]) {
+      assert.deepEqual(await capture(text(line)), KEPT, line);
+    }
+  });
+
+  test("aTokenRightAfterAnEscapeIsFound", async () => {
+    const token = formats.githubClassic;
+    for (const copy of [`{"note":"use this\\n${token}"}`, `"a\\t${token}"`, `https://example.com/?q=token%3D${token}`, `q=%22${token}%22`]) {
+      assert.deepEqual(spans(copy), [token], copy);
+      assert.deepEqual(await capture(code(copy)), DROPPED);
+    }
+    assert.deepEqual(spans(`"use\\n${formats.gitlab}"`), [formats.gitlab]);
+    const token2 = jwt();
+    assert.deepEqual(spans(`%22${token2}%22`, true), [token2]);
+  });
+
+  test("aPresignedS3LinkIsDropped", async () => {
+    // It opens the object for anyone until it expires, so it counts as a secret, by its access key id.
+    const id = formats.awsAccessKey;
+    const url = `https://bucket.s3.amazonaws.com/file.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${id}%2F20261104%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261104T120000Z&X-Amz-Expires=3600&X-Amz-SignedHeaders=host&X-Amz-Signature=${chars(HEX, 64)}`;
+    assert.deepEqual(await capture(link(url)), DROPPED);
+    assert.deepEqual(spans(url), [id]);
+  });
+
+  test("googlesSampleSeedIsKept", async () => {
+    const sample = "JBSWY3DP" + "EHPK3PXP";
+    assert.deepEqual(await capture(link(`otpauth://totp/Example:alice@google.com?secret=${sample}&issuer=Example`)), KEPT);
+    assert.deepEqual(await capture(code(JSON.stringify({ issuer: "Example", info: { secret: sample, digits: 6 } }))), KEPT);
   });
 });
