@@ -1,0 +1,15 @@
+{
+  "name": "QR Kod",
+  "description": "Metin ve bağlantıları QR koda çevirir, görüntüdeki QR kodları okur.",
+  "size.title": "QR kod boyutu",
+  "size.256": "Küçük (256 px)",
+  "size.512": "Orta (512 px)",
+  "size.1024": "Büyük (1024 px)",
+  "show.title": "QR kod olarak göster",
+  "show.keywords": ["qr", "qr kod", "kod", "tara", "paylaş"],
+  "read.title": "QR kodu oku",
+  "read.keywords": ["qr", "qr kod", "tara", "oku", "barkod"],
+  "empty": "QR koda çevrilecek metin yok",
+  "tooLong": "Bu, bir QR kod için çok uzun",
+  "noCode": "Bu görüntüde QR kod bulunamadı"
+}

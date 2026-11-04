@@ -1,0 +1,30 @@
+{
+  "id": "dev.yabbistir.qr",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "minAppVersion": "0.4.0",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:qrcode",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["text", "images"],
+  "permissions": [],
+  "preferences": [
+    { "id": "size", "type": "choice", "title": "size.title", "default": "512",
+      "options": [
+        { "id": "256", "title": "size.256" },
+        { "id": "512", "title": "size.512" },
+        { "id": "1024", "title": "size.1024" }
+      ] }
+  ],
+  "contributes": {
+    "actions": [
+      { "id": "show", "title": "show.title", "keywords": "show.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "link"] }, "output": "image" },
+      { "id": "read", "title": "read.title", "keywords": "read.keywords", "input": "item",
+        "accepts": { "kinds": ["image"] }, "output": "text" }
+    ]
+  }
+}
