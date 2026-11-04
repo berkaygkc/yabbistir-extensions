@@ -35,7 +35,9 @@ Nothing to install: both tools are part of macOS.
 
 ## Limits
 
-- Turning a destination off in settings makes its row answer "turned off" when chosen; the app may still list the row.
+- Turning a destination off in settings does not hide its row: the manifest format has no per-variant visibility field, so all seven rows are always listed and a disabled one answers "turned off" without doing anything. Reminders and Notes are off by default, so they show up as rows that ask you to turn them on first.
+- Reminders and Notes use `osascript`, which `docs/review-checklist.md` lists among shells. It is a constant script with your text passed only as arguments (no injection is possible); if a maintainer rejects it, the fallback is to drop those two destinations.
+- OmniFocus: `name`, `note` and `autosave=true` come from community write-ups, not an official page. If OmniFocus ignores `autosave`, the item may wait as an unsaved draft in the Inbox.
 - An encoded URL is cut to 30,000 characters (our own conservative limit: the apps' documents name no limit except Things' notes, 10,000 characters). Cut text ends with an ellipsis and the notice says "cut to fit".
 - Things: titles are cut to 250 characters; when the first line is longer, the whole text goes in the notes.
 - Obsidian: file-name characters Obsidian forbids are replaced by spaces; if a note with that name exists, Obsidian decides what happens. When the first line is empty of usable characters, the name is "Clipboard <date> <time>".

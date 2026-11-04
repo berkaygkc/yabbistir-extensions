@@ -51,5 +51,7 @@
   "to.drafts.sub": "Yeni taslak",
   "to.omnifocus.sub": "Yeni gelen kutusu öğesi",
   "to.reminders.sub": "Yeni hatırlatıcı · bir kez erişim ister",
-  "to.notes.sub": "Yeni not · bir kez erişim ister"
+  "to.notes.sub": "Yeni not · bir kez erişim ister",
+  "app.reminders": "Hatırlatıcılar",
+  "app.notes": "Notlar"
 }

@@ -19,7 +19,8 @@ export const actions: Actions = {
       const t = (key: string, args?: Record<string, string | number>) => yab.t(key, args);
       const id = ctx.variant;
       if (!isDestination(id)) return { none: true, message: t("unknown") };
-      const app = APP_NAMES[id];
+      // Reminders and Notes use the localized app name; the others are proper names that do not change.
+      const app = id === "reminders" || id === "notes" ? t(`app.${id}`) : APP_NAMES[id];
       if (ctx.preferences[id] !== true) return { none: true, message: t("off", { app }) };
 
       const text = clean(item?.url ?? item?.text ?? "").trim();
@@ -34,8 +35,9 @@ export const actions: Actions = {
         const result = await yab.exec("osascript", ["-e", script, ...args], { signal: ctx.signal });
         if (result.exitCode === 0) return sent(cut);
         // -1743: the person (or macOS) denied Automation access; -600 / -10814: the app cannot be reached.
-        if (/-1743/.test(result.stderr)) return { none: true, message: t("denied", { app }) };
-        if (/-600|-10814|-1728/.test(result.stderr)) return { none: true, message: t("notInstalled", { app }) };
+        if (/\(-1743\)/.test(result.stderr)) return { none: true, message: t("denied", { app }) };
+        // -1728 ("can't get object") is not "app missing", so it falls through to the generic failure.
+        if (/\((?:-600|-10814)\)/.test(result.stderr)) return { none: true, message: t("notInstalled", { app }) };
         throw new Error(t("failed", { app }));
       }
 

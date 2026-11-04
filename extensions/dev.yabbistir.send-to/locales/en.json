@@ -49,5 +49,7 @@
   "to.drafts.sub": "New draft",
   "to.omnifocus.sub": "New inbox item",
   "to.reminders.sub": "New reminder · asks for access once",
-  "to.notes.sub": "New note · asks for access once"
+  "to.notes.sub": "New note · asks for access once",
+  "app.reminders": "Reminders",
+  "app.notes": "Notes"
 }

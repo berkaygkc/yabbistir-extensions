@@ -297,4 +297,15 @@ describe("speed", () => {
     }
     assert.ok(Date.now() - started < 5000, String(Date.now() - started));
   });
+
+  test("onlyAnchoredCodesCountAsAppMissing", async () => {
+    const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr: "odd (-6000) and Can't get object. (-1728)" }) });
+    await assert.rejects(send(host, "x", "notes"), /Couldn’t send to Notes\./);
+  });
+
+  test("turkishUsesLocalizedNamesForRemindersAndNotes", async () => {
+    const { host } = make({ language: "tr" });
+    assert.equal((await send(host, "x", "reminders")).message, "Hatırlatıcılar uygulamasına gönderildi");
+    assert.equal((await send(host, "x", "notes")).message, "Notlar uygulamasına gönderildi");
+  });
 });
