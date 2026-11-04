@@ -6,6 +6,18 @@ import { acceptsMatch, createFakeHost } from "@yabbistir/api/fake-host";
 import { actions, detectors } from "../src/index.ts";
 import { LINE_MAY_BE_RISKY, scanLookalike, scanShell } from "../src/scan.ts";
 
+// The fastest of up to five runs: a busy machine (the whole store's tests run at once) can stall one run, while a
+// slow algorithm is slow every time.
+const fastest = async (limit, work) => {
+  let best = Infinity;
+  for (let attempt = 0; attempt < 5 && best >= limit; attempt++) {
+    const started = performance.now();
+    await work();
+    best = Math.min(best, performance.now() - started);
+  }
+  return best;
+};
+
 const folder = new URL("..", import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
 const accepts = Object.fromEntries(manifest.contributes.detectors.map((d) => [d.id, d.accepts]));
@@ -551,15 +563,10 @@ describe("fix round 1", () => {
   });
 
   test("aLongUnbrokenTokenWithOneCyrillicLetterIsQuick", async () => {
-    const started = () => performance.now();
     const cases = ["x".repeat(20_000) + "\u0430", "x".repeat(4_000) + "\u0430", "a-".repeat(10_000) + "\u0430", "a\u0430".repeat(50_000), "a.".repeat(60_000) + "\u0430", "\u0430" + "x".repeat(20_000)];
     for (const text of cases) {
-      let t = started();
-      await host.validate(detectors.lookalike, item(text));
-      assert.ok(performance.now() - t < 50, `validate ${text.length}`);
-      t = started();
-      await host.preview(detectors.lookalike, item(text));
-      assert.ok(performance.now() - t < 500, `preview ${text.length}`);
+      assert.ok((await fastest(50, () => host.validate(detectors.lookalike, item(text)))) < 50, `validate ${text.length}`);
+      assert.ok((await fastest(500, () => host.preview(detectors.lookalike, item(text)))) < 500, `preview ${text.length}`);
     }
   });
 });
