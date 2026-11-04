@@ -242,8 +242,8 @@ describe("empty and failing", () => {
   });
 
   test("ipv6SubtitleIsBracketed", async () => {
-    const listing = await hostWith({ [`${DIR}/config`]: "Host v6\n  HostName ::1\n  User u\n  Port 22\n" }).list("hosts");
-    assert.equal(listing.rows[0].subtitle, "u@[::1]:22");
+    const listing = await hostWith({ [`${DIR}/config`]: "Host v6\n  HostName fe80::1\n  User u\n  Port 22\n" }).list("hosts");
+    assert.equal(listing.rows[0].subtitle, "u@[fe80::1]:22");
   });
 
   test("folderNotChosenInSettingsIsNotReadable", async () => {
