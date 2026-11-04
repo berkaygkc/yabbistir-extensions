@@ -6,17 +6,17 @@ Two columns in yabbistir's panel for the characters that are hard to type: **Sym
 
 About 350 rows in groups: Mac keys (⌘ ⌥ ⇧ ⌃ ⏎ ⌫), arrows, typography (quotes, dashes, the ellipsis, bullets, primes and the spaces), math, currency (including ₺ and €), check marks and stars, Greek letters, superscripts and subscripts, fractions, box drawing and the legal marks (© ® ™ § ¶ °).
 
-A row's title is the symbol and its subtitle is its name in the app's language and its code point, such as *Command · U+2318* or *Türk lirası · U+20BA*. The panel's search looks at both, so typing `lira`, `command` or `2318` finds it. Characters that show as nothing, such as the non-breaking space, the zero-width space or the soft hyphen, have their name in square brackets as the title.
+A row's title is the symbol and its subtitle is its name in the app's language, the same name in the other language (when it differs) and its code point, such as *Command · U+2318* or *Türk lirası · Turkish lira · U+20BA*. The panel's search looks at all of it, so typing `lira`, `lirası`, `command` or `2318` finds it in either language. Characters that show as nothing, such as the non-breaking space, the zero-width space or the soft hyphen, have their name in square brackets as the title.
 
 - ↵ pastes the symbol, ⌘C copies it.
 - ⇧↵ pastes its HTML form: the entity's name where the HTML standard has one (`&copy;`, `&mdash;`, `&alpha;`), the numeric form otherwise (`&#x2318;`).
 
 ## Kaomoji
 
-About 160 rows in twelve groups: happy, love, sad, angry, surprised, shrug, table flip, bear, cat, music, sleepy and greeting. A row's title is the kaomoji and its subtitle is the group and a few search words in the app's language.
+About 160 rows in twelve groups: happy, love, sad, angry, surprised, shrug, table flip, bear, cat, music, sleepy and greeting. A row's title is the kaomoji and its subtitle is the group and a few search words in both languages.
 
 - ↵ pastes the kaomoji, ⌘C copies it.
-- ⇧↵ pastes it for Markdown: a backslash, an underscore, an asterisk and a backtick get a backslash in front, so `¯\_(ツ)_/¯` survives as `¯\\\_(ツ)\_/¯`.
+- ⇧↵ pastes it for Markdown: a backslash, an underscore, an asterisk, a backtick and a tilde get a backslash in front, so `¯\_(ツ)_/¯` survives as `¯\\\_(ツ)\_/¯` and a `~~` cannot strike text through.
 
 ## Example
 

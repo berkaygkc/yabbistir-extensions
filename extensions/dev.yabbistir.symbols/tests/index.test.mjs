@@ -59,24 +59,24 @@ describe("symbols list", () => {
     const { rows } = await hostIn().list("symbols");
     const byTitle = new Map(rows.map((row) => [row.title, row]));
     assert.equal(byTitle.get("⌘").subtitle, "Command · U+2318");
-    assert.equal(byTitle.get("₺").subtitle, "Turkish lira · U+20BA");
+    assert.equal(byTitle.get("₺").subtitle, "Turkish lira · Türk lirası · U+20BA");
     for (const key of ["⌥", "⇧", "⌃", "⏎", "⌫", "€"]) assert.ok(byTitle.has(key), key);
     assert.ok(byTitle.has("’") && byTitle.has("—") && byTitle.has("…"));
   });
 
-  test("subtitleIsTheNameInTheAppsLanguage", async () => {
+  test("subtitleLeadsWithTheAppsLanguageAndCarriesTheOtherNameToo", async () => {
     const turkish = (await hostIn("tr").list("symbols")).rows;
     assert.equal(turkish.find((row) => row.title === "⌘").subtitle, "Command · U+2318");
-    assert.equal(turkish.find((row) => row.title === "₺").subtitle, "Türk lirası · U+20BA");
+    assert.equal(turkish.find((row) => row.title === "₺").subtitle, "Türk lirası · Turkish lira · U+20BA");
     const other = (await hostIn("de").list("symbols")).rows.find((row) => row.title === "₺");
-    assert.equal(other.subtitle, "Turkish lira · U+20BA");
+    assert.equal(other.subtitle, "Turkish lira · Türk lirası · U+20BA");
   });
 
   test("invisibleCharactersAreShownByName", async () => {
     const { rows } = await hostIn().list("symbols");
     const nbsp = rows.find((row) => row.id === "u-00A0");
     assert.equal(nbsp.title, "[Non-breaking space]");
-    assert.equal(nbsp.subtitle, "Non-breaking space · U+00A0");
+    assert.equal(nbsp.subtitle, "Non-breaking space · Bölünmeyen boşluk · U+00A0");
     assert.equal(rows.find((row) => row.id === "u-200B").title, "[Zero-width space]");
     assert.equal(rows.find((row) => row.id === "u-00AD").title, "[Soft hyphen]");
     const turkish = (await hostIn("tr").list("symbols")).rows.find((row) => row.id === "u-00A0");
@@ -183,9 +183,9 @@ describe("kaomoji", () => {
 
   test("subtitleHasTheGroupAndWordsInTheAppsLanguage", async () => {
     const english = (await hostIn().list("kaomoji")).rows.find((row) => row.title === "¯\\_(ツ)_/¯");
-    assert.equal(english.subtitle, "Shrug · shrug, whatever, idk");
+    assert.equal(english.subtitle, "Shrug · shrug, whatever, idk · omuz silkme, her neyse, bilmem");
     const turkish = (await hostIn("tr").list("kaomoji")).rows.find((row) => row.title === "¯\\_(ツ)_/¯");
-    assert.equal(turkish.subtitle, "Omuz silkme · omuz silkme, her neyse, bilmem");
+    assert.equal(turkish.subtitle, "Omuz silkme · omuz silkme, her neyse, bilmem · shrug, whatever, idk");
   });
 
   test("pastesTheKaomojiAsItIs", async () => {
@@ -202,10 +202,31 @@ describe("kaomoji", () => {
     assert.equal(markdownEscape("(＾▽＾)"), "(＾▽＾)");
   });
 
+  test("markdownFormEscapesTildesSoTheyCannotStrikeThrough", () => {
+    assert.equal(markdownEscape("(^_^)ﾉ~~ and ~~"), "(^\\_^)ﾉ\\~\\~ and \\~\\~");
+    const wave = allKaomoji().find((entry) => entry.text.includes("ﾉ~~"));
+    assert.ok(wave && !markdownEscape(wave.text).includes("~~"));
+  });
+
+  test("kaomojiIdsArePinned", () => {
+    const byId = new Map(allKaomoji().map((entry) => [entry.id, entry.text]));
+    assert.equal(byId.get("shrug-1"), "¯\\_(ツ)_/¯");
+    assert.equal(byId.get("happy-1"), allKaomoji().find((entry) => entry.group === "happy").text);
+    assert.equal(allKaomoji().filter((entry) => entry.group === "shrug")[0].id, "shrug-1");
+  });
+
+  test("namedEntitiesMatchTheHtmlStandard", () => {
+    // Checked once against the standard's entities.json (all 179 table entries and the Greek letters agree);
+    // these pin the ones people paste most, so an edit of the table cannot slip by.
+    const expected = { 0xa9: "&copy;", 0xae: "&reg;", 0x2122: "&trade;", 0x2026: "&hellip;", 0xa0: "&nbsp;", 0x3b5: "&epsilon;", 0x3c6: "&phi;", 0x3c2: "&sigmaf;", 0x20ac: "&euro;", 0x2190: "&larr;" };
+    for (const [point, entity] of Object.entries(expected)) assert.equal(entityFor(String.fromCodePoint(Number(point))), entity);
+    assert.equal(entityFor("₺"), "&#x20BA;");
+  });
+
   test("markdownFormOfEveryKaomojiOnlyAddsBackslashes", () => {
     for (const entry of allKaomoji()) {
       const escaped = markdownEscape(entry.text);
-      assert.equal(escaped.replace(/\\([\\_*`])/g, "$1"), entry.text, entry.id);
+      assert.equal(escaped.replace(/\\([\\_*`~])/g, "$1"), entry.text, entry.id);
     }
   });
 

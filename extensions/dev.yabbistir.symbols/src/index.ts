@@ -109,11 +109,11 @@ export function entityFor(text: string): string {
 }
 
 /**
- * Text for Markdown so that a kaomoji survives: a backslash, an underscore, an asterisk and a backtick each get a
- * backslash in front.
+ * Text for Markdown so that a kaomoji survives: a backslash, an underscore, an asterisk, a backtick and a tilde
+ * (a double tilde would strike text through) each get a backslash in front.
  */
 export function markdownEscape(text: string): string {
-  return text.replace(/[\\_*`]/g, "\\$&");
+  return text.replace(/[\\_*`~]/g, "\\$&");
 }
 
 export const sources: Sources = {
@@ -122,10 +122,13 @@ export const sources: Sources = {
       const lang = langOf(ctx.language);
       const rows: SourceRow[] = allSymbols().map((entry) => {
         const name = entry.names[lang] || entry.names.en;
+        // The other language's name rides along when it differs, so a search finds the symbol in both languages.
+        const otherName = entry.names[lang === "tr" ? "en" : "tr"];
+        const names = otherName && otherName !== name ? `${name} · ${otherName}` : name;
         return {
           id: entry.id,
           title: isInvisible(entry.text) ? `[${name}]` : entry.text,
-          subtitle: `${name} · ${codeOf(entry.codePoints)}`,
+          subtitle: `${names} · ${codeOf(entry.codePoints)}`,
         };
       });
       return { rows };
@@ -142,11 +145,12 @@ export const sources: Sources = {
   kaomoji: {
     list(ctx) {
       const lang = langOf(ctx.language);
-      const rows: SourceRow[] = allKaomoji().map((entry) => ({
-        id: entry.id,
-        title: entry.text,
-        subtitle: `${yab.t(`group.${entry.group}`)} · ${entry.words[lang] || entry.words.en}`,
-      }));
+      const rows: SourceRow[] = allKaomoji().map((entry) => {
+        const words = entry.words[lang] || entry.words.en;
+        const otherWords = entry.words[lang === "tr" ? "en" : "tr"];
+        const all = otherWords && otherWords !== words ? `${words} · ${otherWords}` : words;
+        return { id: entry.id, title: entry.text, subtitle: `${yab.t(`group.${entry.group}`)} · ${all}` };
+      });
       return { rows };
     },
     run(rowId, actionId) {
