@@ -1,6 +1,6 @@
 {
   "name": "Snippets",
-  "description": "Canned replies, signatures and templates from a Markdown file, as a column. ↵ pastes one with {date}, {time} and {clipboard} filled in.",
+  "description": "Canned replies, signatures and templates from a Markdown file, as a column. ↵ pastes one with {date}, {time} and more filled in.",
   "folder.title": "Folder with your snippets file",
   "file.title": "File name",
   "source.title": "Snippets",

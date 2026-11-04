@@ -10,26 +10,12 @@ const FILE = `${DIR}/snippets.md`;
 // Local time, so the formatted values do not depend on the machine's time zone.
 const NOW = new Date(2026, 10, 4, 9, 5);
 
-/**
- * The source as the app would run it if a source's run may read history, which brief and API reference agree on but
- * docs/sources.md and the fake host do not (they answer permissionDenied there). `yab.history.recent` is answered
- * from `history` for the duration of `run`.
- */
-function sourcesAllowingHistory(history) {
-  return { snippets: { list: sources.snippets.list, async run(rowId, actionId, ctx) {
-    const original = yab.history;
-    const calls = (globalThis.__historyCalls ??= []);
-    yab.history = { recent: async (limit) => { calls.push(limit); return history.slice(0, limit); } };
-    try { return await sources.snippets.run(rowId, actionId, ctx); } finally { yab.history = original; }
-  } } };
-}
-
 /** A host whose chosen folder holds `files`; `markdown` is the content of snippets.md. */
-function hostWith(markdown, { language = "en", history = [], preferences = {}, files = {}, now = NOW } = {}) {
+function hostWith(markdown, { language = "en", preferences = {}, files = {}, now = NOW } = {}) {
   const all = { ...files };
   if (markdown !== undefined) all[FILE] = markdown;
   return createFakeHost({
-    folder, sources: sourcesAllowingHistory(history), now, history, files: all,
+    folder, sources, now, files: all,
     preferences: { folder: DIR, ...preferences },
     context: { language },
   });
@@ -274,14 +260,10 @@ describe("states", () => {
     await assert.rejects(createFakeHost({ folder, sources }).runSource("snippets", "x", "paste"), /Choose a folder/);
   });
 
-  test("aSnippetThatFillsToNothingIsNotPasted", async () => {
-    const host = hostWith("## Clip\n{clipboard}", { history: [{ kind: "image", width: 10, height: 10 }] });
-    await assert.rejects(pasted(host, "Clip"), { message: "This snippet came out empty, so nothing was pasted." });
-  });
 });
 
 describe("placeholders", () => {
-  const values = (language, clipboard = "") => ({ language, now: NOW, clipboard });
+  const values = (language) => ({ language, now: NOW });
 
   test("englishDates", () => {
     assert.equal(fill("{date}", values("en")), "November 4, 2026");
@@ -306,38 +288,9 @@ describe("placeholders", () => {
     assert.deepEqual(await turkish.runSource("snippets", id, "paste"), { text: "Çarşamba, 4 Kasım 2026" });
   });
 
-  test("clipboardIsTheNewestHistoryText", async () => {
-    const history = [{ kind: "text", text: "newest copy" }, { kind: "text", text: "older copy" }];
-    const host = hostWith("## Quote\n> {clipboard}", { history });
-    globalThis.__historyCalls = [];
-    assert.equal(await pasted(host, "Quote"), "> newest copy");
-    assert.deepEqual(globalThis.__historyCalls.splice(0), [1]);
-  });
-
-  test("clipboardIsEmptyWithoutAHistoryItemOrText", () => {
-    assert.equal(fill("[{clipboard}]", values("en", "")), "[]");
-  });
-
-  test("clipboardWithAnEmptyHistory", async () => {
-    const host = hostWith("## Quote\nbefore {clipboard} after", { history: [] });
-    assert.equal(await pasted(host, "Quote"), "before  after");
-  });
-
-  test("clipboardWhenTheNewestItemHasNoText", async () => {
-    const host = hostWith("## Quote\nbefore {clipboard} after", { history: [{ kind: "image", width: 4, height: 4 }, { kind: "text", text: "old" }] });
-    assert.equal(await pasted(host, "Quote"), "before  after");
-  });
-
-  test("historyIsReadOnlyWhenTheSnippetUsesIt", async () => {
-    const host = hostWith("## Plain\nno placeholder\n## Escaped\n{{clipboard}}", { history: [{ kind: "text", text: "x" }] });
-    globalThis.__historyCalls = [];
-    assert.equal(await pasted(host, "Plain"), "no placeholder");
-    assert.equal(await pasted(host, "Escaped"), "{clipboard}");
-    assert.deepEqual(globalThis.__historyCalls, []);
-  });
-
-  test("aClipboardWithBracesIsNotFilledAgain", () => {
-    assert.equal(fill("{clipboard} {date}", values("en", "{date} {{")), "{date} {{ November 4, 2026");
+  test("clipboardIsNotAPlaceholder", async () => {
+    assert.equal(fill("a {clipboard} b {{clipboard}}", values("en")), "a {clipboard} b {clipboard}");
+    assert.equal(await pasted(hostWith("## Q\nlast: [{clipboard}]"), "Q"), "last: [{clipboard}]");
   });
 
   test("doubledBracesAreLiteral", () => {
@@ -363,26 +316,19 @@ describe("placeholders", () => {
   });
 });
 
-describe("history is not reachable", () => {
-  test("theSnippetStillPastesWithAnEmptyClipboard", async () => {
-    // The app answers permissionDenied when a source may not read history (docs/sources.md): the snippet still pastes.
-    const host = createFakeHost({ folder, sources, now: NOW, files: { [FILE]: "## Q\nlast: [{clipboard}]" }, preferences: { folder: DIR },
-      manifest: { permissions: [] } });
-    const [{ id }] = (await host.list("snippets")).rows;
-    assert.deepEqual(await host.runSource("snippets", id, "paste"), { text: "last: []" });
+describe("permissions", () => {
+  test("theExtensionAsksForNone", async () => {
+    const { readFileSync } = await import("node:fs");
+    const manifest = JSON.parse(readFileSync(new URL("manifest.json", folder), "utf8"));
+    assert.equal(manifest.permissions, undefined);
   });
-});
 
-describe("nothing leaks", () => {
-  test("clipboardTextIsNeverInARowOrAMessageOrALog", async () => {
-    const token = "gh" + "p_" + "a".repeat(36);
-    const host = hostWith("## Quote\n> {clipboard}", { history: [{ kind: "text", text: token }], files: {} });
+  test("aFileNameErrorNeverQuotesTheFileContent", async () => {
+    const secret = "secret-" + "x".repeat(10);
+    const host = hostWith(`## Q\n${secret}`, { preferences: { file: "../x" } });
     const listing = JSON.stringify(await host.list("snippets"));
-    assert.ok(!listing.includes(token));
-    await pasted(host, "Quote");
-    assert.ok(!JSON.stringify(host.logs).includes(token));
-    assert.ok(!JSON.stringify(host.notifications).includes(token));
-    const failing = hostWith("## Quote\n{clipboard}", { history: [{ kind: "text", text: token }], preferences: { file: "../x" } });
-    await assert.rejects(failing.runSource("snippets", "x", "paste"), (error) => !String(error.message).includes(token));
+    assert.ok(!listing.includes(secret));
+    await assert.rejects(host.runSource("snippets", "x", "paste"), (error) => !String(error.message).includes(secret));
+    assert.ok(!JSON.stringify(host.logs).includes(secret));
   });
 });

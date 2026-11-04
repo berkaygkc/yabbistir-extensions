@@ -125,13 +125,13 @@ function rowOf(snippet: Snippet): SourceRow {
   return { id: snippet.id, title: snippet.title, subtitle: subtitle === "" ? undefined : subtitle };
 }
 
-const PLACEHOLDER = /\{\{|\}\}|\{(datetime|date|time|weekday|clipboard)\}/g;
+const PLACEHOLDER = /\{\{|\}\}|\{(datetime|date|time|weekday)\}/g;
 
 /**
  * The body with its placeholders filled. `{{` and `}}` are literal braces, and a name that is not a placeholder stays
  * as written. One pass, so a filled value (a copied `{date}`) is never filled again.
  */
-export function fill(body: string, values: { language: string; now: Date; clipboard: string }): string {
+export function fill(body: string, values: { language: string; now: Date }): string {
   const format = (options: Intl.DateTimeFormatOptions): string => new Intl.DateTimeFormat(values.language, options).format(values.now);
   return body.replace(PLACEHOLDER, (match, name?: string) => {
     switch (name) {
@@ -140,22 +140,9 @@ export function fill(body: string, values: { language: string; now: Date; clipbo
       case "time": return format({ timeStyle: "short" });
       case "datetime": return format({ dateStyle: "long", timeStyle: "short" });
       case "weekday": return format({ weekday: "long" });
-      default: return values.clipboard;
+      default: return match;
     }
   });
-}
-
-/** Whether the body uses {clipboard}, so history is read only when it is needed. */
-const usesClipboard = (body: string): boolean => /\{clipboard\}/.test(body.replace(/\{\{|\}\}/g, ""));
-
-/** The newest history item's text; empty when there is none, it has no text, or history cannot be read. */
-async function clipboardText(): Promise<string> {
-  try {
-    const [newest] = await yab.history.recent(1);
-    return typeof newest?.text === "string" ? newest.text : "";
-  } catch {
-    return "";
-  }
 }
 
 type Located = { path: string; name: string } | { message: string };
@@ -192,13 +179,12 @@ export const sources: Sources = {
       return { rows: result.snippets.slice(0, MAX_ROWS).map(rowOf) };
     },
 
-    async run(rowId, actionId, ctx) {
+    run(rowId, actionId, ctx) {
       const result = snippetsOf(ctx.preferences);
       if ("message" in result) throw new Error(result.message);
       const snippet = result.snippets.find((entry) => entry.id === rowId);
       if (snippet === undefined) throw new Error(yab.t("gone"));
-      const clipboard = usesClipboard(snippet.body) ? await clipboardText() : "";
-      const text = fill(snippet.body, { language: ctx.language, now: new Date(), clipboard });
+      const text = fill(snippet.body, { language: ctx.language, now: new Date() });
       if (text.trim() === "") throw new Error(yab.t("emptyResult"));
       return { text };
     },

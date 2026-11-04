@@ -10,7 +10,6 @@
   "author": "Berkay Gökçe",
   "license": "MIT",
   "categories": ["productivity", "text"],
-  "permissions": ["history"],
   "preferences": [
     { "id": "folder", "type": "folder", "title": "folder.title" },
     { "id": "file", "type": "text", "title": "file.title", "default": "snippets.md" }

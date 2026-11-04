@@ -1,6 +1,6 @@
 {
   "name": "Snippets",
-  "description": "Hazır cevaplar, imzalar ve şablonlar bir Markdown dosyasından, sütun olarak. ↵ ile {date}, {time} ve {clipboard} doldurularak yapıştırılır.",
+  "description": "Hazır cevaplar, imzalar ve şablonlar bir Markdown dosyasından, sütun olarak. ↵ ile {date}, {time} ve benzerleri doldurularak yapıştırılır.",
   "folder.title": "Metin dosyanın klasörü",
   "file.title": "Dosya adı",
   "source.title": "Hazır metinler",

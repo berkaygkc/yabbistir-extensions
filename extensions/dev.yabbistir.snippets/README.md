@@ -1,6 +1,6 @@
 # Snippets
 
-Canned replies, signatures, pull request templates and support answers as a column in yabbistir's panel, read from one plain Markdown file. Because it is just a file, a team can share it in a git repository or in iCloud Drive. ↵ pastes the snippet you pick, with `{date}`, `{time}` and `{clipboard}` filled in, and ⌘C copies it instead.
+Canned replies, signatures, pull request templates and support answers as a column in yabbistir's panel, read from one plain Markdown file. Because it is just a file, a team can share it in a git repository or in iCloud Drive. ↵ pastes the snippet you pick, with `{date}`, `{time}` and more filled in, and ⌘C copies it instead.
 
 ## Example
 
@@ -29,7 +29,7 @@ Support team
 
 **How to test**
 
-Related to: {clipboard}
+Date: {date}
 
 ## Code sample
 ```js
@@ -58,10 +58,9 @@ In Settings › Extensions › Snippets, choose that folder. The panel gets a *S
 | `{time}` | The time: *9:05 AM* or *09:05* |
 | `{datetime}` | Both |
 | `{weekday}` | The day's name: *Wednesday* or *Çarşamba* |
-| `{clipboard}` | The text of the newest item in yabbistir's history (empty when there is none, or it has no text) |
 | `{{` and `}}` | A literal `{` and `}` |
 
-Any other `{name}` stays as written, so code and templates with braces are safe. A pasted `{clipboard}` value is never filled again, even if it contains `{date}`.
+Any other `{name}` stays as written, so code and templates with braces are safe.
 
 ## Setup
 
@@ -72,12 +71,11 @@ Until then the column says what is missing: *Choose a folder*, *There is no snip
 
 ## Permissions and privacy
 
-- **history**, only for `{clipboard}`. The extension asks for the single newest history item when you paste a snippet that contains `{clipboard}`, and for nothing otherwise. It uses only its text, which goes into the pasted snippet and nowhere else: it is not logged, stored or shown in a row. If yabbistir does not let a source read history, `{clipboard}` becomes empty and the rest of the snippet is pasted.
-- **The folder** needs no permission. The extension reads only inside the folder you chose in Settings, never writes, and the file name must be a plain name (no `/`). It has no network and no exec permission.
+- **None.** The extension has no permissions at all. It reads the file only because you chose its folder in Settings, only inside that folder, and never writes. The file name must be a plain name (no `/`).
 - The rows live in yabbistir's memory only; the extension keeps nothing between calls.
 
 ## Limits
 
-- Only `{clipboard}`, the date and time placeholders above exist; there is no cursor marker.
+- Only the date and time placeholders above exist; there is no cursor marker.
 - A snippet pastes as plain text.
 - The extension never edits the file; use any editor.
