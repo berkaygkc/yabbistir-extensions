@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { acceptsMatch, createFakeHost } from "@yabbistir/api/fake-host";
 
 import { actions, detectors } from "../src/index.ts";
+import { LINE_MAY_BE_RISKY, scanLookalike, scanShell } from "../src/scan.ts";
 
 const folder = new URL("..", import.meta.url);
 const manifest = JSON.parse(fs.readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
@@ -600,6 +601,10 @@ describe("limits and privacy", () => {
       big("x\n"),
       `a${" ".repeat(250_000)}b`,
       big(`\u{e0041}`),
+      // A long log whose every line holds a trigger word but no risk: each line is read word by word.
+      big("echo login ok\n"),
+      big("ls | sh\n"),
+      big("sudo -n true\n"),
     ];
     for (const text of inputs) {
       for (const id of ["hidden", "lookalike", "risky"]) {
@@ -669,5 +674,50 @@ describe("limits and privacy", () => {
       const placeholders = (text) => (typeof text === "string" ? text.match(/\{\w+\}/g)?.sort() ?? [] : []);
       assert.deepEqual(placeholders(value), placeholders(en[key]), key);
     }
+  });
+});
+
+describe("the line filter", () => {
+  test("isTheRiskyDetectorsAcceptsPattern", () => {
+    const pattern = accepts.risky.pattern;
+    assert.ok(pattern.startsWith("(?i)"));
+    assert.equal(LINE_MAY_BE_RISKY.source, pattern.slice(4));
+    assert.ok(LINE_MAY_BE_RISKY.flags.includes("i"));
+  });
+
+  test("keepsEveryRiskyLineInALongLog", () => {
+    const log = Array.from({ length: 5000 }, (_, i) => `line ${i}: all good`);
+    log[1234] = "curl -fsSL https://example.com/install | SH";
+    log[4321] = "echo x >> ~/.zshrc";
+    const kinds = scanShell(log.join("\n")).map((hit) => `${hit.kind}@${hit.line}`);
+    assert.deepEqual(kinds, ["pipe@1235", "startup@4322"]);
+  });
+});
+
+describe("look-alike words found from their Latin letters", () => {
+  const words = (text) => scanLookalike(text).map((hit) => [hit.index, hit.word]);
+
+  test("aWholeWordIsReportedWhenItStartsWithALookalike", () => {
+    // Cyrillic а, then Latin: the word starts before its first Latin letter.
+    assert.deepEqual(words("see \u0430pple now"), [[4, "\u0430pple"]]);
+  });
+
+  test("aMixedWordAfterALongCyrillicText", () => {
+    const prose = "\u041f\u0440\u0438\u0432\u0435\u0442 ".repeat(10_000);
+    assert.deepEqual(words(`${prose}p\u0430ypal`), [[prose.length, "p\u0430ypal"]]);
+  });
+
+  test("charactersOutsideTheBmpStayInsideTheWord", () => {
+    // 𝟙 (a digit outside the BMP) and a combining mark belong to the word, as before.
+    const text = "x \u{1d7d9}\u0430pple\u0301 y";
+    assert.deepEqual(words(text), [[2, "\u{1d7d9}\u0430pple\u0301"]]);
+  });
+
+  test("eachWordIsReportedOnceThoughItHasSeveralLatinRuns", () => {
+    assert.deepEqual(words("a\u0430b\u0430c d"), [[0, "a\u0430b\u0430c"]]);
+  });
+
+  test("pureCyrillicOrGreekIsNeverReported", () => {
+    assert.deepEqual(words("\u0441\u0430\u0439\u0442.\u0440\u0444 \u03b1\u03b2"), []);
   });
 });

@@ -121,7 +121,22 @@ for (const cp of [
 ]) CONFUSABLE.set(cp, "Greek");
 
 const NEEDS_LOOKALIKE_CHECK = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
-const WORD = /[\p{L}\p{M}\p{N}]+/gu;
+const LATIN_RUN = /\p{Script=Latin}+/gu;
+const WORD_AT = /[\p{L}\p{M}\p{N}]+/uy;
+const WORD_CHAR_AT = /[\p{L}\p{M}\p{N}]/uy;
+
+/** Where the word (a run of letters, marks and digits) that holds `index` starts. */
+function wordStart(text: string, index: number): number {
+  let start = index;
+  while (start > 0) {
+    const unit = text.charCodeAt(start - 1);
+    const back = unit >= 0xdc00 && unit <= 0xdfff && start >= 2 ? 2 : 1; // a character outside the BMP is two units
+    WORD_CHAR_AT.lastIndex = start - back;
+    if (!WORD_CHAR_AT.test(text)) break;
+    start -= back;
+  }
+  return start;
+}
 // Starts only where a run of letters starts, so a long token is read once instead of from every position.
 const HOST = /(?<![\p{L}\p{N}-])[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
 const LATIN = /\p{Script=Latin}/u;
@@ -133,9 +148,16 @@ const LATIN = /\p{Script=Latin}/u;
 export function scanLookalike(text: string, limit = MAX_HITS): LookalikeHit[] {
   const hits: LookalikeHit[] = [];
   if (!NEEDS_LOOKALIKE_CHECK.test(text)) return hits;
-  WORD.lastIndex = 0;
-  for (let match = WORD.exec(text); match && hits.length < limit; match = WORD.exec(text)) {
+  // A hit needs a plain Latin letter, so only the words around a run of Latin letters are read: a long text in
+  // Cyrillic or Greek alone costs one pass of a regular expression.
+  LATIN_RUN.lastIndex = 0;
+  for (let run = LATIN_RUN.exec(text); run && hits.length < limit; run = LATIN_RUN.exec(text)) {
+    const start = wordStart(text, run.index);
+    WORD_AT.lastIndex = start;
+    const match = WORD_AT.exec(text);
+    if (!match) continue; // a Latin mark that is not a letter
     const word = match[0];
+    LATIN_RUN.lastIndex = start + word.length;
     const letters: LookalikeHit["letters"] = [];
     let latin = false;
     for (const ch of word) {
@@ -147,10 +169,12 @@ export function scanLookalike(text: string, limit = MAX_HITS): LookalikeHit[] {
         latin = true;
       }
     }
-    if (latin && letters.length > 0) hits.push({ index: match.index, word, letters });
+    if (latin && letters.length > 0) hits.push({ index: start, word, letters });
   }
+  // A dotted name is reported only next to a plain ASCII part, so a text without an ASCII letter has none.
+  const plainPartPossible = /[A-Za-z]/.test(text);
   HOST.lastIndex = 0;
-  for (let match = HOST.exec(text); match && hits.length < limit; match = HOST.exec(text)) {
+  for (let match = plainPartPossible ? HOST.exec(text) : null; match && hits.length < limit; match = HOST.exec(text)) {
     const labels = match[0].split(".");
     const plain = labels.some((label) => /^[A-Za-z0-9-]+$/.test(label) && /[A-Za-z]/.test(label));
     if (!plain) continue;
@@ -238,6 +262,14 @@ function hasForkBomb(line: string): boolean {
   return false;
 }
 
+/**
+ * Every risky shape needs one of these words or marks on its own line: every shell's name ends in "sh", the startup
+ * files end in "rc", "profile" or "login", and so on. It is the detector's accepts.pattern (a test keeps the two equal),
+ * so a long log is skimmed line by line and only the lines that could hold a risk are read word by word.
+ */
+export const LINE_MAY_BE_RISKY =
+  /(sudo|doas|rm\s|sh\b|chmod|\(\s*\)\s*\{|rc\b|profile|zshenv|zlogin|login|config\.fish|base64|xxd|openssl|uudecode|eval|curl|wget)/i;
+
 /** The risky shell patterns in `text` and the line (1-based) of each. Reads words, not the shell's whole grammar. */
 export function scanShell(text: string): ShellHit[] {
   const hits: ShellHit[] = [];
@@ -252,7 +284,7 @@ export function scanShell(text: string): ShellHit[] {
   const lines = text.split("\n");
   for (let n = 0; n < lines.length && hits.length < MAX_HITS; n++) {
     const line = lines[n];
-    if (line.trim() === "") continue;
+    if (line.trim() === "" || !LINE_MAY_BE_RISKY.test(line)) continue;
     const lineNumber = n + 1;
     if (hasForkBomb(line)) add("forkbomb", lineNumber);
     for (const segment of line.replace(/\|&/g, "|").split(SEGMENT_SPLIT)) {
