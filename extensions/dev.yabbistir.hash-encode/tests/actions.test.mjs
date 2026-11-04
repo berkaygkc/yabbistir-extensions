@@ -188,6 +188,8 @@ describe("hex", () => {
   });
 
   test("oddOrBrokenHexIsReported", async () => {
+    assert.deepEqual(await host.run(actions["hex-decode"], text("0102")), { none: true, message: "These bytes aren’t valid UTF-8 text" });
+    assert.deepEqual(await host.run(actions["hex-decode"], text("09 0a 0d 41")), { text: "\t\n\rA" });
     assert.deepEqual(await host.run(actions["hex-decode"], text("abc")), { none: true, message: "This isn’t valid hex: it needs pairs of digits" });
     assert.deepEqual(await host.run(actions["hex-decode"], text("xyz1")), { none: true, message: "This isn’t valid hex: it needs pairs of digits" });
   });
@@ -222,6 +224,10 @@ describe("punycode", () => {
     assert.ok(offered(link("https://bücher.example/")).includes("punycode-encode"));
     assert.ok(!offered(text("a plain sentence with ü in it")).includes("punycode-encode"));
     assert.ok(!offered(text("example.com")).includes("punycode-encode"));
+    assert.ok(!offered(text("Şişli")).includes("punycode-encode"));
+    assert.ok(!offered(text("Müşteri.")).includes("punycode-encode"));
+    assert.ok(offered(text("ü.example")).includes("punycode-encode"));
+    assert.ok(offered(text("example.münchen")).includes("punycode-encode"));
     assert.ok(offered(text("xn--bcher-kva.example")).includes("punycode-decode"));
     assert.ok(offered(link("https://XN--bcher-kva.example/")).includes("punycode-decode"));
     assert.ok(!offered(text("example.com")).includes("punycode-decode"));

@@ -39,7 +39,7 @@
       { "id": "rot13", "title": "rot13.title", "keywords": "rot13.keywords", "input": "item",
         "accepts": { "kinds": ["text", "code"], "pattern": "[A-Za-z]" }, "output": "text", "hint": true },
       { "id": "punycode-encode", "title": "punycodeEncode.title", "keywords": "punycodeEncode.keywords", "input": "item",
-        "accepts": { "kinds": ["text", "link"], "pattern": "^[!-~]*[^\\x00-\\x7F]\\S*$" }, "output": "text", "hint": true },
+        "accepts": { "kinds": ["text", "link"], "pattern": "^(?=[!-~]*[^\\x00-\\x7F])[^\\s.]+(?:\\.[^\\s.]+)+$" }, "output": "text", "hint": true },
       { "id": "punycode-decode", "title": "punycodeDecode.title", "keywords": "punycodeDecode.keywords", "input": "item",
         "accepts": { "kinds": ["text", "link"], "pattern": "(?i)xn--" }, "output": "text", "hint": true }
     ]

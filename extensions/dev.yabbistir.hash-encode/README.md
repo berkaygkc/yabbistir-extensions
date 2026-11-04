@@ -1,6 +1,6 @@
 # Hash & Encode
 
-Hashes and encodings for text and code, everything computed on this Mac. Pick an item, press ⇧, and the transform is there; decoders show up only when the text can be decoded, and every one shows its result on the row before you paste.
+Hashes and encodings for text and code, everything computed on this Mac. Pick an item, press ⇧, and the transform is there; decoders show up only when the text can be decoded, and every decoder shows its result on the row before you paste. Hash rows show no preview.
 
 | Action | What it does |
 |---|---|
@@ -24,6 +24,9 @@ Copy `Şişli`, press ⇧, choose **Escape as Unicode**: `Şişli`. Copy `caf%C3
 - **Unicode escapes**: only characters past ASCII are escaped. Decoding leaves malformed escapes, lone surrogates and code points past U+10FFFF as written, and does not decode an escaped backslash (`\\u0041`).
 - **Hex**: decoding accepts spaces, line breaks, colons and a leading `0x` between and before pairs, and refuses bytes that are not valid UTF-8 with a message.
 - **Punycode**: only the host of a link is converted; a path, query or fragment with non-ASCII characters is left alone. Labels are lowercased and normalized (NFC) before encoding; this is not the full UTS #46 mapping. A label longer than 63 characters is refused.
+- Hex decoding also refuses results that contain control characters (other than tab and line breaks), so a digit string like `0102` is not read as text.
+- Previews on very large text (several hundred KB) may be skipped when they would take too long; the action itself still works.
+- Punycode is offered only on domain-like text: no spaces, at least one dot and a non-ASCII character.
 - All of it is linear in the text's size; a megabyte is far inside the 10-second limit.
 
 ## Permissions and tools

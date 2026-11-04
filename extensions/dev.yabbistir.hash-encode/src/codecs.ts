@@ -199,7 +199,9 @@ export function hexDecode(text: string): HexResult {
   const bytes = new Uint8Array(compact.length / 2);
   for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(compact.slice(i * 2, i * 2 + 2), 16);
   const decoded = decodeUtf8(bytes);
-  return decoded === null ? { ok: false, reason: "notText" } : { ok: true, text: decoded };
+  // Control characters (other than tab and line breaks) mean the bytes are not text, e.g. the digits of "0102".
+  if (decoded === null || /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(decoded)) return { ok: false, reason: "notText" };
+  return { ok: true, text: decoded };
 }
 
 // ---------------------------------------------------------------------------------------------------------
