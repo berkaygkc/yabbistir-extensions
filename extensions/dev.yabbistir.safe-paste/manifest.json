@@ -1,0 +1,102 @@
+{
+  "id": "dev.yabbistir.safe-paste",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:checkmark.shield",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": [
+    "developer",
+    "text"
+  ],
+  "contributes": {
+    "detectors": [
+      {
+        "id": "hidden",
+        "tag": "tag.hidden",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code",
+            "link"
+          ],
+          "pattern": "[\\p{Cf}\\u3164\\uFFA0\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F-\\x9F]"
+        },
+        "validate": true,
+        "preview": true
+      },
+      {
+        "id": "lookalike",
+        "tag": "tag.lookalike",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code",
+            "link"
+          ],
+          "pattern": "[\\p{Cyrillic}\\p{Greek}]"
+        },
+        "validate": true,
+        "preview": true
+      },
+      {
+        "id": "risky",
+        "tag": "tag.risky",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code"
+          ],
+          "pattern": "(?i)(sudo|doas|rm\\s|sh\\b|chmod|\\(\\s*\\)\\s*\\{|rc\\b|profile|zshenv|zlogin|config\\.fish|base64|xxd|openssl|uudecode|eval|curl|wget)"
+        },
+        "validate": true,
+        "preview": true
+      }
+    ],
+    "actions": [
+      {
+        "id": "paste",
+        "title": "paste.title",
+        "subtitle": "paste.subtitle",
+        "keywords": "paste.keywords",
+        "input": "item",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code",
+            "link"
+          ]
+        },
+        "output": "text",
+        "targets": [
+          "terminal"
+        ],
+        "hint": true,
+        "priority": 10
+      },
+      {
+        "id": "unhide",
+        "title": "unhide.title",
+        "subtitle": "unhide.subtitle",
+        "keywords": "unhide.keywords",
+        "input": "item",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code",
+            "link"
+          ],
+          "tags": [
+            "hidden"
+          ]
+        },
+        "output": "text",
+        "hint": true
+      }
+    ]
+  }
+}
