@@ -156,7 +156,7 @@ describe("run", () => {
   });
 
   test("anUnknownActionIdPastesNothing", async () => {
-    await assert.rejects(hostWith(idle).runSource("servers", "4100-3000", "kill"), { message: "This server is no longer listed." });
+    await assert.rejects(hostWith(idle).runSource("servers", "4100-3000", "kill"), { message: /no action "kill"/ });
   });
 
   test("nothingLandsInLogsOrNotices", async () => {
