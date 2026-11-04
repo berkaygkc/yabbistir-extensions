@@ -2,7 +2,7 @@
   "id": "dev.yabbistir.browser-tabs",
   "version": "1.0.0",
   "apiVersion": 1,
-  "minAppVersion": "0.3.0",
+  "minAppVersion": "0.4.1",
   "defaultLocale": "en",
   "name": "name",
   "description": "description",
@@ -13,7 +13,7 @@
   "permissions": ["exec"],
   "requires": {
     "tools": [
-      { "name": "osascript", "install": "Built into macOS at /usr/bin/osascript" }
+      { "name": "osascript", "install": "Part of macOS (/usr/bin/osascript)" }
     ]
   },
   "contributes": {

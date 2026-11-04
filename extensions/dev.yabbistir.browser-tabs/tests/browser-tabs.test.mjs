@@ -16,7 +16,9 @@ function hostWith(osascript, { language = "en" } = {}) {
   return createFakeHost({ folder, sources, exec: { osascript }, context: { language } });
 }
 const list = (browsers, options) => hostWith(fakeOsascript(browsers), options).list("tabs");
-const osascriptRuns = (host) => host.calls.filter((call) => call.api === "exec" && call.args[0] === "osascript").length;
+const osascriptCalls = (host) => host.calls.filter((call) => call.api === "exec" && call.args[0] === "osascript");
+const osascriptRuns = (host) => osascriptCalls(host).length;
+const statusLines = (output) => output.trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.s !== undefined);
 
 // A token-shaped value built at run time, so no file holds one.
 const TOKEN = "gh" + "p_" + "a".repeat(36);
@@ -46,10 +48,24 @@ const ARC = {
 };
 
 describe("the script", () => {
-  test("osascript runs one fixed JXA script, with no arguments of its own", () => {
+  test("osascript runs one fixed JXA script, whose only argument picks a browser", () => {
     assert.deepEqual(ARGS, ["-l", "JavaScript", "-e", SCRIPT]);
     assert.ok(!SCRIPT.includes("${"), "nothing is put into the script");
-    assert.match(SCRIPT, /function run\(\)/);
+    assert.match(SCRIPT, /function run\(argv\)/);
+    assert.match(SCRIPT, /^[\x00-\x7e]*$/, "the script is plain ASCII, its escaping range written as \\u escapes");
+  });
+
+  test("given a browser, the script asks that one only; given nothing, every one", () => {
+    const browsers = { safari: SAFARI, chrome: CHROME, arc: ARC };
+    const one = runScript(browsers, ["chrome"]);
+    assert.deepEqual(one.jxa.lookups, ["com.google.Chrome"]);
+    assert.deepEqual(one.jxa.events, { safari: 0, chrome: one.jxa.events.chrome, arc: 0, brave: 0, edge: 0, vivaldi: 0 });
+    assert.deepEqual(statusLines(one.output), [{ b: "chrome", s: "ok", f: 0, x: 0, e: 0 }], "the front app is not asked about");
+    const all = runScript(browsers);
+    assert.deepEqual(statusLines(all.output).map((line) => line.b), ["safari", "chrome", "arc"]);
+    const unknown = runScript(browsers, ["firefox"]);
+    assert.equal(unknown.output, '{"v":1}\n', "a key it does not know reads nothing");
+    assert.deepEqual(unknown.jxa.lookups, []);
   });
 
   test("browsers that are not running get no Apple event, so none is launched", () => {
@@ -65,7 +81,7 @@ describe("the script", () => {
     assert.deepEqual(lines, [
       { v: 1 },
       { b: "chrome", w: "1", t: "2", p: 0, a: 1, n: "Çay ☕ ve şiir 𝄞\nikinci satır", u: "https://example.com/ç" },
-      { b: "chrome", s: "ok", f: 0, x: 0 },
+      { b: "chrome", s: "ok", f: 0, x: 0, e: 0 },
     ]);
   });
 
@@ -78,8 +94,8 @@ describe("the script", () => {
     const { output } = runScript({ safari: { ...SAFARI, denied: true }, chrome: CHROME });
     const lines = output.trim().split("\n").map((line) => JSON.parse(line));
     assert.deepEqual(lines.filter((line) => line.s !== undefined), [
-      { b: "safari", s: "denied", f: 0, x: 0 },
-      { b: "chrome", s: "ok", f: 0, x: 0 },
+      { b: "safari", s: "denied", f: 0, x: 0, e: 0 },
+      { b: "chrome", s: "ok", f: 0, x: 0, e: 0 },
     ]);
     assert.ok(lines.every((line) => line.b !== "safari" || line.s !== undefined));
   });
@@ -92,6 +108,13 @@ describe("the script", () => {
     ] } });
     const tabs = output.trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.u !== undefined);
     assert.deepEqual(tabs.map((tab) => tab.n), ["Bir kez daha"]);
+    assert.deepEqual(statusLines(output), [{ b: "chrome", s: "ok", f: 0, x: 0, e: 2 }], "the two windows left out are counted");
+  });
+
+  test("Safari without `visible`: the window's current tab says which tab is active", () => {
+    const { output } = runScript({ safari: { lacks: ["visible"], windows: [{ id: 7, active: 1, tabs: SAFARI.windows[0].tabs }] } });
+    const tabs = output.trim().split("\n").map((line) => JSON.parse(line)).filter((line) => line.u !== undefined);
+    assert.deepEqual(tabs.map((tab) => [tab.n, tab.a]), [["Örnek Belgeler", 0], ["Haberler", 1]]);
   });
 });
 
@@ -114,7 +137,7 @@ describe("listing", () => {
     ]);
   });
 
-  test("Safari: tabs have no id, so a digest of the URL and the tab's place stands in; www. is left off the host", async () => {
+  test("Safari: tabs have no id, so a digest of the URL stands in; www. is left off the host", async () => {
     const { rows } = await list({ safari: SAFARI });
     assert.equal(rows.length, 2);
     assert.match(rows[0].id, /^safari:4711:u[0-9a-f]{16}$/);
@@ -148,7 +171,7 @@ describe("listing", () => {
     assert.deepEqual(second.rows.map((row) => row.id), first.rows.map((row) => row.id));
   });
 
-  test("a Chrome tab keeps its id when tabs before it close; a Safari tab's id follows its URL and place", async () => {
+  test("a Chrome tab keeps its id when tabs before it close; a Safari tab's id follows its URL and window", async () => {
     const before = (await list({ chrome: CHROME })).rows.find((row) => row.title === "Pull request #42").id;
     const closed = { windows: [{ id: "1203", active: 0, tabs: [CHROME.windows[0].tabs[1]] }] };
     assert.equal((await list({ chrome: closed })).rows[0].id, before);
@@ -160,6 +183,40 @@ describe("listing", () => {
     assert.notEqual(after[1], safari[1], "the tab that went elsewhere gets a new one");
     const otherWindow = { windows: [{ id: 4712, tabs: SAFARI.windows[0].tabs }] };
     assert.notEqual((await list({ safari: otherWindow })).rows[0].id, safari[0], "the window is part of the id");
+    const moved = { windows: [{ id: 4711, active: 1, tabs: [...SAFARI.windows[0].tabs].reverse() }] };
+    assert.deepEqual((await list({ safari: moved })).rows.map((row) => row.id), safari, "moving a tab keeps its id");
+  });
+
+  test("a Safari tab keeps its id and still pastes when a tab before it closes or a new one opens", async () => {
+    const a = { title: "A", url: "https://example.com/a" };
+    const b = { title: "B", url: "https://example.com/b" };
+    const c = { title: "C", url: "https://example.com/c" };
+    let tabs = [a, b, c];
+    const host = hostWith(fakeOsascript(() => ({ safari: { windows: [{ id: 4711, active: 0, tabs }] } })));
+    const listed = (await host.list("tabs")).rows;
+    const idOf = (rows, title) => rows.find((row) => row.title === title).id;
+
+    // The person closes A in Safari, then presses ↵ on C's row from the listing the panel still shows.
+    tabs = [b, c];
+    assert.deepEqual(await host.runSource("tabs", idOf(listed, "C"), "link"), { text: "https://example.com/c" });
+    assert.equal(idOf((await host.list("tabs")).rows, "C"), idOf(listed, "C"));
+
+    // A link opens a new tab next to the first one.
+    tabs = [b, { title: "Yeni", url: "https://example.com/yeni" }, c];
+    assert.deepEqual(await host.runSource("tabs", idOf(listed, "C"), "markdown"), { text: "[C](https://example.com/c)" });
+  });
+
+  test("Safari tabs with the same URL keep their ids whichever of them is active", async () => {
+    const twin = { title: "Aynı sayfa", url: "https://example.com/ayni" };
+    const other = { title: "Başka", url: "https://example.com/baska" };
+    const at = (active) => ({ safari: { windows: [{ id: 1, active, tabs: [twin, other, twin] }] } });
+    const ids = async (active) => Object.fromEntries((await list(at(active))).rows.map((row, index) => [row.id, index]));
+    const first = await ids(0);
+    const last = await ids(2);
+    assert.deepEqual(Object.keys(first).sort(), Object.keys(last).sort());
+    const base = Object.keys(first).find((id) => id.endsWith("~2")).slice(0, -2);
+    assert.equal(first[base], 0, "the first of the two leads while it is active");
+    assert.equal(last[`${base}~2`], 0, "the second keeps ~2 when it is the active one");
   });
 
   test("ids that would repeat get ~2, and odd or long browser ids are hashed into a short, plain id", async () => {
@@ -186,6 +243,23 @@ describe("listing", () => {
     assert.deepEqual(rows.map((row) => row.title), ["Açık"]);
   });
 
+  test("Arc is asked only `incognito`, the Chromium browsers only `mode`", () => {
+    const { jxa } = runScript({ chrome: CHROME, arc: ARC, vivaldi: { windows: [{ id: "9", tabs: [{ id: "1", title: "V", url: "https://example.com/v" }] }] } });
+    const privacy = jxa.reads.filter((read) => read.endsWith(".mode") || read.endsWith(".incognito"));
+    assert.deepEqual([...new Set(privacy)], ["chrome.mode", "arc.incognito", "vivaldi.mode"]);
+  });
+
+  test("a window that doesn't say whether it is private stays hidden, and an empty column says the tabs couldn't be read", async () => {
+    const arc = { ...ARC, lacks: ["incognito"] };
+    const chrome = { ...CHROME, lacks: ["mode"] };
+    await assert.rejects(list({ arc }), { message: "Couldn’t read the browsers’ tabs." });
+    await assert.rejects(list({ chrome }, { language: "tr" }), { message: "Tarayıcıların sekmeleri okunamadı." });
+    const { rows } = await list({ arc, safari: SAFARI });
+    assert.deepEqual(rows.map((row) => row.title), ["Örnek Belgeler", "Haberler"], "the other browsers are still listed");
+    const notBoolean = { windows: [{ ...ARC.windows[0], incognito: "false" }] };
+    await assert.rejects(list({ arc: notBoolean }), { message: "Couldn’t read the browsers’ tabs." }, "only a real false counts as not private");
+  });
+
   test("blank pages and tabs without an address are left out", async () => {
     const { rows } = await list({ chrome: { windows: [{ id: "1", tabs: [
       { id: "1", title: "Yeni Sekme", url: "chrome://newtab/" },
@@ -196,6 +270,16 @@ describe("listing", () => {
       { id: "6", title: "Ayarlar", url: "chrome://settings/" },
     ] }] } });
     assert.deepEqual(rows, [{ id: "chrome:1:6", title: "Ayarlar", subtitle: "Chrome · settings" }]);
+  });
+
+  test("Vivaldi's start page is left out in either form", async () => {
+    const { rows } = await list({ vivaldi: { windows: [{ id: "1", tabs: [
+      { id: "1", title: "Başlangıç Sayfası", url: "vivaldi://startpage/" },
+      { id: "2", title: "Başlangıç Sayfası", url: "chrome://vivaldi-webui/startpage?section=Speed-dials&background-color=#2e2f37" },
+      { id: "3", title: "Hızlı Erişim", url: "chrome://vivaldi-webui/startpage" },
+      { id: "4", title: "Ayarlar", url: "vivaldi://settings/" },
+    ] }] } });
+    assert.deepEqual(rows.map((row) => row.id), ["vivaldi:1:4"]);
   });
 
   test("odd titles and URLs: blank titles, line breaks, files, ports, user names and long titles", async () => {
@@ -302,7 +386,8 @@ describe("empty and locked", () => {
     const refused = () => ({ exitCode: 1, stdout: "", stderr: "0:42: execution error: Not authorized to send Apple events to Safari. (-1743)\n" });
     assert.deepEqual(await hostWith(refused).list("tabs"), { locked: true, message: "Allow yabbistir to control your browsers in System Settings › Privacy & Security › Automation." });
     assert.deepEqual(await hostWith(refused, { language: "tr" }).list("tabs"), { locked: true, message: "yabbistir’in tarayıcıları denetlemesine izin ver: Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon." });
-    await assert.rejects(hostWith(refused).runSource("tabs", "chrome:1:2", "link"), { message: "Allow yabbistir to control your browsers in System Settings › Privacy & Security › Automation." });
+    await assert.rejects(hostWith(refused).runSource("tabs", "chrome:1:2", "link"), { message: "Allow yabbistir to control Google Chrome in System Settings › Privacy & Security › Automation." },
+      "pasting asks only the tab's browser, so it is the one named");
   });
 });
 
@@ -371,6 +456,35 @@ describe("pasting", () => {
     const host = hostWith(fakeOsascript({ chrome: CHROME }));
     assert.deepEqual(await host.runSource("tabs", "chrome:1203:1391", "link"), { text: "https://code.example.org/pull/42" });
     assert.deepEqual(await host.runSource("tabs", "chrome:1203:1391", "markdown"), { text: "[Pull request #42](https://code.example.org/pull/42)" });
+  });
+
+  test("listing asks every browser, pasting only the tab's own, by its key", async () => {
+    const osascript = fakeOsascript({ safari: SAFARI, chrome: CHROME, arc: ARC });
+    const host = hostWith(osascript);
+    await host.list("tabs");
+    await host.runSource("tabs", "chrome:1203:1391", "link");
+    await host.runSource("tabs", "arc:A1:8B2C1F3A-0D4E-4F5A-9B6C-7D8E9F0A1B2C", "link");
+    assert.deepEqual(osascriptCalls(host).map((call) => call.args[1]), [[...ARGS], [...ARGS, "chrome"], [...ARGS, "arc"]]);
+    assert.deepEqual(osascript.runs.map((run) => run.lookups.length), [6, 1, 1]);
+  });
+
+  test("a hung Arc holds up neither a Chrome nor a Safari paste", async () => {
+    const osascript = fakeOsascript({ safari: SAFARI, chrome: CHROME, arc: { ...ARC, hung: true } });
+    const host = hostWith(osascript);
+    const within = (promise) => {
+      let timer;
+      const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("still waiting after 2 s")), 2_000); });
+      return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+    };
+    assert.deepEqual(await within(host.runSource("tabs", "chrome:1203:1391", "link")), { text: "https://code.example.org/pull/42" });
+    const safariID = (await hostWith(fakeOsascript({ safari: SAFARI })).list("tabs")).rows.find((row) => row.title === "Haberler").id;
+    assert.deepEqual(await within(host.runSource("tabs", safariID, "link")), { text: "https://www.example.org/news" });
+    assert.ok(osascript.runs.every((run) => run.events.arc === 0), "Arc got no Apple event");
+
+    // The listing does wait on Arc, as the README says, until the app's time limit cancels it.
+    const listing = host.list("tabs");
+    setTimeout(() => host.cancel(), 10);
+    await assert.rejects(listing, { code: "cancelled" });
   });
 
   test("Safari and Arc rows paste too", async () => {

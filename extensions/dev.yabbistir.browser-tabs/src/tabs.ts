@@ -12,7 +12,7 @@ export interface Tab {
   window: string | null;
   /** The tab's id as the browser gives it (Chromium and Arc), or null (Safari). */
   tab: string | null;
-  /** Its place in the window, from 0. */
+  /** Its place in the window, from 0. Never part of its row id (see `tabID`), since other tabs move it. */
   position: number;
   /** Whether it is the window's active tab. */
   active: boolean;
@@ -26,6 +26,8 @@ export interface Status {
   frontmost: boolean;
   /** Private windows left out. */
   privateWindows: number;
+  /** Windows left out because they could not be read, or did not say whether they are private. */
+  unreadWindows: number;
 }
 
 export interface Reading {
@@ -45,8 +47,11 @@ export const MAX_ROWS = 10_000;
 /** What the app turns into a space in a row's title, and what it trims from its ends after that. */
 const LINE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
 const SPACE = /^[\p{Z}\t-\r\u0085]$/u;
-/** Pages with nothing to link to: blank pages and the browsers' own new tab and start pages. */
-const BLANK_PAGE = /^(?:about:(?:blank|newtab|home|startpage)|[a-z][a-z0-9+.-]*:\/\/(?:newtab|new-tab-page|startpage|start-page)\/?|favorites:\/\/\/?|topsites:\/\/\/?)$/i;
+/**
+ * Pages with nothing to link to: blank pages and the browsers' own new tab and start pages, Vivaldi's included, which
+ * it may give as `chrome://vivaldi-webui/startpage?section=…`.
+ */
+const BLANK_PAGE = /^(?:about:(?:blank|newtab|home|startpage)|[a-z][a-z0-9+.-]*:\/\/(?:newtab|new-tab-page|startpage|start-page)\/?|(?:chrome|vivaldi):\/\/vivaldi-webui\/startpage(?:[/?#][\s\S]*)?|favorites:\/\/\/?|topsites:\/\/\/?)$/i;
 /** An id part kept as the browser gives it; any other is hashed. */
 const PLAIN_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -95,8 +100,8 @@ export function readOutput(lines: readonly string[]): Reading | undefined {
     const browser = value.b;
     if (value.s !== undefined) {
       if (statuses.has(browser) || (value.s !== "ok" && value.s !== "denied" && value.s !== "failed")) continue;
-      const hidden = typeof value.x === "number" && Number.isInteger(value.x) && value.x > 0 ? value.x : 0;
-      statuses.set(browser, { browser, state: value.s, frontmost: value.f === 1, privateWindows: hidden });
+      const count = (field: unknown) => (typeof field === "number" && Number.isInteger(field) && field > 0 ? field : 0);
+      statuses.set(browser, { browser, state: value.s, frontmost: value.f === 1, privateWindows: count(value.x), unreadWindows: count(value.e) });
       continue;
     }
     const url = value.u;
@@ -154,38 +159,42 @@ const idPart = (value: string | null): string | null => {
 
 /**
  * A row id that stays with its tab: the browser, the window's id and the tab's id when the browser gives one
- * ("chrome:1203:1388"); in Safari, which gives tabs none, a digest of the tab's URL and its place in the window
- * ("safari:4711:3f…"), so the id changes only when the tab goes to another page or moves.
+ * ("chrome:1203:1388"); in Safari, which gives tabs none, a digest of the tab's URL ("safari:4711:u3f…"). The tab's
+ * place is not part of it, so opening, closing or moving other tabs leaves it alone. Tabs with the same URL in one
+ * window share this base and are told apart by `entriesOf`, by their order among themselves.
  */
 export function tabID(tab: Tab): string {
   const window = idPart(tab.window) ?? "-";
-  const own = idPart(tab.tab) ?? `u${digest(`${tab.position}\n${tab.url}`)}`;
+  const own = idPart(tab.tab) ?? `u${digest(tab.url)}`;
   return `${tab.browser}:${window}:${own}`;
 }
 
 /**
  * The tabs as rows: the frontmost browser first, then Safari, Chrome, Arc, Brave, Edge and Vivaldi; the active tab of
  * every window before the others; windows front to back, as the browser lists them, and tabs in their order. Blank
- * pages are left out, and an id that repeats gets "~2", "~3"… so the listing never fails.
+ * pages are left out. An id that repeats (Safari tabs with the same URL in one window) gets "~2", "~3"… so the listing
+ * never fails; they are counted in the browser's own order, before the active tabs are put first, so which tab is
+ * active never swaps two ids, and a browser's ids are the same whether it is read alone or with the others.
  */
 export function entriesOf(reading: Reading, limit = MAX_ROWS): Entry[] {
   const rank = (browser: Browser) => {
     const front = reading.statuses.find((status) => status.browser === browser)?.frontmost === true;
     return (front ? 0 : 1) * BROWSERS.length + BROWSERS.indexOf(browser);
   };
+  const seen = new Map<string, number>();
   const tabs = reading.tabs
-    .map((tab, order) => ({ tab, order }))
-    .filter(({ tab }) => linkable(tab.url))
+    .filter((tab) => linkable(tab.url))
+    .map((tab, order) => {
+      const base = tabID(tab);
+      const count = (seen.get(base) ?? 0) + 1;
+      seen.set(base, count);
+      return { tab, order, id: count === 1 ? base : `${base}~${count}` };
+    })
     .sort((a, b) => Number(b.tab.active) - Number(a.tab.active) || rank(a.tab.browser) - rank(b.tab.browser) || a.order - b.order);
 
-  const seen = new Map<string, number>();
   const entries: Entry[] = [];
-  for (const { tab } of tabs) {
+  for (const { tab, id } of tabs) {
     if (entries.length >= limit) break;
-    const base = tabID(tab);
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    const id = count === 1 ? base : `${base}~${count}`;
     const url = tab.url.trim();
     const host = hostOf(url);
     const title = oneLine(tab.title) || host || oneLine(url);

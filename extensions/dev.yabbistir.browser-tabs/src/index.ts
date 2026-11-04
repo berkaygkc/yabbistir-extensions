@@ -7,10 +7,10 @@ import type { Browser, Entry, Reading } from "./tabs.ts";
 export { ARGS, SCRIPT } from "./script.ts";
 export { digest, entriesOf, hostOf, linkable, markdownLink, readOutput, tabID } from "./tabs.ts";
 
-// The open tabs of Safari, Chrome, Arc, Brave, Edge and Vivaldi as a column, through one fixed osascript run. Only
-// browsers that are already running are asked; none is launched. Tabs are private enough to be kept to themselves:
-// no row, title, URL or osascript output is ever logged, kept or put in an error message, and nothing is cached. `run`
-// reads the tabs again and pastes the URL the tab has now.
+// The open tabs of Safari, Chrome, Arc, Brave, Edge and Vivaldi as a column, through one fixed osascript script. Only
+// browsers that are already running are asked. Tabs are private enough to be kept to themselves: no row, title, URL or
+// osascript output is ever logged, kept or put in an error message, and nothing is cached. `run` reads the row's own
+// browser again, and only that one, and pastes the URL the tab has now.
 
 /** A row that says a browser's Automation switch is off: `denied:safari`. */
 const DENIED_ROW = /^denied:([a-z]+)$/;
@@ -22,12 +22,13 @@ const REFUSED = /\((?:-1743|-1744)\)/;
 type Outcome = { reading: Reading } | { refused: true };
 
 /**
- * Runs the script once. The output goes through onLine: an exec result keeps only the last 64 KB, less than a few
- * hundred tabs print. Throws a plain message when osascript fails; its output never reaches it.
+ * Runs the script once: for every browser, or for `only`, one of the fixed keys in BROWSERS and never text from a row.
+ * The output goes through onLine: an exec result keeps only the last 64 KB, less than a few hundred tabs print. Throws
+ * a plain message when osascript fails; its output never reaches it.
  */
-async function readTabs(signal: AbortSignal): Promise<Outcome> {
+async function readTabs(signal: AbortSignal, only?: Browser): Promise<Outcome> {
   const lines: string[] = [];
-  const result = await yab.exec("osascript", [...ARGS], {
+  const result = await yab.exec("osascript", only === undefined ? [...ARGS] : [...ARGS, only], {
     signal,
     onLine: (line, stream) => {
       if (stream === "stdout") lines.push(line);
@@ -55,7 +56,7 @@ function emptyListing(reading: Reading, entries: readonly Entry[], language: str
   if (reading.statuses.length === 0) return { locked: true, message: yab.t("noBrowser") };
   const denied = deniedIn(reading);
   if (denied.length > 0) return { locked: true, message: deniedMessage(denied, language) };
-  if (reading.statuses.some((status) => status.state === "failed")) throw new Error(yab.t("readFailed"));
+  if (reading.statuses.some((status) => status.state === "failed" || status.unreadWindows > 0)) throw new Error(yab.t("readFailed"));
   if (reading.statuses.some((status) => status.privateWindows > 0)) return { locked: true, message: yab.t("onlyPrivate") };
   return { locked: true, message: yab.t("noTabs") };
 }
@@ -91,17 +92,18 @@ export const sources: Sources = {
         throw new Error(deniedMessage([browser], ctx.language));
       }
       // Ids are the listing's own: anything else is no tab, and an id never reaches osascript in any case.
-      if (!TAB_ROW.test(rowId)) throw new Error(yab.t("tabGone"));
+      const browser = TAB_ROW.test(rowId) ? BROWSERS.find((name) => rowId.startsWith(`${name}:`)) : undefined;
+      if (browser === undefined) throw new Error(yab.t("tabGone"));
 
-      // The tabs again, rather than a URL kept from the listing: a value lives for its run only, and the link pasted
-      // is the one the tab has now.
-      const outcome = await readTabs(ctx.signal);
-      if ("refused" in outcome) throw new Error(yab.t("deniedAll"));
+      // The tab's browser again, rather than a URL kept from the listing: a value lives for its run only, and the link
+      // pasted is the one the tab has now. Only that browser is asked, by its key from BROWSERS, so another browser
+      // that is slow, hung or showing its Automation prompt never holds the paste up.
+      const outcome = await readTabs(ctx.signal, browser);
+      if ("refused" in outcome) throw new Error(deniedMessage([browser], ctx.language));
       const { reading } = outcome;
       const entry = entriesOf(reading).find((candidate) => candidate.row.id === rowId);
       if (entry === undefined) {
-        const browser = BROWSERS.find((name) => rowId.startsWith(`${name}:`));
-        if (browser !== undefined && deniedIn(reading).includes(browser)) throw new Error(deniedMessage([browser], ctx.language));
+        if (deniedIn(reading).includes(browser)) throw new Error(deniedMessage([browser], ctx.language));
         throw new Error(yab.t("tabGone"));
       }
       return { text: actionId === "link" ? entry.url : markdownLink(entry.title, entry.url) };

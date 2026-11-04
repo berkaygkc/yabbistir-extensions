@@ -34,25 +34,33 @@ const DICTIONARY = {
   chromium: { window: ["id", "mode", "activeTabIndex"], active: [], tab: ["id", "title", "url"] },
   arc: { window: ["id", "incognito"], active: ["id"], tab: ["id", "title", "url"] },
 };
-const dictionaryOf = (browser) => DICTIONARY[browser === "safari" || browser === "arc" ? browser : "chromium"];
+/** A browser's dictionary, without the properties its test says it `lacks` (as an older or changed version might). */
+function dictionaryOf(browser, lacks = []) {
+  const own = DICTIONARY[browser === "safari" || browser === "arc" ? browser : "chromium"];
+  const keep = (names) => names?.filter((name) => !lacks.includes(name));
+  return { window: keep(own.window), current: keep(own.current), active: keep(own.active), tab: keep(own.tab) };
+}
 
 /**
  * A browser as a test describes it: `{ windows: [{ id, mode?, incognito?, active?, tabs: [{ id?, title, url }] }] }`,
  * plus `running` (default true), `frontmost`, `denied` (every Apple event is refused), `fail` (an error that
- * `windows()` throws), `missing` (not installed). A window may say `broken: true` (its tabs cannot be read) or
- * `racing: n` (its first n readings disagree on the number of tabs, as when a tab opens between two events).
- * `active` is the active tab's place, from 0. Each Apple event the script sends is counted in `events`.
+ * `windows()` throws), `missing` (not installed), `lacks` (property names its dictionary does not have), `hung` (it
+ * never answers: see fakeOsascript). A window may say `broken: true` (its tabs cannot be read) or `racing: n` (its
+ * first n readings disagree on the number of tabs, as when a tab opens between two events). `active` is the active
+ * tab's place, from 0. Each Apple event the script sends is counted in `events`, and each window property it asks for
+ * is written to `reads` as "browser.property".
  */
 export function fakeJXA(browsers) {
   const events = Object.fromEntries(Object.keys(BUNDLE).map((browser) => [browser, 0]));
   const lookups = [];
+  const reads = [];
 
   function Application(bundleID) {
     lookups.push(bundleID);
     const browser = Object.keys(BUNDLE).find((name) => BUNDLE[name] === bundleID);
     const spec = browser === undefined ? undefined : browsers[browser];
     if (spec === undefined || spec.missing) throw jxaError(-2700, "Application can’t be found.");
-    const dictionary = dictionaryOf(browser);
+    const dictionary = dictionaryOf(browser, spec.lacks);
     const send = () => {
       events[browser] += 1;
       if (spec.running === false) throw new Error("the script sent an Apple event to a browser that is not running, which launches it");
@@ -80,11 +88,18 @@ export function fakeJXA(browsers) {
         });
       };
       const activeTab = window.tabs[window.active ?? 0];
+      const own = (name, value) => {
+        const get = property(dictionary.window.includes(name), value);
+        return () => {
+          reads.push(`${browser}.${name}`);
+          return get();
+        };
+      };
       return {
-        id: property(dictionary.window.includes("id"), window.id),
-        mode: property(dictionary.window.includes("mode"), window.mode ?? "normal"),
-        incognito: property(dictionary.window.includes("incognito"), window.incognito ?? false),
-        activeTabIndex: property(dictionary.window.includes("activeTabIndex"), (window.active ?? 0) + 1),
+        id: own("id", window.id),
+        mode: own("mode", window.mode ?? "normal"),
+        incognito: own("incognito", window.incognito ?? false),
+        activeTabIndex: own("activeTabIndex", (window.active ?? 0) + 1),
         activeTab: { id: property(dictionary.active?.includes("id") ?? false, activeTab?.id) },
         currentTab: { index: property(dictionary.current?.includes("index") ?? false, (window.active ?? 0) + 1) },
         tabs: Object.fromEntries(["id", "title", "url", "name", "visible"].map((name) => [name, column(name)])),
@@ -102,27 +117,37 @@ export function fakeJXA(browsers) {
     };
   }
 
-  return { Application, events, lookups };
+  return { Application, events, lookups, reads };
 }
 
-/** Runs the extension's script against `browsers`, as osascript would, and returns what osascript prints. */
-export function runScript(browsers) {
+/**
+ * Runs the extension's script against `browsers`, as osascript would, with `argv` as the arguments after the script,
+ * and returns what osascript prints.
+ */
+export function runScript(browsers, argv = []) {
   const jxa = fakeJXA(browsers);
-  const output = vm.runInNewContext(`${SCRIPT}\nrun();`, { Application: jxa.Application });
+  const output = vm.runInNewContext(`${SCRIPT}\nrun(argv);`, { Application: jxa.Application, argv: [...argv] });
   return { output: `${output}\n`, jxa };
 }
 
 /**
- * A fake osascript for the fake host: checks that it gets the extension's fixed arguments, then runs the script
- * against `browsers` (an object, or a function returning one so a test can change the tabs between calls).
+ * A fake osascript for the fake host: checks that it gets the extension's fixed arguments, alone or followed by one
+ * browser key, then runs the script against `browsers` (an object, or a function returning one so a test can change
+ * the tabs between calls). When the script sent an Apple event to a browser marked `hung`, osascript never ends, as
+ * it waits on that browser; the app would cancel it after its 10 seconds.
  */
 export function fakeOsascript(browsers) {
   const runs = [];
   const osascript = (args) => {
-    if (JSON.stringify(args) !== JSON.stringify(ARGS)) throw new Error("osascript got other arguments than the fixed script");
+    const fixed = JSON.stringify(args.slice(0, ARGS.length)) === JSON.stringify(ARGS);
+    const extra = args.slice(ARGS.length);
+    if (!fixed || extra.length > 1 || (extra.length === 1 && !Object.hasOwn(BUNDLE, extra[0]))) {
+      throw new Error("osascript got other arguments than the fixed script and a browser key");
+    }
     const current = typeof browsers === "function" ? browsers() : browsers;
-    const { output, jxa } = runScript(current);
-    runs.push(jxa);
+    const { output, jxa } = runScript(current, extra);
+    runs.push({ ...jxa, argv: extra });
+    if (Object.keys(current).some((browser) => current[browser]?.hung && jxa.events[browser] > 0)) return new Promise(() => {});
     return { exitCode: 0, stdout: output, stderr: "" };
   };
   return Object.assign(osascript, { runs });
