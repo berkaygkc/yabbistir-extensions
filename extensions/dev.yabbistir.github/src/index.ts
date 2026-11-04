@@ -7,12 +7,10 @@ import type { Actions, SourceRow, Sources } from "@yabbistir/api";
 const PER_GROUP = 25;
 /** How long a listing is reused: the panel opens often, and GitHub limits searches to 30 a minute. */
 const LIFETIME = 60_000;
-/** A row id is at most 256 characters. */
+/** A row id is at most 256 characters; it is the item's link. */
 const MAX_ID = 256;
-/** The first part of a row id, and the only links a row holds: owner, repository, kind and number. */
+/** A row's link, and the only links a row holds: owner, repository, kind and number. */
 const ITEM_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(pull|issues)\/(\d+)$/;
-/** A row id: the link, a space and the title. Stateless, so a restarted helper still pastes what the row shows. */
-const ROW_ID = /^(https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:pull|issues)\/\d+) (.+)$/;
 /** The same, for a link a person copied: query and fragment are allowed and dropped. */
 const COPIED_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/(?:pull|issues)\/(\d+)(?:[/?#].*)?$/;
 /** The line gh gist create prints to standard output when it is done. */
@@ -31,8 +29,10 @@ const GROUPS: Group[] = [
   { label: () => yab.t("group.assigned"), fields: "url,title", args: ["search", "issues", "--assignee=@me", "--state=open", "--archived=false"] },
 ];
 
-// The helper's memory only, never yab.storage or a file: the last rows, for a minute.
-let cached: { at: number; rows: SourceRow[] } | undefined;
+// The helper's memory only, never yab.storage or a file: the last rows and their titles, for a minute. The titles are
+// kept apart from the rows because a row's id is its link alone: stable when a pull request is retitled.
+let cached: { at: number; rows: SourceRow[]; titles: Map<string, string> } | undefined;
+let titles = new Map<string, string>();
 
 /** A title on one line. */
 const oneLine = (text: string): string => text.replace(/\s+/g, " ").trim();
@@ -42,8 +42,8 @@ function signedOut(result: { exitCode: number; stderr: string }): boolean {
   return result.exitCode === 4 || /gh auth login|HTTP 401/.test(result.stderr);
 }
 
-/** The rows of one group from `--json` output; undefined when gh printed something else. */
-function rowsOf(stdout: string, group: Group): SourceRow[] | undefined {
+/** The rows of one group from `--json` output, with each link's title; undefined when gh printed something else. */
+function rowsOf(stdout: string, group: Group): { rows: SourceRow[]; titles: Map<string, string> } | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stdout);
@@ -52,40 +52,42 @@ function rowsOf(stdout: string, group: Group): SourceRow[] | undefined {
   }
   if (!Array.isArray(parsed)) return undefined;
   const rows: SourceRow[] = [];
+  const found = new Map<string, string>();
   for (const entry of parsed.slice(0, PER_GROUP)) {
     if (typeof entry !== "object" || entry === null) continue;
     const { url, title, isDraft } = entry as { url?: unknown; title?: unknown; isDraft?: unknown };
-    if (typeof url !== "string" || typeof title !== "string") continue;
+    if (typeof url !== "string" || typeof title !== "string" || url.length > MAX_ID) continue;
     const match = ITEM_URL.exec(url);
     const text = oneLine(title);
     if (match === null || text === "") continue;
     const [, owner, repo, , number] = match;
-    // A long title is cut in the id (never in the row's title) to keep the id within its limit.
-    const room = MAX_ID - url.length - 1;
-    const kept = text.length <= room ? text : `${text.slice(0, room - 1).trimEnd()}…`;
-    rows.push({ id: `${url} ${kept}`, title: text, subtitle: `${group.label(isDraft === true)} · ${owner}/${repo} #${number}` });
+    rows.push({ id: url, title: text, subtitle: `${group.label(isDraft === true)} · ${owner}/${repo} #${number}` });
+    found.set(url, text);
   }
-  return rows;
+  return { rows, titles: found };
 }
 
 /** What a row id holds, or undefined when it is not one of ours. */
-function parseRow(rowId: string): { url: string; title: string; reference: string } | undefined {
-  const parts = ROW_ID.exec(rowId);
-  if (parts === null) return undefined;
-  const match = ITEM_URL.exec(parts[1] ?? "");
+function parseRow(rowId: string): { url: string; reference: string } | undefined {
+  const match = ITEM_URL.exec(rowId);
   if (match === null) return undefined;
-  return { url: parts[1] ?? "", title: parts[2] ?? "", reference: `${match[1]}/${match[2]}#${match[4]}` };
+  return { url: rowId, reference: `${match[1]}/${match[2]}#${match[4]}` };
 }
 
-/** A title inside the brackets of a Markdown link: backslash and brackets would end or bend it. */
-const markdownText = (text: string): string => text.replace(/[\\[\]]/g, "\\$&");
+/** Text inside the brackets of a Markdown link: these would end the link, start a tag, an entity or emphasis. Code spans stay. */
+const markdownText = (text: string): string => text.replace(/[\\[\]<>&*_]/g, "\\$&");
 
 export const sources: Sources = {
   work: {
     async list(ctx) {
       if (cached !== undefined) {
         const age = Date.now() - cached.at;
-        if (age >= 0 && age <= LIFETIME) return { rows: cached.rows };
+        if (age >= 0 && age <= LIFETIME) {
+          titles = cached.titles;
+          return { rows: cached.rows };
+        }
+        cached = undefined;
+        titles = new Map();
       }
       const results = await Promise.all(
         GROUPS.map((group) =>
@@ -94,22 +96,30 @@ export const sources: Sources = {
       );
       if (results.some(signedOut)) {
         cached = undefined;
+        titles = new Map();
         return { locked: true, message: yab.t("locked"), command: "gh auth login" };
       }
       const rows: SourceRow[] = [];
-      const seen = new Set<string>();
+      const found = new Map<string, string>();
+      let failed = 0;
       for (const [index, result] of results.entries()) {
         const group = GROUPS[index];
         const listed = result.exitCode === 0 && group !== undefined ? rowsOf(result.stdout, group) : undefined;
-        if (listed === undefined) throw new Error(yab.t("listFailed"));
-        for (const row of listed) {
-          const link = row.id.slice(0, row.id.indexOf(" "));
-          if (seen.has(link)) continue;
-          seen.add(link);
+        if (listed === undefined) {
+          failed += 1;
+          continue;
+        }
+        for (const row of listed.rows) {
+          if (found.has(row.id)) continue;
+          found.set(row.id, listed.titles.get(row.id) ?? row.title);
           rows.push(row);
         }
       }
-      cached = { at: Date.now(), rows };
+      // The groups that worked are listed; only when every search failed is the listing an error.
+      if (failed === GROUPS.length) throw new Error(yab.t("listFailed"));
+      titles = found;
+      // A partial listing is not kept: the next opening asks again.
+      cached = failed === 0 ? { at: Date.now(), rows, titles: found } : undefined;
       return { rows };
     },
 
@@ -117,13 +127,17 @@ export const sources: Sources = {
       const row = parseRow(rowId);
       if (row === undefined) throw new Error(yab.t("linkFailed"));
       if (actionId === "link") return { text: row.url };
-      if (actionId === "markdown") return { text: `[${markdownText(`${row.reference}: ${row.title}`)}](${row.url})` };
+      if (actionId === "markdown") {
+        // Without a title (the helper restarted since the listing) the link still works, with the reference alone.
+        const title = titles.get(row.url);
+        return { text: `[${markdownText(title === undefined ? row.reference : `${row.reference}: ${title}`)}](${row.url})` };
+      }
       throw new Error(yab.t("linkFailed"));
     },
   },
 };
 
-/** A file extension for copied text, by a few plain signs; `.txt` when nothing is sure. */
+/** A file extension for copied text, by a few sure signs; `.txt` whenever it is not sure. */
 function extensionFor(kind: string | undefined, text: string): string {
   if (kind !== "code") return "txt";
   const trimmed = text.trim();
@@ -132,17 +146,17 @@ function extensionFor(kind: string | undefined, text: string): string {
       JSON.parse(trimmed);
       return "json";
     } catch {
-      // Not JSON after all: look at the other signs.
+      return "txt";
     }
   }
   const shebang = /^#!.*\b(bash|zsh|sh|python3?|node|ruby)\b/.exec(trimmed);
   if (shebang !== null) return { python: "py", python3: "py", node: "js", ruby: "rb" }[shebang[1] ?? ""] ?? "sh";
   if (/^<!doctype html|^<html[\s>]/i.test(trimmed)) return "html";
   if (/^<\?xml/i.test(trimmed)) return "xml";
-  if (/^import (SwiftUI|Foundation|AppKit|UIKit)\b|^\s*(func|struct|guard let)\s/m.test(trimmed)) return "swift";
-  if (/^(def|class) \w+.*:\s*$|^from \w+ import /m.test(trimmed)) return "py";
-  if (/^\s*(interface|type) \w+|:\s*(string|number|boolean)\b/m.test(trimmed) && /\b(const|let|function|export|import)\b/.test(trimmed)) return "ts";
-  if (/^\s*(const|let|function|export|import)\b|=>/m.test(trimmed)) return "js";
+  if (/^import (SwiftUI|AppKit|UIKit|Foundation)\s*$/m.test(trimmed)) return "swift";
+  if (/^def \w+\(.*\):\s*$/m.test(trimmed) || /^from [\w.]+ import \w+/m.test(trimmed)) return "py";
+  const script = /^import .+ from ["'].+["'];?\s*$|^export (default |const |function |async |interface |type )|^\s*(const|let) \w+ = (require\(|async\b|function\b|\([^)]*\) =>)|^\s*function \w*\(.*\)\s*\{/m.test(trimmed);
+  if (script) return /^\s*(interface|type) \w+|\w\??: (string|number|boolean)\b/m.test(trimmed) ? "ts" : "js";
   return "txt";
 }
 
@@ -161,7 +175,7 @@ export const actions: Actions = {
       if (text.trim() === "") return { none: true, message: yab.t("empty") };
       const path = yab.files.write(`clipboard.${extensionFor(item?.kind, text)}`, text);
       // Secret is gh's own default; --public is the one deliberate step away from it.
-      const args = ["gist", "create", "--desc", yab.t("gist.description"), ...(ctx.variant === "public" ? ["--public"] : []), path];
+      const args = ["gist", "create", ...(ctx.variant === "public" ? ["--public"] : []), path];
       const result = await yab.exec("gh", args, { signal: ctx.signal });
       // Expected failures are a calm notice, not a thrown error: three thrown errors in a row turn an extension off.
       if (signedOut(result)) return { none: true, message: yab.t("signedOut") };

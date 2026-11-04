@@ -1,6 +1,6 @@
 {
   "name": "GitHub",
-  "description": "Pull request ve issue'ların bir sütunda: ↵ bağlantıyı, ⇧↵ Markdown bağlantısını yapıştırır. Kopyaladığın kodu gizli gist olarak paylaşır. gh komut satırı aracını ve kendi gh girişini kullanır.",
+  "description": "Pull request ve issue'ların tek bir sütunda: ↵ bağlantıyı, ⇧↵ Markdown bağlantısını yapıştırır. Kopyaladığın kodu gizli gist olarak paylaşır. gh komut satırı aracını ve kendi gh girişini kullanır.",
   "source.title": "GitHub",
   "link.title": "Bağlantıyı yapıştır",
   "link.label": "Bağlantı",
@@ -16,8 +16,7 @@
   "gist.secret.subtitle": "Yalnızca bağlantıyı bilenler görebilir",
   "gist.public.title": "Herkese açık gist olarak paylaş",
   "gist.public.subtitle": "GitHub profilinde listelenir",
-  "gist.description": "yabbistir ile paylaşıldı",
-  "group.review": "İncelemen isteniyor",
+  "group.review": "İncelemen bekleniyor",
   "group.mine": "Senin pull request'in",
   "group.draft": "Senin taslak pull request'in",
   "group.assigned": "Sana atanmış",

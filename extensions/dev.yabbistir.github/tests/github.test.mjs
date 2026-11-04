@@ -27,10 +27,12 @@ const ASSIGNED = [issue("ornek/arac", 3, "Crash on empty input")];
 function fakeGh(changes = {}) {
   const state = {
     review: REVIEW, mine: MINE, assigned: ASSIGNED,
-    exit: 0, stderr: "", raw: undefined, gist: undefined, gistExit: 0, gistStderr: "", ...changes,
+    exit: 0, groupExit: {}, stderr: "", raw: undefined, gist: undefined, gistExit: 0, gistStderr: "", ...changes,
   };
   const gh = (args, { host, workDir }) => {
     if (args[0] === "search") {
+      const which = args.includes("--review-requested=@me") ? "review" : args[1] === "prs" ? "mine" : "assigned";
+      if (state.groupExit[which] !== undefined) return { exitCode: state.groupExit[which], stdout: "", stderr: "HTTP 502: ornek" };
       if (state.exit !== 0) return { exitCode: state.exit, stdout: "", stderr: state.stderr };
       const group = args.includes("--review-requested=@me") ? "review" : args[1] === "prs" ? "mine" : "assigned";
       const answer = state.raw?.[group] ?? JSON.stringify(state[group]);
@@ -77,8 +79,9 @@ describe("list", () => {
     ]);
     for (const args of calls) {
       assert.ok(args.includes("--state=open") && args.includes("--sort=updated") && args.includes("--limit=25"));
-      assert.ok(args.some((arg) => arg.startsWith("--json=url,title")));
+      assert.ok(args.includes("--archived=false"));
     }
+    assert.deepEqual(calls.map((args) => args.find((arg) => arg.startsWith("--json="))), ["--json=url,title", "--json=url,title,isDraft", "--json=url,title"]);
   });
 
   test("empty groups give no rows, and nothing at all gives an empty list", async () => {
@@ -94,7 +97,7 @@ describe("list", () => {
     assert.equal((await host.list("work")).rows.length, 25);
   });
 
-  test("odd titles stay readable, and a very long one keeps its row id within the limit", async () => {
+  test("odd titles stay readable, and a row id is the link alone", async () => {
     const long = "Uzun başlık ".repeat(40);
     const host = hostWith(await newHelper(), fakeGh({
       review: [pr("ornek/uygulama", 1, "  Line\nbreak\tand   spaces  "), pr("ornek/uygulama", 2, "İşlem: çok güzel ✨ 日本語"), pr("ornek/uygulama", 3, long)],
@@ -104,7 +107,8 @@ describe("list", () => {
     assert.equal(rows[0].title, "Line break and spaces");
     assert.equal(rows[1].title, "İşlem: çok güzel ✨ 日本語");
     assert.ok(rows[2].title.length <= 256);
-    for (const row of rows) assert.ok(row.id.length <= 256);
+    for (const row of rows) assert.ok(row.id.length <= 256 && row.id.startsWith("https://github.com/"));
+    assert.equal(rows[2].id, "https://github.com/ornek/uygulama/pull/3");
   });
 
   test("bad entries are skipped: a foreign link, an empty title, a wrong type", async () => {
@@ -129,18 +133,54 @@ describe("list", () => {
     }
   });
 
-  test("a locked answer drops the cached rows", async () => {
+  test("after the cache has expired, a locked listing and a new sign-in list afresh", async () => {
     const exports = await newHelper();
     const gh = fakeGh();
-    const host = hostWith(exports, gh, { now: START });
-    assert.equal((await host.list("work")).rows.length, 5);
+    assert.equal((await hostWith(exports, gh, { now: START }).list("work")).rows.length, 5);
     gh.state.exit = 4;
-    const later = hostWith(exports, gh, { now: START + 120_000 });
-    assert.equal((await later.list("work")).locked, true);
+    assert.equal((await hostWith(exports, gh, { now: START + 120_000 }).list("work")).locked, true);
     gh.state.exit = 0;
     gh.state.review = [];
-    const again = hostWith(exports, gh, { now: START + 121_000 });
-    assert.equal((await again.list("work")).rows.length, 3, "listed again, not from the dropped cache");
+    assert.equal((await hostWith(exports, gh, { now: START + 121_000 }).list("work")).rows.length, 3);
+  });
+
+  test("one or two failed searches list the groups that worked, and are asked again", async () => {
+    const exports = await newHelper();
+    const gh = fakeGh({ groupExit: { review: 1, mine: 1 } });
+    const first = hostWith(exports, gh, { now: START });
+    assert.deepEqual((await first.list("work")).rows.map((row) => row.title), ["Crash on empty input"]);
+    assert.deepEqual(first.logs, []);
+    gh.state.groupExit = {};
+    const second = hostWith(exports, gh, { now: START + 1000 });
+    assert.equal((await second.list("work")).rows.length, 5, "a partial listing is not cached");
+    gh.state.groupExit = { assigned: 1 };
+    const third = hostWith(await newHelper(), gh);
+    assert.equal((await third.list("work")).rows.length, 4);
+  });
+
+  test("every search failing is an error", async () => {
+    const host = hostWith(await newHelper(), fakeGh({ groupExit: { review: 1, mine: 1, assigned: 1 } }));
+    await assert.rejects(host.list("work"), { message: "gh could not list your pull requests and issues." });
+  });
+
+  test("malformed JSON in one group leaves the others", async () => {
+    const host = hostWith(await newHelper(), fakeGh({ raw: { review: "oops", mine: JSON.stringify(MINE), assigned: "[]" } }));
+    assert.equal((await host.list("work")).rows.length, 2);
+  });
+
+  test("one auth failure among partial ones still locks", async () => {
+    const host = hostWith(await newHelper(), fakeGh({ groupExit: { review: 1, mine: 4 } }));
+    assert.equal((await host.list("work")).locked, true);
+  });
+
+  test("a row keeps its id when the pull request is retitled", async () => {
+    const exports = await newHelper();
+    const gh = fakeGh();
+    const before = (await hostWith(exports, gh, { now: START }).list("work")).rows[0];
+    gh.state.review = [pr("ornek/uygulama", 12, "A new title"), REVIEW[1]];
+    const after = (await hostWith(exports, gh, { now: START + 120_000 }).list("work")).rows[0];
+    assert.equal(after.id, before.id);
+    assert.notEqual(after.title, before.title);
   });
 
   test("the missing tool is the standard path", async () => {
@@ -160,7 +200,7 @@ describe("list", () => {
 
   test("malformed JSON, or JSON of the wrong shape, fails the listing", async () => {
     for (const raw of ["not json", "{}", "", "null"]) {
-      const host = hostWith(await newHelper(), fakeGh({ raw: { review: raw, mine: "[]", assigned: "[]" } }));
+      const host = hostWith(await newHelper(), fakeGh({ raw: { review: raw, mine: raw, assigned: raw } }));
       await assert.rejects(host.list("work"), { message: "gh could not list your pull requests and issues." });
     }
   });
@@ -203,11 +243,30 @@ describe("row actions", () => {
     });
   });
 
-  test("brackets and backslashes in a title are escaped in the Markdown link", async () => {
-    const { host, rows } = await firstRows({ review: [pr("ornek/uygulama", 4, "[WIP] fix a\\b (c)")], mine: [], assigned: [] });
-    assert.deepEqual(await host.runSource("work", rows[0].id, "markdown"), {
-      text: "[ornek/uygulama#4: \\[WIP\\] fix a\\\\b (c)](https://github.com/ornek/uygulama/pull/4)",
+  const markdownOf = async (title) => {
+    const { host, rows } = await firstRows({ review: [pr("ornek/uygulama", 4, title)], mine: [], assigned: [] });
+    return (await host.runSource("work", rows[0].id, "markdown")).text;
+  };
+  const ESCAPES = [["\\", "\\\\"], ["[", "\\["], ["]", "\\]"], ["<", "\\<"], [">", "\\>"], ["&", "\\&"], ["*", "\\*"], ["_", "\\_"]];
+  for (const [character, escaped] of ESCAPES) {
+    test(`${character} in a title is escaped in the Markdown link`, async () => {
+      assert.equal(await markdownOf(`a${character}b`), `[ornek/uygulama#4: a${escaped}b](https://github.com/ornek/uygulama/pull/4)`);
     });
+  }
+
+  test("a backtick code span in a title is kept", async () => {
+    assert.equal(await markdownOf("Add `--dry-run` flag"), "[ornek/uygulama#4: Add `--dry-run` flag](https://github.com/ornek/uygulama/pull/4)");
+  });
+
+  test("a mixed title", async () => {
+    assert.equal(await markdownOf("[WIP] Fix <Foo> & a\\b"), "[ornek/uygulama#4: \\[WIP\\] Fix \\<Foo\\> \\& a\\\\b](https://github.com/ornek/uygulama/pull/4)");
+  });
+
+  test("after a helper restart the link still pastes and the Markdown link has no title", async () => {
+    const host = hostWith(await newHelper(), fakeGh());
+    const id = "https://github.com/ornek/uygulama/pull/12";
+    assert.deepEqual(await host.runSource("work", id, "link"), { text: id });
+    assert.deepEqual(await host.runSource("work", id, "markdown"), { text: `[ornek/uygulama#12](${id})` });
   });
 
   test("the copy action is the link's, with its notice", () => {
@@ -225,7 +284,7 @@ describe("row actions", () => {
 
   test("an id that is not one of the listing's is refused", async () => {
     const host = hostWith(await newHelper(), fakeGh());
-    for (const id of ["1", "", "https://evil.example/o/r/pull/1 Title", "https://github.com/o/r/pull/1", "https://github.com/o/r/tree/1 Title"]) {
+    for (const id of ["1", "", "https://evil.example/o/r/pull/1", "https://github.com/o/r/pull/1 Title", "https://github.com/o/r/tree/1", "https://github.com/o/r/pull/1/files"]) {
       await assert.rejects(host.runSource("work", id, "link"), { message: "This row no longer holds a GitHub link." }, id);
     }
   });
@@ -277,11 +336,12 @@ describe("gist", () => {
     assert.deepEqual(result, { text: "https://gist.github.com/ornek/0123456789abcdef" });
     const call = host.calls.find((entry) => entry.api === "exec");
     const args = call.args[1];
-    assert.deepEqual(args.slice(0, 4), ["gist", "create", "--desc", "Shared from yabbistir"]);
+    assert.deepEqual(args.slice(0, 2), ["gist", "create"]);
+    assert.ok(!args.includes("--desc"), "no description");
     assert.ok(!args.includes("--public"), "secret is gh's default and nothing asks for public");
     assert.match(args.at(-1), /\/clipboard\.txt$/);
     assert.deepEqual(gh.state.gistFiles, [{ path: args.at(-1), text: "merhaba dünya\n" }]);
-    assert.equal(args.length, 5);
+    assert.equal(args.length, 3);
     assert.ok(gist(args).every((arg) => !arg.includes("merhaba")), "the content is never an argument");
   });
 
@@ -289,7 +349,8 @@ describe("gist", () => {
     const host = createFakeHost({ folder, exec: { gh: fakeGh() } });
     await host.run(actions.gist, { kind: "text", text: "x" }, { variant: "public" });
     const args = host.calls.find((entry) => entry.api === "exec").args[1];
-    assert.deepEqual(args.slice(0, 5), ["gist", "create", "--desc", "Shared from yabbistir", "--public"]);
+    assert.deepEqual(args.slice(0, 3), ["gist", "create", "--public"]);
+    assert.equal(args.length, 4);
   });
 
   test("a missing variant is secret", async () => {
@@ -309,9 +370,17 @@ describe("gist", () => {
       [{ kind: "code", text: "<!DOCTYPE html><html></html>" }, "html"],
       [{ kind: "code", text: "<?xml version=\"1.0\"?><a/>" }, "xml"],
       [{ kind: "code", text: "import SwiftUI\nstruct A: View {}" }, "swift"],
+      [{ kind: "code", text: "package main\n\nfunc main() {\n\tx := 1\n}" }, "txt"],
+      [{ kind: "code", text: "import kotlinx.coroutines.*\n\nfun main() = runBlocking {}" }, "txt"],
+      [{ kind: "code", text: "fn main() {\n    let x = 5;\n    let f = |a| a;\n}" }, "txt"],
+      [{ kind: "code", text: "<?php\n$a = ['x' => 1];" }, "txt"],
+      [{ kind: "code", text: "import java.util.List;\n\nclass A {}" }, "txt"],
+      [{ kind: "code", text: "struct Point { x: i32 }\nlet p = Point { x: 1 };" }, "txt"],
+      [{ kind: "code", text: "{ a => 1 }" }, "txt"],
+      [{ kind: "code", text: "import React from \"react\";\nexport default A;" }, "js"],
       [{ kind: "code", text: "def f(x):\n    return x" }, "py"],
-      [{ kind: "code", text: "interface A { b: string }\nexport const a = 1" }, "ts"],
-      [{ kind: "code", text: "const a = () => 1" }, "js"],
+      [{ kind: "code", text: "export interface A { b: string }\nexport const a = 1" }, "ts"],
+      [{ kind: "code", text: "const a = (x) => 1;" }, "js"],
       [{ kind: "code", text: "just some words here" }, "txt"],
     ];
     for (const [item, extension] of cases) {
