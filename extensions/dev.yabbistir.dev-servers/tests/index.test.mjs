@@ -129,6 +129,13 @@ describe("list", () => {
     parseListeners(text);
     assert.ok(Date.now() - started < 1000);
   });
+
+  test("manyEscapesInACommandNameAreFast", () => {
+    const text = `p5\nc${"\\x41".repeat(50000)}\nu501\nn127.0.0.1:1\n`;
+    const started = Date.now();
+    parseListeners(text);
+    assert.ok(Date.now() - started < 1000);
+  });
 });
 
 describe("run", () => {
@@ -146,6 +153,10 @@ describe("run", () => {
     for (const id of ["", "3000", "abc-80", "1-0", "1-70000", "1-80; rm", "1-80\n", "-80"]) {
       await assert.rejects(hostWith(idle).runSource("servers", id, "url"), { message: "This server is no longer listed." }, id);
     }
+  });
+
+  test("anUnknownActionIdPastesNothing", async () => {
+    await assert.rejects(hostWith(idle).runSource("servers", "4100-3000", "kill"), { message: "This server is no longer listed." });
   });
 
   test("nothingLandsInLogsOrNotices", async () => {

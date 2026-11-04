@@ -33,4 +33,6 @@ kill 4100
 - Only TCP listeners; UDP and Unix sockets are not shown.
 - Command names come from lsof as the system reports them; a program that renames itself shows its new name.
 - A server may stop between the list and the paste: the link is pasted anyway.
+- Programs of macOS itself that run as you (for example Control Center or rapportd) listen on ports too and appear as rows; only root-owned listeners are hidden.
+- `lsof` ships with macOS, so the manifest's install note is a sentence rather than a `brew` command.
 - Another user's processes that you can see (for example in a shared machine) are not told apart from yours.

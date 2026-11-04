@@ -116,7 +116,9 @@ export const sources: Sources = {
       const port = match === null ? 0 : Number(match[2]);
       if (port < 1 || port > 65535) throw new Error(yab.t("gone"));
       // Stopping a process would need a confirmation, which a source action cannot ask for: ⇧↵ pastes the address.
-      return { text: actionId === "address" ? `localhost:${port}` : `http://localhost:${port}` };
+      if (actionId === "address") return { text: `localhost:${port}` };
+      if (actionId === "url") return { text: `http://localhost:${port}` };
+      throw new Error(yab.t("gone"));
     },
   },
 };
