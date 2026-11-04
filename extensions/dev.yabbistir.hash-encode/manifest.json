@@ -1,0 +1,47 @@
+{
+  "id": "dev.yabbistir.hash-encode",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:number.square",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer", "text"],
+  "permissions": [],
+  "contributes": {
+    "actions": [
+      { "id": "hash", "title": "hash.title", "keywords": "hash.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text",
+        "variants": [
+          { "id": "md5", "title": "md5.title", "subtitle": "md5.subtitle" },
+          { "id": "sha1", "title": "sha1.title", "subtitle": "sha1.subtitle" },
+          { "id": "sha256", "title": "sha256.title", "subtitle": "sha256.subtitle" },
+          { "id": "sha512", "title": "sha512.title", "subtitle": "sha512.subtitle" }
+        ] },
+      { "id": "url-encode", "title": "urlEncode.title", "keywords": "urlEncode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text", "hint": true },
+      { "id": "url-decode", "title": "urlDecode.title", "keywords": "urlDecode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code", "link"], "pattern": "%[0-9A-Fa-f]{2}" }, "output": "text", "hint": true },
+      { "id": "html-encode", "title": "htmlEncode.title", "keywords": "htmlEncode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text", "hint": true },
+      { "id": "html-decode", "title": "htmlDecode.title", "keywords": "htmlDecode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);" }, "output": "text", "hint": true },
+      { "id": "unicode-escape", "title": "unicodeEscape.title", "keywords": "unicodeEscape.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "[^\\x00-\\x7F]" }, "output": "text", "hint": true },
+      { "id": "unicode-unescape", "title": "unicodeUnescape.title", "keywords": "unicodeUnescape.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "\\\\(?:u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\}|x[0-9A-Fa-f]{2})" }, "output": "text", "hint": true },
+      { "id": "hex-encode", "title": "hexEncode.title", "keywords": "hexEncode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"] }, "output": "text", "hint": true },
+      { "id": "hex-decode", "title": "hexDecode.title", "keywords": "hexDecode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^(?:0[xX])?(?:[0-9A-Fa-f]{2}[\\s:]*)+$" }, "output": "text", "hint": true },
+      { "id": "rot13", "title": "rot13.title", "keywords": "rot13.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "[A-Za-z]" }, "output": "text", "hint": true },
+      { "id": "punycode-encode", "title": "punycodeEncode.title", "keywords": "punycodeEncode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "link"], "pattern": "^[!-~]*[^\\x00-\\x7F]\\S*$" }, "output": "text", "hint": true },
+      { "id": "punycode-decode", "title": "punycodeDecode.title", "keywords": "punycodeDecode.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "link"], "pattern": "(?i)xn--" }, "output": "text", "hint": true }
+    ]
+  }
+}
