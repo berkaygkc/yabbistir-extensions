@@ -52,6 +52,10 @@ describe("otpauth links", () => {
       [`otpauth://totp/?secret=${secret}&issuer=Kod%20Deposu`, "Kod Deposu", ""],
       [`otpauth://totp?secret=${secret}&issuer=Kod%20Deposu`, "Kod Deposu", ""],
       [`otpauth://totp/Air%20Canada:Benjamin?secret=${secret}&issuer=Air+Canada`, "Air Canada", "Benjamin"],
+      [`otpauth://totp/Google:deniz?secret=${secret}&issuer=Google%20Workspace`, "Google Workspace", "Google:deniz"],
+      // The next line's text run onto the issuer, once line breaks are gone: the label's prefix is the issuer.
+      [`otpauth://totp/GitLab:deniz?secret=${secret}&issuer=GitLabNotes`, "GitLab", "deniz"],
+      [`otpauth://totp/GitLab:deniz?secret=${secret}&issuer=GitLab,,login,Bank`, "GitLab", "deniz"],
     ];
     for (const [link, issuer, name] of cases) {
       assert.deepEqual(accountsOf(link).map(({ issuer, account }) => [issuer, account]), [[issuer, name]], link);
@@ -85,12 +89,21 @@ describe("otpauth links", () => {
       `otpauth://totp/Posta:deniz?secret=${secret}&digits=5`,
       `otpauth://totp/Posta:deniz?secret=${secret}&digits=11`,
       `otpauth://totp/Posta:deniz?secret=${secret}&digits=six`,
+      `otpauth://totp/Posta:deniz?secret=${secret}&digits=6x`,
+      `otpauth://totp/Posta:deniz?secret=${secret}&period=30s`,
       `otpauth://totp/Posta:deniz?secret=${secret}&period=0`,
       `otpauth://totp/Posta:deniz?secret=${secret}&period=3601`,
       `otpauth://totp/Posta:deniz?secret=${secret}&algorithm=MD5`,
       "otpauth://",
     ];
     for (const link of links) assert.deepEqual(nothing(link), { accounts: 0, skipped: 1, encrypted: [] }, link);
+  });
+
+  test("a secret with a word run onto it, once line breaks are gone, is skipped rather than read as another seed", () => {
+    const link = `otpauth://totp/Posta:deniz?issuer=Posta&secret=${seed("a")}`;
+    assert.deepEqual(nothing(`${link}Notes about this account`), { accounts: 0, skipped: 1, encrypted: [] });
+    assert.deepEqual(accountsOf(`${link}\nNotes about this account`), [account("Posta", "deniz", "a")]);
+    assert.deepEqual(accountsOf(`${link} Notes`), [account("Posta", "deniz", "a")]);
   });
 
   test("one per line, or separated by spaces, or with nothing between them", () => {
@@ -333,6 +346,24 @@ describe("Bitwarden", () => {
     assert.deepEqual(accountsOf(csv.replace(/\n/g, "")), [account("ornek", "x", "b1"), expected[1]]);
   });
 
+  test("a Password Manager CSV whose line breaks are gone: no link runs on into the next row's password or notes", () => {
+    const password = ["pass", "word", "-", "z".repeat(12)].join("");
+    const notes = ["recovery", " codes ", "1234-5678"].join("");
+    const csv = bitwardenCsv([
+      { name: "Kod Deposu", username: "deniz", totp: `otpauth://totp/Kod%20Deposu:deniz?secret=${seed("p1")}&issuer=Kod%20Deposu` },
+      { name: "Bank", username: "ali", password, notes, uri: "https://bank.example", totp: `otpauth://totp/Bank:ali?secret=${seed("p2")}&issuer=Bank` },
+      { name: "Posta", username: "ali", password, notes, totp: `otpauth://totp/ali?secret=${seed("p3")}&issuer=Posta` },
+      { name: "Mail", username: "ali", password, notes, totp: `otpauth://totp/ali?issuer=Mail&secret=${seed("p4")}` },
+    ]);
+    const expected = [account("Kod Deposu", "deniz", "p1"), account("Bank", "ali", "p2"), account("Posta", "ali", "p3"), account("Mail", "ali", "p4")];
+    for (const text of [csv.replace(/\n/g, ""), csv.replace(/\n/g, " "), csv.replace(/\n/g, "\u2028")]) {
+      const found = accountsOf(text);
+      assert.deepEqual(found, expected);
+      const shown = JSON.stringify(found.map(({ issuer, account }) => [issuer, account]));
+      assert.ok(!shown.includes(password) && !shown.includes("recovery") && !shown.includes("bank.example"));
+    }
+  });
+
   test("encrypted exports are recognized, account-restricted or with a password", () => {
     const restricted = JSON.stringify({ encrypted: true, encKeyValidation_DO_NOT_EDIT: "2.x|y|z", folders: [], items: [{ id: "1", login: { totp: "2.x|y|z" } }] });
     const password = JSON.stringify({ encrypted: true, passwordProtected: true, salt: "c2FsdA==", kdfIterations: 600000, kdfType: 0, encKeyValidation_DO_NOT_EDIT: "2.x|y|z", data: "2.x|y|z" });
@@ -406,6 +437,33 @@ describe("mixed and broken input", () => {
     const ids = readExport([link, other, third].join("\n")).accounts.map((found) => found.id);
     assert.match(ids[0], /^otp-[0-9a-f]{16}$/);
     assert.deepEqual(ids, [ids[0], `${ids[0]}~2`, `${ids[0]}~3`]);
+  });
+});
+
+describe("LastPass Authenticator's QR codes", () => {
+  test("are recognized but not read", () => {
+    const qr = "lpaauth-migration://offline?data=" + encodeURIComponent(Buffer.from("synthetic").toString("base64"));
+    assert.deepEqual(readExport(qr), { accounts: [], skipped: 0, encrypted: [], lastPassQr: true });
+    assert.equal(readExport(`${qr}\n${otpauth({ issuer: "Posta", account: "deniz", secret: seed("q1") })}`).accounts.length, 1);
+    assert.equal(readExport(otpauth({ issuer: "Posta", account: "deniz", secret: seed("q1") })).lastPassQr, false);
+  });
+});
+
+describe("unbalanced brackets", () => {
+  test("cost little, and the links after them are still read", () => {
+    const link = otpauth({ issuer: "Posta", account: "deniz", secret: seed("u1") });
+    const noises = ["[".repeat(40_000), '{"a":'.repeat(20_000), "[[[[ x ]]]] ".repeat(5_000), `${"[".repeat(3_000)}${"]".repeat(3_000)}`, '"'.repeat(50_000) + "{"];
+    for (const noise of noises) {
+      const started = performance.now();
+      assert.deepEqual(accountsOf(`${noise}\n${link}`), [account("Posta", "deniz", "u1")], noise.slice(0, 12));
+      assert.ok(performance.now() - started < 500, `${noise.slice(0, 12)}: ${performance.now() - started} ms`);
+    }
+  });
+
+  test("a broken export before a good one still leaves the good one readable", () => {
+    const broken = aegisExport([{ issuer: "Ağ", account: "deniz", secret: seed("u2") }]).slice(0, -40);
+    const good = lastPassExport([{ issuer: "Posta", account: "deniz", secret: seed("u3") }]);
+    assert.deepEqual(accountsOf(`${broken}\n${good}`).map(({ issuer }) => issuer), ["Posta"]);
   });
 });
 

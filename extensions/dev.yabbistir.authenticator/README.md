@@ -16,13 +16,15 @@ The format is recognized on its own, and several can go into the field together,
 
 ## Example
 
-You are signing in to *ornek.dev* and it asks for a code. Open the panel and move to the *Authenticator* column, type `ornek` to find *ornek.dev* (`deniz@ornek.dev`) and press ↵: the six digits are pasted. When fewer than three seconds of the code's 30 seconds are left, the next code is pasted instead, so it does not expire on its way.
+You are signing in to *ornek.dev* and it asks for a code. Open the panel and move to the *Authenticator* column, type `ornek` to find *ornek.dev* (`deniz@ornek.dev`) and press ↵: the six digits are pasted. When fewer than three seconds of the code's 30 seconds are left, the next code is pasted instead, which most sites accept a few seconds early.
 
 ## Setup
 
 1. Export your accounts from your authenticator app, as below.
 2. Open the export and copy all of it. In yabbistir, go to Settings › Extensions › Authenticator, paste it into **Accounts** and press Save.
-3. Clean up: delete the copy from yabbistir's history (select it in the panel and press ⌘⌫) unless you have the Secret Guard extension, then delete the export file, empty the Trash, and delete the file on your phone too. See [Keeping the export safe](#keeping-the-export-safe).
+3. Delete the copy from yabbistir's history right away: select it in the panel and press ⌘⌫.
+4. Open the *Authenticator* column and check that it lists every account. If some are missing from a list of links, put the links on one line, separated by spaces, and paste again.
+5. Only then delete the export: the file, the Trash, the file on your phone, and any photos of QR codes. See [Keeping the export safe](#keeping-the-export-safe).
 
 To add accounts later, export again: press Clear next to Accounts, paste the new export and press Save.
 
@@ -34,7 +36,7 @@ To add accounts later, export again: press Clear next to Accounts, paste the new
 2. Save the file and move it to your Mac, with AirDrop for example.
 3. Open it with TextEdit, then select all and copy it (⌘A, ⌘C).
 
-The QR codes of *Export accounts to QR code* are not read; use the file.
+The QR codes of *Export accounts to QR code* are not read: pasting one makes the column say so. Use the file.
 
 ### Google Authenticator
 
@@ -47,12 +49,12 @@ The QR codes of *Export accounts to QR code* are not read; use the file.
    ```
 
 3. Copy every line it prints, all the codes together. They can be on separate lines or separated by spaces.
-4. Delete the photos or screenshots afterwards, from your phone too.
+4. Afterwards, delete the photos or screenshots from your phone too, empty *Recently Deleted* in Photos, and clear Terminal with ⌘K: its scrollback still holds the links.
 
 ### Aegis
 
 1. In Aegis, go to Settings › Import & Export › **Export**.
-2. Choose *Aegis (.JSON)* or *Text file (.TXT)*, and turn off *Encrypt the vault*.
+2. Choose *Aegis (.JSON)* or *Text file (.TXT)*, and turn off *Encrypt the vault*. The text file is much smaller, since the JSON carries your icons: take it for a large vault.
 3. Move the file to your Mac, open it with TextEdit and copy all of it.
 
 ### 2FAS
@@ -78,8 +80,8 @@ An encrypted export of any of these is recognized, and the column asks you to ex
 
 ## Keeping the export safe
 
-- **An export holds every seed in plain text.** Anyone with the file can make your codes. Delete it as soon as it is in Settings, empty the Trash, and delete it on your phone and from any cloud folder or chat it passed through.
-- **Copying it puts it on the clipboard, and so in yabbistir's history.** Delete that item right after you paste: select it in the panel and press ⌘⌫. With the **Secret Guard** extension installed, otpauth links and authenticator exports are kept out of the history in the first place.
+- **An export holds every seed in plain text.** Anyone with the file can make your codes. Once the column lists every account, delete it, empty the Trash, and delete it on your phone and from any cloud folder or chat it passed through. iCloud Drive and Photos keep deleted items in *Recently Deleted* for 30 days: empty that too, and remember that iCloud Photos copies a photo of a QR code to all your devices.
+- **Copying it puts it on the clipboard, and so in yabbistir's history.** Delete that item right after you paste: select it in the panel and press ⌘⌫. The **Secret Guard** extension is a backstop: it keeps otpauth links and most authenticator exports out of the history, but only copies up to 256 KB. A larger one, such as an Aegis JSON export with icons, is saved like any other copy. Press ⌘⌫ either way.
 - **In Settings, the export is kept in the Keychain** and never shown again: the field only says *Saved*.
 
 ### The trade-off
@@ -93,6 +95,8 @@ A second factor is worth most when it lives apart from your passwords: on a phon
 - **Codes come from your Mac's clock.** If they are refused, check that the date and time are set automatically.
 - **New accounts need a new export.** The column shows what is in Settings, nothing more.
 - **Rows are sorted alphabetically** by service, then by account name.
+- **Two accounts with the same names are both shown,** numbered in the export's order: *deniz · 1*, *deniz · 2*. This happens when an account was set up again and the old entry stayed. Remove the stale one in your authenticator app before you export.
+- **Very large exports are untested** in the settings field and the Keychain. For a big vault, Aegis's text export is the smallest.
 
 ## Permissions and privacy
 

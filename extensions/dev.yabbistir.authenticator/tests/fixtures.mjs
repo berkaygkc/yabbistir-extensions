@@ -209,10 +209,11 @@ export function bitwardenExport(items) {
 
 const csvField = (value) => (/[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
-/** Bitwarden's CSV export. */
+/** Bitwarden's CSV export (the Authenticator app's and the Password Manager's share the header). */
 export function bitwardenCsv(items) {
   const header = "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp";
-  const rows = items.map((item) => ["", "", "login", item.name, "", "", "0", "", item.username ?? "", "", item.totp].map(csvField).join(","));
+  const rows = items.map((item) =>
+    ["", "", "login", item.name, item.notes ?? "", "", "0", item.uri ?? "", item.username ?? "", item.password ?? "", item.totp].map(csvField).join(","));
   return [header, ...rows].join("\n") + "\n";
 }
 

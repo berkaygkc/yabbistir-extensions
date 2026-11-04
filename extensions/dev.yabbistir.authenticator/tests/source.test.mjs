@@ -104,6 +104,28 @@ describe("list", () => {
     assert.deepEqual((await list(text)).rows.map(({ title, subtitle }) => [title, subtitle]), [["deniz", undefined], ["Posta İş", "deniz k"]]);
   });
 
+  test("accounts with the same names are numbered in the export's order", async () => {
+    const text = [
+      otpauth({ issuer: "Posta", account: "deniz", secret: seed("w1") }),
+      otpauth({ issuer: "Posta", account: "", secret: seed("w2") }),
+      otpauth({ issuer: "Posta", account: "deniz", secret: seed("w3") }),
+      otpauth({ issuer: "Posta", account: "", secret: seed("w4") }),
+      otpauth({ issuer: "Posta", account: "deniz.k", secret: seed("w5") }),
+    ].join("\n");
+    const { rows } = await list(text);
+    assert.deepEqual(rows.map(({ title, subtitle }) => [title, subtitle]), [["Posta", "1"], ["Posta", "2"], ["Posta", "deniz · 1"], ["Posta", "deniz · 2"], ["Posta", "deniz.k"]]);
+    const codeOf = async (subtitle) => (await code(text, rows.find((row) => row.subtitle === subtitle).id)).secret;
+    assert.equal(await codeOf("deniz · 1"), expectedCode(seedBytes("w1"), NOW));
+    assert.equal(await codeOf("deniz · 2"), expectedCode(seedBytes("w3"), NOW));
+    assert.equal(await codeOf("2"), expectedCode(seedBytes("w4"), NOW));
+  });
+
+  test("a LastPass Authenticator QR code: a row saying to export to a file", async () => {
+    const qr = `lpaauth-migration://offline?data=${encodeURIComponent(Buffer.from("synthetic").toString("base64"))}`;
+    assert.deepEqual(await list(qr), { locked: true, message: "LastPass Authenticator’s QR codes can’t be read here. Use Settings › Transfer accounts › Export accounts to file, and paste that file." });
+    assert.deepEqual(await list(qr, { language: "tr" }), { locked: true, message: TR.lastPassQr });
+  });
+
   test("an encrypted export: a row naming the app and saying to export without a password", async () => {
     const encrypted = {
       Aegis: JSON.stringify({ version: 1, header: { slots: [], params: { nonce: "00", tag: "00" } }, db: "Y2lwaGVy" }),
@@ -203,6 +225,15 @@ describe("nothing secret leaks", () => {
   /** Every code the accounts have around NOW, in each of their lengths. */
   const CODES = TABLE.flatMap((entry) => [-1, 0, 1].map((step) => expectedCode(seedBytes(entry.name), NOW + step * entry.period * 1000, entry)));
   const BROKEN_JSON = `{"accounts": [{"secret": "${seed("e1")}", "issuerName": "Posta",`;
+  // A Password Manager CSV: the other fields of a row hold a password and notes.
+  const PASSWORD = ["pass", "word", "-", "q".repeat(12)].join("");
+  const PASSWORD_CSV = bitwardenCsv(TABLE.map((entry) => ({
+    name: entry.issuer,
+    username: entry.account,
+    password: PASSWORD,
+    notes: `notes for ${PASSWORD}`,
+    totp: `otpauth://totp/${encodeURIComponent(entry.issuer)}:${encodeURIComponent(entry.account)}?secret=${seed(entry.name)}&algorithm=${entry.algorithm}&digits=${entry.digits}&period=${entry.period}&issuer=${encodeURIComponent(entry.issuer)}`,
+  })));
 
   /** Every path through list and run, each on a host of its own, with what came out of it. */
   async function everyPath() {
@@ -234,6 +265,13 @@ describe("nothing secret leaks", () => {
     await on(otpauth({ type: "hotp", issuer: "Posta", account: "deniz", secret: seed("e1"), counter: 1 }), (fake) => fake.list("codes"));
     await on(`otpauth://totp/Posta:deniz?secret=${seed("e1")}&digits=5`, (fake) => fake.list("codes"));
     await on(EXPORTS.Aegis[0], (fake) => fake.list("codes"), { now: Date.parse("2026-01-01T09:00:29.500Z") });
+    for (const separator of ["", " "]) {
+      await on(PASSWORD_CSV.replace(/\n/g, separator), (fake) => fake.list("codes"));
+      await on(PASSWORD_CSV.replace(/\n/g, separator), async (fake) => {
+        for (const row of (await fake.list("codes")).rows) await fake.runSource("codes", row.id, "code");
+        return "ran";
+      });
+    }
     return { hosts, out };
   }
 
@@ -252,6 +290,7 @@ describe("nothing secret leaks", () => {
     const { out } = await everyPath();
     const shown = JSON.stringify(out);
     for (const secret of SEED_TEXTS) assert.ok(!shown.includes(secret), "a seed was shown");
+    assert.ok(!shown.includes(PASSWORD), "another field of a CSV row was shown");
     for (const value of CODES) assert.ok(!shown.includes(value), "a code was shown");
   });
 

@@ -20,6 +20,8 @@ export interface ExportContents {
   skipped: number;
   /** The apps whose encrypted exports the text holds. */
   encrypted: string[];
+  /** Whether the text holds a LastPass Authenticator QR code's link, which is not read. */
+  lastPassQr: boolean;
 }
 
 interface Entry extends Totp {
@@ -33,6 +35,7 @@ interface Reader {
   entries: Entry[];
   skipped: number;
   encrypted: string[];
+  lastPassQr: boolean;
 }
 
 /** What one entry says, before it is checked. Missing parameters take the otpauth defaults: SHA-1, 6 digits, 30 s. */
@@ -62,12 +65,12 @@ function algorithmOf(value: unknown): Algorithm | undefined {
   return Object.hasOwn(ALGORITHMS, name) ? ALGORITHMS[name] : undefined;
 }
 
-/** A whole number from min to max; a text's leading digits count, so "30" and "30,,login" are both 30. */
+/** A whole number from min to max, as a number or as digits alone. */
 function integerOf(value: unknown, fallback: number, min: number, max: number): number | undefined {
   if (value === undefined || value === null || value === "") return fallback;
   let number = NaN;
   if (typeof value === "number") number = value;
-  else if (typeof value === "string" && /^\s*\d/.test(value)) number = parseInt(value, 10);
+  else if (typeof value === "string" && /^\s*\d+\s*$/.test(value)) number = parseInt(value, 10);
   return Number.isInteger(number) && number >= min && number <= max ? number : undefined;
 }
 
@@ -96,12 +99,8 @@ function exportIdOf(app: string, value: unknown): string | undefined {
   return /^[A-Za-z0-9._:-]{1,128}$/.test(id) ? `${app}-${id}` : undefined;
 }
 
-/**
- * The secret in a link or a field, as Base32. A "," or ";" ends it: a CSV's next field, once its line breaks are gone.
- * Anything else that is not Base32 makes it unreadable, never a shorter secret.
- */
-const secretIn = (text: unknown): Uint8Array | undefined =>
-  typeof text === "string" ? base32Bytes(text.split(/[,;]/)[0]) : undefined;
+/** The secret in a field, as Base32; anything that is not Base32 makes it unreadable. */
+const secretIn = (text: unknown): Uint8Array | undefined => (typeof text === "string" ? base32Bytes(text) : undefined);
 
 function percentDecoded(text: string): string {
   try {
@@ -125,7 +124,9 @@ function queryOf(query: string): Map<string, string> {
 
 /**
  * Issuer and account from a label such as "GitHub:octocat" (Google's Key URI Format) and an issuer given apart. The
- * issuer given apart wins; the label's prefix is taken off the account only when it names the same issuer.
+ * issuer given apart wins; the label's prefix is taken off the account only when it names the same issuer. An issuer
+ * that is the prefix with more run straight onto it ("GitLabNotes") is a lost line break: the next line's text joined
+ * the link's last parameter. Then the label's prefix is the issuer, so that text never reaches a row.
  */
 function labelled(label: string, issuer: string): { issuer: string; account: string } {
   const colon = label.indexOf(":");
@@ -133,7 +134,19 @@ function labelled(label: string, issuer: string): { issuer: string; account: str
   const prefix = label.slice(0, colon).trim();
   const rest = label.slice(colon + 1).trim();
   if (issuer === "") return { issuer: prefix, account: rest };
-  return { issuer, account: prefix.toLowerCase() === issuer.toLowerCase() ? rest : label.trim() };
+  const [given, named] = [issuer.toLowerCase(), prefix.toLowerCase()];
+  if (given === named) return { issuer, account: rest };
+  if (named !== "" && given.startsWith(named) && !/\s/.test(given[named.length])) return { issuer: prefix, account: rest };
+  return { issuer, account: label.trim() };
+}
+
+/**
+ * A link's secret. One in both upper and lower case is a lost line break too, a word of the next line run onto it:
+ * exports write a seed in one case. It is unreadable rather than a different seed.
+ */
+function linkSecret(text: string | undefined): Uint8Array | undefined {
+  if (text === undefined || (/[a-z]/.test(text) && /[A-Z]/.test(text))) return undefined;
+  return secretIn(text);
 }
 
 /** Names that take the place of a link's own: an export's title and username for the entry. */
@@ -155,8 +168,8 @@ function readOtpauth(uri: string, reader: Reader, names: Names = {}): void {
   add(reader, {
     issuer: textOf(names.issuer) || issuer,
     account: textOf(names.account) || account,
-    secret: secretIn(params.get("secret")),
-    algorithm: /^[A-Za-z0-9-]*/.exec(params.get("algorithm") ?? "")?.[0],
+    secret: linkSecret(params.get("secret")),
+    algorithm: params.get("algorithm"),
     digits: params.get("digits"),
     period: params.get("period"),
     exportId: names.exportId,
@@ -280,29 +293,37 @@ function readMigration(uri: string, reader: Reader): void {
   }
 }
 
-const SCHEME = /^otpauth(?:-migration)?:\/\//i;
+/** otpauth, Google's otpauth-migration, and LastPass Authenticator's QR codes (lpaauth-migration), which are not read. */
+const SCHEME = /^(?:otpauth|otpauth-migration|lpaauth-migration):\/\//i;
 /** Characters that never stand unescaped in a link: one ends there. */
 const LINK_END = /[\s"<>{}[\]\\^|`]/;
+/** In a CSV, a comma ends a link too: an unquoted field never holds one, and a quoted one ends at its quote. */
+const CSV_LINK_END = /[\s"<>{}[\]\\^|`,]/;
 const startsLink = (text: string, at: number): boolean =>
-  (text[at] === "o" || text[at] === "O") && SCHEME.test(text.slice(at, at + 21));
+  (text[at] === "o" || text[at] === "O" || text[at] === "l" || text[at] === "L") && SCHEME.test(text.slice(at, at + 21));
 
 /** Where the link that starts at `start` ends: at a character no link holds, or where the next link starts. */
-function linkEnd(text: string, start: number): number {
+function linkEnd(text: string, start: number, ends: RegExp): number {
   let at = start + 1;
-  while (at < text.length && !LINK_END.test(text[at]) && !startsLink(text, at)) at++;
+  while (at < text.length && !ends.test(text[at]) && !startsLink(text, at)) at++;
   return at;
 }
 
 function readLink(uri: string, reader: Reader, names?: Names): void {
-  if (/^otpauth-migration:/i.test(uri)) readMigration(uri, reader);
+  if (/^lpaauth-migration:/i.test(uri)) reader.lastPassQr = true;
+  else if (/^otpauth-migration:/i.test(uri)) readMigration(uri, reader);
   else readOtpauth(uri, reader, names);
 }
 
-/** The index of the bracket that closes the one at `start`, outside JSON strings, or -1. */
-function closingBracket(text: string, start: number): number {
+/**
+ * The index of the bracket that closes the one at `start`, outside JSON strings, or -1. Each character looked at
+ * spends one of `budget.left`; with none left it answers -1, so unbalanced brackets cost no more than a few passes.
+ */
+function closingBracket(text: string, start: number, budget: { left: number }): number {
   let depth = 0;
   let inString = false;
   for (let at = start; at < text.length; at++) {
+    if (--budget.left < 0) return -1;
     const char = text[at];
     if (inString) {
       if (char === "\\") at++;
@@ -507,11 +528,16 @@ function csvRows(text: string): string[][] {
 }
 
 /**
- * Bitwarden's CSV export, when the text is one with its line breaks: a header "folder,favorite,type,name,…" with a
- * `login_totp` column. False when it is not, so the text is read for links instead.
+ * Bitwarden's CSV export: a header "folder,favorite,type,name,…" with a `login_totp` column. With its line breaks it is
+ * read row by row. Without them its rows cannot be told apart, so only its links are read, each ending at a comma: a
+ * link's last parameter never runs on into the next row's fields, where a password or a note may be.
  */
 function readBitwardenCsv(text: string, reader: Reader): boolean {
-  if (!/^folder,favorite,type,name,/.test(text) || !/[\r\n]/.test(text)) return false;
+  if (!/^folder,favorite,type,name,/.test(text)) return false;
+  if (!/[\r\n]/.test(text)) {
+    readText(text, reader, CSV_LINK_END);
+    return true;
+  }
   const [header, ...rows] = csvRows(text);
   const column = (name: string) => header.indexOf(name);
   if (column("login_totp") === -1) return false;
@@ -522,24 +548,30 @@ function readBitwardenCsv(text: string, reader: Reader): boolean {
   return true;
 }
 
-/** Any text: the links and the JSON values in it, in order. */
-function readText(text: string, reader: Reader): void {
+/**
+ * Any text: the links and the JSON values in it, in order. Looking for JSON may cost a few passes over the text; once
+ * that is spent (unbalanced brackets, brackets that are not JSON), only links are read.
+ */
+function readText(text: string, reader: Reader, ends: RegExp = LINK_END): void {
+  const budget = { left: 8 * text.length + 100_000 };
   let at = 0;
   while (at < text.length) {
     if (startsLink(text, at)) {
-      const end = linkEnd(text, at);
+      const end = linkEnd(text, at, ends);
       readLink(text.slice(at, end), reader);
       at = end;
       continue;
     }
-    if (text[at] === "{" || text[at] === "[") {
-      const end = closingBracket(text, at);
+    if ((text[at] === "{" || text[at] === "[") && budget.left > 0) {
+      const end = closingBracket(text, at, budget);
       const value = end === -1 ? undefined : parsedJson(text.slice(at, end + 1));
       if (value !== undefined) {
         readJson(value, reader);
         at = end + 1;
         continue;
       }
+      // A failed parse read the slice once more.
+      if (end !== -1) budget.left -= end + 1 - at;
     }
     at++;
   }
@@ -553,7 +585,7 @@ const hex = (bytes: Uint8Array): string => Array.from(bytes, (byte) => byte.toSt
  * "~2" after it, and so on, in the order of the text.
  */
 export function readExport(text: string): ExportContents {
-  const reader: Reader = { entries: [], skipped: 0, encrypted: [] };
+  const reader: Reader = { entries: [], skipped: 0, encrypted: [], lastPassQr: false };
   const trimmed = text.replace(/^\uFEFF/, "").trim();
   if (!readBitwardenCsv(trimmed, reader)) readText(trimmed, reader);
 
@@ -572,5 +604,5 @@ export function readExport(text: string): ExportContents {
     const { issuer, account, secret, algorithm, digits, period } = entry;
     accounts.push({ id, issuer, account, secret, algorithm, digits, period });
   }
-  return { accounts, skipped: reader.skipped, encrypted: [...new Set(reader.encrypted)] };
+  return { accounts, skipped: reader.skipped, encrypted: [...new Set(reader.encrypted)], lastPassQr: reader.lastPassQr };
 }

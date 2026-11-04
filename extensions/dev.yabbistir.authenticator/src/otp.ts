@@ -11,7 +11,10 @@ export interface Totp {
   period: number;
 }
 
-/** With fewer milliseconds than this left in a period, the next period's code is pasted instead. */
+/**
+ * With fewer milliseconds than this left in a period, the next period's code is pasted instead; never more than a tenth
+ * of the period, so a very short period still gets its own code most of the time.
+ */
 export const MARGIN = 3_000;
 
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -67,11 +70,12 @@ export function counterAt(nowMs: number, period: number): number {
 
 /**
  * The code to paste at `nowMs`: the current period's, or the next period's when fewer than three seconds of the current
- * one are left, so the code does not expire on its way to the server.
+ * one are left (a tenth of a period shorter than 30 s), so the code is not about to expire when it is sent. Sites
+ * commonly accept a code a step early.
  */
 export function codeToPaste(account: Totp, nowMs: number): string {
   const periodMs = account.period * 1000;
   const left = periodMs - (((nowMs % periodMs) + periodMs) % periodMs);
-  const counter = counterAt(nowMs, account.period) + (left < MARGIN ? 1 : 0);
+  const counter = counterAt(nowMs, account.period) + (left < Math.min(MARGIN, periodMs / 10) ? 1 : 0);
   return hotp(account.secret, counter, account.algorithm, account.digits);
 }

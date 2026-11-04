@@ -171,6 +171,17 @@ describe("the code pasted near the end of a period", () => {
     assert.equal(codeToPaste(sixty, start + 60_000), at(sixty, counter + 1));
   });
 
+  test("periods under 30 s: never more than a tenth of the period", () => {
+    for (const [period, margin] of [[20, 2000], [5, 500], [3, 300], [1, 100]]) {
+      const account = { secret, algorithm: "SHA1", digits: 6, period };
+      const periodMs = period * 1000;
+      const counter = start / periodMs;
+      assert.equal(codeToPaste(account, start + periodMs - margin), at(account, counter), `${period} s, ${margin} ms left`);
+      assert.equal(codeToPaste(account, start + periodMs - margin + 1), at(account, counter + 1), `${period} s, under ${margin} ms left`);
+      assert.equal(codeToPaste(account, start + periodMs / 3), at(account, counter), `${period} s, a third in`);
+    }
+  });
+
   test("the current and the next code differ, so the rule is seen", () => {
     assert.notEqual(at(thirty, start / 30_000), at(thirty, start / 30_000 + 1));
   });

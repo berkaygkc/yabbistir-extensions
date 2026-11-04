@@ -36,6 +36,23 @@ function rowOf(account: Account): SourceRow {
   return { id: account.id, title: name || yab.t("unnamed") };
 }
 
+/**
+ * Rows that would look the same, such as an old and a new copy of one account, numbered in the export's order on their
+ * second line: "deniz · 1", "deniz · 2".
+ */
+function numbered(rows: SourceRow[]): SourceRow[] {
+  const key = (row: SourceRow) => `${row.title}\n${row.subtitle ?? ""}`;
+  const count = new Map<string, number>();
+  for (const row of rows) count.set(key(row), (count.get(key(row)) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return rows.map((row) => {
+    if (count.get(key(row)) === 1) return row;
+    const place = (seen.get(key(row)) ?? 0) + 1;
+    seen.set(key(row), place);
+    return { ...row, subtitle: row.subtitle === undefined ? String(place) : `${row.subtitle} · ${place}` };
+  });
+}
+
 /** Rows in alphabetical order, as the app's language sorts them. */
 function sorted(rows: SourceRow[], language: string): SourceRow[] {
   let collator: Intl.Collator;
@@ -54,8 +71,9 @@ export const sources: Sources = {
     list(ctx) {
       const contents = savedExport();
       if (contents === undefined) return locked(yab.t("setUp"));
-      if (contents.accounts.length > 0) return { rows: sorted(contents.accounts.map(rowOf), ctx.language) };
+      if (contents.accounts.length > 0) return { rows: sorted(numbered(contents.accounts.map(rowOf)), ctx.language) };
       if (contents.encrypted.length > 0) return locked(yab.t("encrypted", { app: contents.encrypted[0] }));
+      if (contents.lastPassQr) return locked(yab.t("lastPassQr"));
       return locked(yab.t(contents.skipped > 0 ? "noTotp" : "unrecognized"));
     },
 
