@@ -21,6 +21,12 @@ const PODS = [
   pod("web", "old-1", { metadata: { name: "old-1", namespace: "web", deletionTimestamp: "2026-01-01T00:00:00Z" } }),
   pod("web", "evicted-1", { status: { phase: "Failed", reason: "Evicted" } }),
 ];
+const MORE = [
+  pod("web", "oom-1", { status: { phase: "Running", containerStatuses: [{ ready: false, state: { terminated: { reason: "OOMKilled" } } }, { ready: true }] } }),
+  pod("web", "done-sidecar", { status: { phase: "Running", containerStatuses: [{ ready: true }, { ready: false, state: { terminated: { reason: "Completed" } } }] } }),
+  pod("web", "failed-1", { status: { phase: "Failed" } }),
+  pod("web", "init-err", { status: { phase: "Pending", initContainerStatuses: [{ state: { terminated: { reason: "Error" } } }] } }),
+];
 
 function fakeKubectl(changes = {}) {
   const state = { context: "kind-demo", contextExit: 0, pods: { items: PODS }, getExit: 0, getStderr: "", raw: undefined, ...changes };
@@ -52,16 +58,63 @@ describe("list", () => {
     assert.equal(by["web/api-7d9f-xk2lp"].subtitle, "web · Running 2/2 · kind-demo");
     assert.equal(by["db/postgres-0"].subtitle, "db · Running 0/1 · kind-demo");
     assert.equal(by["web/api-7d9f-b1c3d"].subtitle, "web · CrashLoopBackOff 1/2 · kind-demo");
-    assert.equal(by["batch/job-1-abcde"].subtitle, "batch · Succeeded 0/2 · kind-demo");
-    assert.equal(by["batch/job-2-fghij"].subtitle, "batch · ImagePullBackOff 0/2 · kind-demo");
+    assert.equal(by["batch/job-1-abcde"].subtitle, "batch · Completed 0/2 · kind-demo");
+    assert.equal(by["batch/job-2-fghij"].subtitle, "batch · Init:ImagePullBackOff 0/2 · kind-demo");
     assert.equal(by["web/old-1"].subtitle, "web · Terminating 2/2 · kind-demo");
     assert.equal(by["web/evicted-1"].subtitle, "web · Evicted 0/2 · kind-demo");
+  });
+
+  test("status follows kubectl for terminated containers, Failed and Init", async () => {
+    const { rows } = await hostWith(fakeKubectl({ pods: { items: MORE } })).list("pods");
+    const by = Object.fromEntries(rows.map((r) => [r.id, r.subtitle]));
+    assert.equal(by["web/oom-1"], "web · OOMKilled 1/2 · kind-demo");
+    assert.equal(by["web/done-sidecar"], "web · Running 1/2 · kind-demo");
+    assert.equal(by["web/failed-1"], "web · Error 0/2 · kind-demo");
+    assert.equal(by["web/init-err"], "web · Init:Error 0/2 · kind-demo");
+  });
+
+  test("a row id over 256 characters is left out, not a failed listing", async () => {
+    const longPod = "a".repeat(253);
+    const longNs = "n".repeat(63);
+    const { rows } = await hostWith(fakeKubectl({ pods: { items: [pod(longNs, longPod), pod("web", "ok-1"), pod("n".repeat(63), "a".repeat(192))] } })).list("pods");
+    assert.deepEqual(rows.map((r) => r.id).sort(), [`${longNs}/${"a".repeat(192)}`, "web/ok-1"].sort());
+    assert.ok(rows.every((r) => r.id.length <= 256));
+  });
+
+  test("both exec calls get ctx.signal", async () => {
+    const signal = new AbortController().signal;
+    const seen = [];
+    const before = globalThis.yab;
+    globalThis.yab = {
+      t: (key) => key,
+      exec: async (_tool, args, options) => {
+        seen.push(options?.signal);
+        return args[0] === "config" ? { exitCode: 0, stdout: "ctx\n", stderr: "" } : (options?.onLine?.('{"items":[]}', "stdout"), { exitCode: 0, stdout: "", stderr: "" });
+      },
+    };
+    try {
+      await sources.pods.list({ preferences: {}, signal });
+    } finally {
+      globalThis.yab = before;
+    }
+    assert.equal(seen.length, 2);
+    assert.ok(seen.every((s) => s === signal));
+  });
+
+  test("the namespace preference decides the scope on every listing", async () => {
+    const kubectl = fakeKubectl();
+    const all = hostWith(kubectl);
+    const one = hostWith(kubectl, { namespace: "web" });
+    await all.list("pods");
+    await one.list("pods");
+    assert.ok(getArgs(all)[0].includes("--all-namespaces"));
+    assert.deepEqual(getArgs(one)[0].slice(-2), ["--namespace", "web"]);
   });
 
   test("all namespaces by default, a request timeout under 10 seconds", async () => {
     const host = hostWith(fakeKubectl());
     await host.list("pods");
-    assert.deepEqual(getArgs(host), [["get", "pods", "--output", "json", "--request-timeout=6s", "--all-namespaces"]]);
+    assert.deepEqual(getArgs(host), [["get", "pods", "--output", "json", "--chunk-size=0", "--request-timeout=6s", "--all-namespaces"]]);
   });
 
   test("the namespace preference narrows the listing", async () => {
@@ -84,7 +137,7 @@ describe("list", () => {
 
   test("an empty cluster has no rows", async () => {
     assert.deepEqual(await hostWith(fakeKubectl({ pods: { items: [] } })).list("pods"), { rows: [] });
-    assert.deepEqual(await hostWith(fakeKubectl({ pods: { kind: "List" } })).list("pods").catch((e) => e.message), "kubectl could not list the pods.");
+    await assert.rejects(hostWith(fakeKubectl({ pods: { kind: "List" } })).list("pods"), { message: "kubectl could not list the pods." });
   });
 
   test("capped at 300 rows, many namespaces, ids unique and stable", async () => {
@@ -132,13 +185,22 @@ describe("failures", () => {
     }
   });
 
-  test("unauthorized and forbidden", async () => {
+  test("unauthorized", async () => {
     for (const stderr of [
       "error: You must be logged in to the server (Unauthorized)\n",
-      'Error from server (Forbidden): pods is forbidden: User "demo" cannot list resource "pods" in API group "" at the cluster scope\n',
+      "error: You must provide credentials\n",
     ]) {
       const listing = await hostWith(fakeKubectl({ getExit: 1, getStderr: stderr })).list("pods");
       assert.deepEqual(listing, { locked: true, message: "kubectl isn’t signed in to the cluster" });
+    }
+  });
+
+  test("forbidden is its own message", async () => {
+    for (const stderr of [
+      'Error from server (Forbidden): pods is forbidden: User "demo" cannot list resource "pods" in API group "" at the cluster scope\n',
+    ]) {
+      const listing = await hostWith(fakeKubectl({ getExit: 1, getStderr: stderr })).list("pods");
+      assert.deepEqual(listing, { locked: true, message: "Your account can’t list pods here" });
     }
   });
 
@@ -157,6 +219,8 @@ describe("failures", () => {
     const long = "unable ".repeat(10_000) + "x".repeat(50_000);
     const start = Date.now();
     assert.equal(reasonOf(long), "other");
+    const prefixes = ("unable to conn" + " must be logged" + " current-context is not" + " forbidde").repeat(3000);
+    assert.equal(reasonOf(prefixes), "other");
     assert.ok(Date.now() - start < 200);
   });
 

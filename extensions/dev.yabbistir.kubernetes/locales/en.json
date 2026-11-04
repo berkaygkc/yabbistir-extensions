@@ -15,6 +15,7 @@
   "noContext": "No Kubernetes context is selected",
   "unreachable": "The cluster can’t be reached",
   "unauthorized": "kubectl isn’t signed in to the cluster",
+  "forbidden": "Your account can’t list pods here",
   "badNamespace": "The namespace in Settings isn’t valid",
   "listFailed": "kubectl could not list the pods.",
   "badRow": "This pod can’t be used."

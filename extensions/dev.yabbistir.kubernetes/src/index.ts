@@ -7,6 +7,8 @@ import type { SourceListing, SourceRow, Sources } from "@yabbistir/api";
 const MAX_ROWS = 300;
 /** One request to the cluster gives up after this, well inside the 10 seconds a listing has. */
 const REQUEST_TIMEOUT = "6s";
+/** The longest row id the app accepts; a longer one fails the whole listing. */
+const MAX_ID = 256;
 /** A namespace is a DNS label. */
 const NAMESPACE = /^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$/;
 /** A pod name is a DNS subdomain: labels joined by dots. Checked by a linear scan, not a nested pattern. */
@@ -26,12 +28,22 @@ interface Pod {
 function statusOf(pod: Pod): string {
   if (pod.metadata?.deletionTimestamp !== undefined) return "Terminating";
   const phase = pod.status?.phase ?? "Unknown";
-  if (phase === "Succeeded" || phase === "Failed") return pod.status?.reason || phase;
-  for (const list of [pod.status?.initContainerStatuses, pod.status?.containerStatuses]) {
-    for (const container of list ?? []) {
-      const reason = container.state?.waiting?.reason;
-      if (reason !== undefined && reason !== "" && reason !== "PodInitializing") return reason;
-    }
+  if (phase === "Succeeded") return pod.status?.reason || "Completed";
+  if (phase === "Failed") return pod.status?.reason || "Error";
+  const stuck = (container: ContainerStatus): string | undefined => {
+    const waiting = container.state?.waiting?.reason;
+    if (waiting !== undefined && waiting !== "" && waiting !== "PodInitializing") return waiting;
+    const ended = container.state?.terminated?.reason;
+    if (ended !== undefined && ended !== "" && ended !== "Completed") return ended;
+    return undefined;
+  };
+  for (const container of pod.status?.initContainerStatuses ?? []) {
+    const reason = stuck(container);
+    if (reason !== undefined) return `Init:${reason}`;
+  }
+  for (const container of pod.status?.containerStatuses ?? []) {
+    const reason = stuck(container);
+    if (reason !== undefined) return reason;
   }
   return pod.status?.reason || phase;
 }
@@ -60,6 +72,8 @@ export function rowsOf(json: string, context: string): SourceRow[] | undefined {
     const namespace = pod?.metadata?.namespace;
     if (typeof name !== "string" || typeof namespace !== "string") continue;
     if (!NAMESPACE.test(namespace) || !POD.test(name)) continue;
+    // A row id longer than 256 characters would fail the whole listing; leave such a pod out.
+    if (namespace.length + 1 + name.length > MAX_ID) continue;
     const key = `${namespace}/${name}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -74,10 +88,11 @@ export function rowsOf(json: string, context: string): SourceRow[] | undefined {
 }
 
 /** Why kubectl failed, from what it printed on standard error; never shown itself. */
-export function reasonOf(stderr: string): "noContext" | "unreachable" | "unauthorized" | "other" {
+export function reasonOf(stderr: string): "noContext" | "unreachable" | "unauthorized" | "forbidden" | "other" {
   const text = stderr.toLowerCase();
   if (text.includes("current-context is not set") || text.includes("no context") || text.includes("invalid configuration: no configuration has been provided")) return "noContext";
-  if (text.includes("unauthorized") || text.includes("must be logged in") || text.includes("forbidden") || text.includes("provide credentials")) return "unauthorized";
+  if (text.includes("forbidden")) return "forbidden";
+  if (text.includes("unauthorized") || text.includes("must be logged in") || text.includes("provide credentials")) return "unauthorized";
   if (
     text.includes("unable to connect") || text.includes("connection refused") || text.includes("i/o timeout") ||
     text.includes("client.timeout") || text.includes("deadline exceeded") || text.includes("no such host") ||
@@ -111,7 +126,7 @@ export const sources: Sources = {
       const lines: string[] = [];
       const scope = namespace === "" ? ["--all-namespaces"] : ["--namespace", namespace];
       // Through onLine: an exec result keeps only the last 64 KB, less than a big cluster prints.
-      const result = await yab.exec("kubectl", ["get", "pods", "--output", "json", `--request-timeout=${REQUEST_TIMEOUT}`, ...scope], {
+      const result = await yab.exec("kubectl", ["get", "pods", "--output", "json", "--chunk-size=0", `--request-timeout=${REQUEST_TIMEOUT}`, ...scope], {
         signal: ctx.signal,
         onLine: (line, stream) => {
           if (stream === "stdout") lines.push(line);
@@ -122,6 +137,7 @@ export const sources: Sources = {
           case "noContext": return locked("noContext");
           case "unreachable": return locked("unreachable");
           case "unauthorized": return locked("unauthorized");
+          case "forbidden": return locked("forbidden");
           default: throw new Error(yab.t("listFailed"));
         }
       }

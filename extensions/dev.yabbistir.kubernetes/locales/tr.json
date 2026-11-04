@@ -14,7 +14,8 @@
   "shift.exec": "kubectl exec -it … -- sh",
   "noContext": "Bir Kubernetes bağlamı seçili değil",
   "unreachable": "Kümeye ulaşılamıyor",
-  "unauthorized": "kubectl kümede oturum açmamış",
+  "unauthorized": "kubectl kümede oturum açmış değil",
+  "forbidden": "Hesabın burada pod’ları listeleyemiyor",
   "badNamespace": "Ayarlardaki namespace geçerli değil",
   "listFailed": "kubectl pod’ları listeleyemedi.",
   "badRow": "Bu pod kullanılamıyor."
