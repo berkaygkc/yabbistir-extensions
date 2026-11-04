@@ -11,11 +11,6 @@
   "categories": ["developer"],
   "permissions": ["capture"],
   "preferences": [
-    { "id": "mode", "type": "choice", "title": "mode.title", "default": "drop", "confirm": "mode.confirm",
-      "options": [
-        { "id": "drop", "title": "mode.drop" },
-        { "id": "mask", "title": "mode.mask" }
-      ] },
     { "id": "jwt", "type": "toggle", "title": "jwt.title", "default": false }
   ],
   "contributes": {

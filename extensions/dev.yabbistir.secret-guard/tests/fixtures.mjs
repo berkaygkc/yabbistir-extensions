@@ -29,11 +29,11 @@ export function key(alphabet, count) {
 
 const base64url = (text) => btoa(text).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 
-/** One of each format the rule must catch: `token` is the whole secret, `masked` what mask mode leaves of it. */
+/** One of each format the rule must catch, by name: the whole secret. */
 export function secrets() {
   const list = {};
-  const add = (name, prefix, body, masked) => {
-    list[name] = { token: prefix + body, masked: masked ?? `${prefix}••••••••${body.slice(-4)}` };
+  const add = (name, prefix, body) => {
+    list[name] = prefix + body;
   };
   add("githubClassic", "gh" + "p_", key(B62, 36));
   add("githubOAuth", "gh" + "o_", key(B62, 36));
@@ -61,8 +61,7 @@ export function secrets() {
   add("twilio", "S" + "K", chars(HEX, 32));
   add("awsAccessKey", "AK" + "IA", chars(B32, 16));
   add("awsSessionKey", "AS" + "IA", chars(B32, 16));
-  const discord = `${base64url("1" + chars(DIGITS, 17))}.${key(B64URL, 6)}.${key(B64URL, 27)}`;
-  list.discord = { token: discord, masked: `••••••••${discord.slice(-4)}` };
+  add("discord", "", `${base64url("1" + chars(DIGITS, 17))}.${key(B64URL, 6)}.${key(B64URL, 27)}`);
   add("telegram", `${chars("123456789", 1)}${chars(DIGITS, 8)}:`, `A${key(B64URL, 34)}`);
   return list;
 }

@@ -1,25 +1,17 @@
 import type { CaptureResult, CaptureRules } from "@yabbistir/api";
 
-/** What stands in for the hidden part of a secret. */
-export const DOTS = "••••••••";
-
 /**
  * The longest copy the rule reads, in UTF-16 code units. The app sends a rule nothing over 256 KB; past this the copy
  * is kept rather than risk the rule's 200 ms.
  */
 export const LIMIT = 512 * 1024;
 
-/** A secret in a copy: `text.slice(start, end)`, of which the first `keep` characters stay readable when masked. */
+/** A secret in a copy: `text.slice(start, end)`. Only tests read where it is; the rule needs only that there is one. */
 export interface Finding {
   /** Which format it is, for tests; never shown. */
   kind: string;
   start: number;
   end: number;
-  keep: number;
-  /** Keep the last four characters too: tokens, which dashboards list by their last four. Never passwords or seeds. */
-  tail: boolean;
-  /** What replaces the hidden part instead of the dots (a private key's body, between its BEGIN and END lines). */
-  fill?: string;
 }
 
 export interface Options {
@@ -60,8 +52,8 @@ const WORD_DASH = /[A-Za-z0-9_-]/;
 const WORD_DASH_DOT = /[A-Za-z0-9_.-]/;
 
 // ---- Tokens with a prefix ----
-// Group 1 of each pattern is the prefix that stays readable. A pattern's end keeps a token from ending inside a longer
-// word, and `before` keeps it from starting inside one.
+// Group 1 of each pattern is the prefix; `check` looks at what follows it. A pattern's end keeps a token from ending
+// inside a longer word, and `before` keeps it from starting inside one.
 
 interface Token {
   kind: string;
@@ -106,7 +98,7 @@ function* prefixed(text: string): Iterable<Finding> {
       const prefix = match[1] ?? "";
       const value = token.trim ? match[0].replace(token.trim, "") : match[0];
       if (token.check && !token.check(value.slice(prefix.length))) continue;
-      yield { kind: token.kind, start: match.index, end: match.index + value.length, keep: prefix.length, tail: true };
+      yield { kind: token.kind, start: match.index, end: match.index + value.length };
     }
   }
 }
@@ -118,13 +110,8 @@ const pemBegin = /-----BEGIN ((?:[A-Z0-9]+ )*)PRIVATE KEY( BLOCK)?-----/g;
 const pemLines = /(?:\r?\n(?:[A-Za-z0-9+\/=]*|[A-Za-z][A-Za-z-]*: [^\r\n]*)(?=\r?\n|$))+/y;
 const keyMaterial = /[A-Za-z0-9+\/]{16}/;
 
-/** The first line break in a key's body as it is written there: a real one, or `\n` inside a JSON string. */
-function lineBreak(body: string): string {
-  return /\r\n|\n|\\n/.exec(body)?.[0] ?? " ";
-}
-
 /**
- * The body of a private key. Its BEGIN and END lines stay, so the kind of key can still be read. The search goes on
+ * The body of a private key, between its BEGIN and END lines. The search goes on
  * after each key, and an END line that is not there is looked for once, so the text is read about once however many
  * BEGIN lines it has.
  */
@@ -137,19 +124,14 @@ function* privateKeys(text: string): Iterable<Finding> {
     const end = missing.has(footer) ? -1 : text.indexOf(footer, start);
     if (end >= 0) {
       const body = text.slice(start, end);
-      if (keyMaterial.test(body)) {
-        const nl = lineBreak(body);
-        yield { kind: "privateKey", start, end, keep: 0, tail: false, fill: nl + DOTS + nl };
-      }
+      if (keyMaterial.test(body)) yield { kind: "privateKey", start, end };
       pemBegin.lastIndex = end + footer.length;
       continue;
     }
     missing.add(footer);
     pemLines.lastIndex = start;
     const lines = pemLines.exec(text)?.[0].trimEnd() ?? "";
-    if (keyMaterial.test(lines)) {
-      yield { kind: "privateKey", start, end: start + lines.length, keep: 0, tail: false, fill: lineBreak(lines) + DOTS };
-    }
+    if (keyMaterial.test(lines)) yield { kind: "privateKey", start, end: start + lines.length };
     pemBegin.lastIndex = Math.max(pemBegin.lastIndex, start + lines.length);
   }
 }
@@ -166,7 +148,7 @@ export function isPlaceholder(value: string): boolean {
   const text = value.trim();
   if (text === "" || text.startsWith("$") || /\$[{(]|^%\w+%$/.test(text)) return true; // $VAR, ${VAR}, $(command), %VAR%
   if (/^<[^<>]*>$/.test(text) || /^\{\{.*\}\}$/.test(text)) return true; // <password>, {{ secret }}
-  if (/^(.)\1*$/.test(text) || /xxxx|\*\*\*|•|\.\.\.|…/i.test(text)) return true; // ******, sk-xxxx, sk_live_…, masked
+  if (/^(.)\1*$/.test(text) || /xxxx|\*\*\*|•|\.\.\.|…/i.test(text)) return true; // ******, sk-xxxx, sk_live_…, ••••
   if (/^your[-_ ]|[-_ ]here$/i.test(text)) return true; // your-api-key, put_it_here
   return placeholderWords.has(text.toLowerCase());
 }
@@ -183,7 +165,7 @@ function* awsSecrets(text: string): Iterable<Finding> {
     for (const match of text.matchAll(pattern)) {
       if (!check(match[3])) continue;
       const start = (match.index ?? 0) + match[1].length + match[2].length;
-      yield { kind: "aws", start, end: start + match[3].length, keep: 0, tail: true };
+      yield { kind: "aws", start, end: start + match[3].length };
     }
   }
 }
@@ -209,7 +191,7 @@ function* connectionPasswords(text: string): Iterable<Finding> {
     const password = authority.slice(colon + 1, at);
     if (isPlaceholder(decoded(password))) continue;
     const start = match.index + match[0].length - authority.length + colon + 1;
-    yield { kind: "connection", start, end: start + password.length, keep: 0, tail: false };
+    yield { kind: "connection", start, end: start + password.length };
   }
 }
 
@@ -224,7 +206,7 @@ function* otpSeeds(text: string): Iterable<Finding> {
     const parameter = (migration ? /[?&]data=([^&#]+)/i : /[?&]secret=([^&#]+)/i).exec(match[0]);
     if (!parameter || !(migration ? base64 : base32)(decoded(parameter[1]))) continue;
     const start = (match.index ?? 0) + parameter.index + parameter[0].length - parameter[1].length;
-    yield { kind: "otp", start, end: start + parameter[1].length, keep: 0, tail: false };
+    yield { kind: "otp", start, end: start + parameter[1].length };
   }
 }
 
@@ -248,7 +230,7 @@ function* exportSeeds(text: string): Iterable<Finding> {
       : base32(value) && otpKeys.test(text.slice(Math.max(0, index - NEAR), index + whole.length + NEAR));
     if (!seed) continue;
     const start = index + whole.length - 1 - value.length;
-    yield { kind: "otp", start, end: start + value.length, keep: 0, tail: false };
+    yield { kind: "otp", start, end: start + value.length };
   }
 }
 
@@ -272,7 +254,7 @@ function* envValues(text: string): Iterable<Finding> {
     const value = quoted ? raw.slice(1, -1) : raw;
     if (value.length < 6 || isPlaceholder(value) || value.toUpperCase() === name || (!quoted && codeValue.test(value))) continue;
     const start = (match.index ?? 0) + lead.length + key.length + equals.length + (quoted ? 1 : 0);
-    yield { kind: "env", start, end: start + value.length, keep: 0, tail: !/PASS/.test(name) };
+    yield { kind: "env", start, end: start + value.length };
   }
 }
 
@@ -288,13 +270,13 @@ function* jsonWebTokens(text: string): Iterable<Finding> {
       continue;
     }
     if (typeof (header as { alg?: unknown } | null)?.alg !== "string") continue;
-    yield { kind: "jwt", start: match.index, end: match.index + match[0].length, keep: 3, tail: true };
+    yield { kind: "jwt", start: match.index, end: match.index + match[0].length };
   }
 }
 
-// ---- Finding and masking ----
+// ---- Finding ----
 
-/** Most specific first: where two finds overlap, the earlier one wins, so a token in a .env line keeps its prefix. */
+/** Most specific first: where two finds overlap, the earlier one wins, so a token in a .env line counts as the token. */
 function detectors(options: Options): Detector[] {
   const list: Detector[] = [privateKeys, awsSecrets, prefixed, connectionPasswords, otpSeeds, exportSeeds, envValues];
   if (options.jwt) list.push(jsonWebTokens);
@@ -328,32 +310,15 @@ export function findSecrets(text: string, options: Options, first = false): Find
   return found;
 }
 
-/** `text` with each secret masked, such as `ghp_••••••••a1b2`: its prefix, and a long token's last four. */
-export function maskSecrets(text: string, findings: Finding[]): string {
-  let out = "";
-  let at = 0;
-  for (const finding of findings) {
-    const secret = text.slice(finding.start, finding.end);
-    const hidden = secret.slice(finding.keep);
-    const tail = finding.tail && hidden.length >= 16 ? hidden.slice(-4) : "";
-    out += text.slice(at, finding.start) + secret.slice(0, finding.keep) + (finding.fill ?? DOTS + tail);
-    at = finding.end;
-  }
-  return out + text.slice(at);
-}
-
 export const captureRules: CaptureRules = {
-  // Pure and quick: no yab calls, nothing awaited, nothing logged. What it finds goes nowhere but the masked copy.
+  // Pure and quick: no yab calls, nothing awaited, nothing logged, and what it finds goes nowhere. A copy with a secret
+  // is not stored; the clipboard is left as it is, so the paste the person is making still works.
   guard: {
     run(item, ctx): CaptureResult {
       const text = item.kind === "link" ? (item.url ?? item.text) : item.text;
       if (!text || text.length > LIMIT) return { keep: true };
-      const mask = ctx.preferences.mode === "mask";
-      const found = findSecrets(text, { jwt: ctx.preferences.jwt === true }, !mask);
-      if (found.length === 0) return { keep: true };
-      // Anything but "mask" drops the copy: an unknown value must never keep a secret.
-      if (!mask) return { ignore: true };
-      return { replace: { text: maskSecrets(text, found) } };
+      const found = findSecrets(text, { jwt: ctx.preferences.jwt === true }, true);
+      return found.length > 0 ? { ignore: true } : { keep: true };
     },
   },
 };

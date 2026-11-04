@@ -2,4 +2,4 @@
 
 ## 1.0.0
 
-- First version: keeps API keys, tokens, private keys, database passwords, `.env` secrets and two-factor seeds out of your history, or keeps them masked. JSON Web Tokens are optional.
+- First version: a copy that is or holds an API key, token, private key, database password, `.env` secret or two-factor seed still pastes normally, but is never written to your history. JSON Web Tokens are optional.

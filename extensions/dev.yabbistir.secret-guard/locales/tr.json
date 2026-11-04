@@ -2,10 +2,6 @@
   "name": "Sır Bekçisi",
   "description": "Kopyaladığın API anahtarlarını, özel anahtarları ve diğer gizli bilgileri geçmişin dışında tutar.",
   "guard.title": "Gizli bilgileri geçmişe alma",
-  "guard.description": "API anahtarlarını, token’ları, özel anahtarları, veritabanı şifrelerini ve iki adımlı doğrulama anahtarlarını kopyaladığın anda yakalar.",
-  "mode.title": "Kopyada gizli bilgi olduğunda",
-  "mode.drop": "Saklama",
-  "mode.mask": "Maskeleyip sakla",
-  "mode.confirm": "Maskelenmiş kopya panoda da gizli bilginin yerini alır; ⌘V gizli bilgiyi değil, maskeyi yapıştırır.",
+  "guard.description": "API anahtarı, token, özel anahtar, veritabanı şifresi ya da iki adımlı doğrulama anahtarı içeren bir kopya yine yapıştırılır ama hiç saklanmaz.",
   "jwt.title": "JSON Web Token’ları da gizli say"
 }

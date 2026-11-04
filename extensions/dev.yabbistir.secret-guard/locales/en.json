@@ -2,10 +2,6 @@
   "name": "Secret Guard",
   "description": "Keeps the API keys, private keys and other secrets you copy out of your history.",
   "guard.title": "Keep secrets out of history",
-  "guard.description": "Catches API keys, tokens, private keys, database passwords and two-factor seeds as you copy them.",
-  "mode.title": "When a copy holds a secret",
-  "mode.drop": "Don’t keep it",
-  "mode.mask": "Keep it masked",
-  "mode.confirm": "A masked copy also takes the secret’s place on your clipboard, so ⌘V pastes the mask, not the secret.",
+  "guard.description": "A copy with an API key, token, private key, database password or two-factor seed still pastes, but is never stored.",
   "jwt.title": "Treat JSON Web Tokens as secrets"
 }
