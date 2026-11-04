@@ -1,0 +1,37 @@
+{
+  "id": "dev.yabbistir.linear",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:checklist",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer", "productivity"],
+  "permissions": ["network"],
+  "network": { "domains": ["api.linear.app"] },
+  "preferences": [
+    { "id": "apiKey", "type": "secret", "title": "apiKey.title" },
+    { "id": "team", "type": "text", "title": "team.title" }
+  ],
+  "contributes": {
+    "actions": [
+      { "id": "link", "title": "link.title", "subtitle": "link.subtitle", "keywords": "link.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "link"],
+          "pattern": "^(?:[A-Z][A-Z0-9]{1,9}-[0-9]{1,6}|https://linear\\.app/[A-Za-z0-9_-]+/issue/[A-Z][A-Z0-9]{1,9}-[0-9]{1,6}(?:[/?#]\\S*)?)$" },
+        "output": "text" },
+      { "id": "create", "title": "create.title", "subtitle": "create.subtitle", "keywords": "create.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "pattern": "[\\p{L}\\p{N}]" },
+        "output": "text" }
+    ],
+    "sources": [
+      { "id": "issues", "title": "source.title", "actions": [
+        { "id": "url", "kind": "text", "title": "url.title", "label": "url.label",
+          "copyTitle": "url.copyTitle", "copied": "url.copied" },
+        { "id": "markdown", "kind": "text", "title": "markdown.title", "label": "markdown.label" }
+      ] }
+    ]
+  }
+}
