@@ -1,6 +1,6 @@
 {
   "name": "Bitwarden",
-  "description": "Bitwarden girişlerin bir sütunda. ↵ şifreyi, ⇧↵ kullanıcı adını yapıştırır; ikinci bir sütun TOTP kodlarını yapıştırır. bw ile çalışır; bw kasanın tamamını okuyabilir. Şifreler hiçbir yerde saklanmaz ve gösterilmez.",
+  "description": "Bitwarden kayıtların bir sütunda. ↵ şifreyi, ⇧↵ kullanıcı adını yapıştırır; ikinci bir sütun TOTP kodlarını yapıştırır. bw ile çalışır; bw kasanın tamamını okuyabilir. Şifreler hiçbir yerde saklanmaz ve gösterilmez.",
   "session.title": "Oturum anahtarı",
   "vault.title": "Bitwarden",
   "codes.title": "Bitwarden kodları",
@@ -21,9 +21,9 @@
   "gone": "Bu kayıt artık kasanda yok.",
   "noPassword": "Bu kayıtta yapıştırılacak bir şifre yok.",
   "noUsername": "Bu kayıtta kullanıcı adı yok.",
-  "noTotp": "Bu kayıtta doğrulayıcı anahtarı (TOTP) yok.",
+  "noTotp": "Bu kayıtta kimlik doğrulama anahtarı (TOTP) yok.",
   "premium": "TOTP kodları için Bitwarden Premium gerekiyor.",
   "totpFailed": "bw bu kaydın TOTP kodunu üretemedi.",
-  "reprompt": "Bu kayıt önce ana şifreni istiyor. Onu Bitwarden’da aç.",
-  "slow": "Bitwarden çok geç yanıt verdi. Yeniden dene."
+  "reprompt": "Bu kayıt önce ana şifreni istiyor. Bitwarden’da aç.",
+  "slow": "Bitwarden zamanında yanıt vermedi. Yeniden dene."
 }

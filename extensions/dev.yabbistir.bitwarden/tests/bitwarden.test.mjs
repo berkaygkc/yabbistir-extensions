@@ -23,7 +23,6 @@ const OTHER_KEY = "0ld" + "q".repeat(83) + "==";
 const TOTP_KEY = ["ORNE", "KORN", "EKOR", "NEKO"].join("");
 const PASSWORD = "s3cr3t-örnek";
 const CODE = "4920" + "39";
-const USER = "5a1d0c3e-7b2f-4e6a-9c1d-000000000abc";
 
 const ID = (n) => `0b6c1a2e-5f3d-4c1a-9e7b-${String(n).padStart(12, "0")}`;
 const login = (n, name, fields = {}, extra = {}) => ({
@@ -43,7 +42,7 @@ const ITEMS = [
   { ...login(7, "Kimlik"), type: 4, login: undefined, identity: { firstName: "Deniz" } },
   { ...login(8, "Anahtar"), type: 5, login: undefined, sshKey: { privateKey: PASSWORD } },
   login(9, "  ", { username: "deniz.k" }),
-  login(10, "İş\nportalı\tyeni", { username: "deniz.k", uris: [{ match: null, uri: "https://Is.Ornek.Dev/" }] }),
+  login(10, "İş\nportalı\tyeni", { username: "deniz.k", uris: [{ match: null, uri: "https://Is.Ornek.Dev/" }], totp: TOTP_KEY }),
   { ...login(11, "Bozuk", { username: "deniz.k" }), id: "x-11" },
   { ...login(12, "ornek.dev kopya", { username: "deniz.k" }), id: ID(1) },
   login(13, "Çöp", { username: "deniz.k" }, { deletedDate: "2026-01-02T00:00:00.000Z" }),
@@ -62,24 +61,28 @@ const VAULT_ROWS = [
   { id: ID(1), title: "ornek.dev", subtitle: "deniz.k" },
   { id: ID(4), title: "Sunucu", subtitle: "sunucu.ornek.dev" },
 ];
+/** Sunucu has a TOTP key too, but asks for the master password again: its code can never be pasted. */
 const CODE_ROWS = [
+  { id: ID(10), title: "İş portalı yeni", subtitle: "deniz.k · is.ornek.dev" },
   { id: ID(1), title: "ornek.dev", subtitle: "deniz.k" },
-  { id: ID(4), title: "Sunucu", subtitle: "sunucu.ornek.dev" },
 ];
+
+/** What `bw list items --response` prints for `items`, on one line. */
+const listAnswer = (items = ITEMS) => ({ exitCode: 0, stdout: JSON.stringify({ success: true, data: { object: "list", data: items.filter((item) => item.deletedDate === null) } }), stderr: "" });
 
 /**
  * A fake bw answering with --response as the real one does: `{ success, data }` or `{ success: false, message }` on
- * standard output, exit code 1 on a failure. Change `bw.state` to log out, lock, switch accounts or make one command
- * answer something else: `answers[command]` replaces the answer to `bw <command>` ("status", "list", "get item",
- * "get username", "get totp"), as an exec result or a function of the arguments.
+ * standard output, on one line (indented with --pretty), exit code 1 on a failure. Change `bw.state` to log out, lock
+ * or make one command answer something else: `answers[command]` replaces the answer to `bw <command>` ("status",
+ * "list", "get item", "get username", "get totp"), as an exec result or a function of the arguments.
  */
 function fakeBw(changes = {}) {
-  const state = { loggedIn: true, key: KEY, user: USER, items: ITEMS, premium: true, answers: {}, ...changes };
-  const respond = (body, exitCode = 0) => ({ exitCode, stdout: JSON.stringify(body, null, "  "), stderr: "" });
-  const ok = (data) => respond({ success: true, data });
-  const fail = (message) => respond({ success: false, message }, 1);
+  const state = { loggedIn: true, key: KEY, items: ITEMS, premium: true, answers: {}, ...changes };
   const blank = (value) => value === null || value === undefined || value.trim() === "";
   const bw = (args) => {
+    const respond = (body, exitCode = 0) => ({ exitCode, stdout: JSON.stringify(body, null, args.includes("--pretty") ? "  " : undefined), stderr: "" });
+    const ok = (data) => respond({ success: true, data });
+    const fail = (message) => respond({ success: false, message }, 1);
     const at = args.indexOf("--session");
     const unlocked = state.loggedIn && at !== -1 && args[at + 1] === state.key;
     const [command, what, id] = args;
@@ -89,7 +92,7 @@ function fakeBw(changes = {}) {
     if (command === "status") {
       return ok({ object: "template", template: {
         serverUrl: null, lastSync: state.loggedIn ? "2026-01-01T08:00:00.000Z" : null, userEmail: state.loggedIn ? "deniz.k@ornek.dev" : null,
-        userId: state.loggedIn ? state.user : null, status: !state.loggedIn ? "unauthenticated" : unlocked ? "unlocked" : "locked",
+        userId: state.loggedIn ? "5a1d0c3e-7b2f-4e6a-9c1d-000000000abc" : null, status: !state.loggedIn ? "unauthenticated" : unlocked ? "unlocked" : "locked",
       } });
     }
     if (!state.loggedIn) return fail("You are not logged in.");
@@ -122,7 +125,10 @@ const runs = (host) => host.calls.filter((call) => call.api === "exec" && call.a
 const commands = (host) => runs(host).map((args) => args.slice(0, args[0] === "status" ? 1 : 2).join(" "));
 const listings = (host) => commands(host).filter((command) => command === "list items").length;
 const settled = (promise) => promise.then(() => undefined, () => undefined);
-const OPTIONS = ["--session", KEY, "--nointeraction", "--response", "--pretty"];
+const OPTIONS = ["--session", KEY, "--nointeraction", "--response"];
+/** The one run without a key: `bw status`, to say whether to log in or to unlock. */
+const NO_KEY = ["--nointeraction", "--response"];
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 
 const NEEDS_KEY = { locked: true, message: "Unlock Bitwarden, then paste the session key in Settings", command: "bw unlock --raw" };
 const NOT_LOGGED_IN = { locked: true, message: "Log in to Bitwarden, then paste the session key in Settings", command: "bw login --raw" };
@@ -132,13 +138,13 @@ const SHOW_FAILED = "bw couldn’t read this item.";
 const LIST_FAILED = "bw couldn’t list the vault.";
 
 describe("list", () => {
-  test("lists the logins, favorites first, then by name", async () => {
+  test("lists the logins, favorites first, then by name, with one bw run", async () => {
     const host = hostWith(await newHelper(), fakeBw());
     assert.deepEqual(await host.list("vault"), { rows: VAULT_ROWS });
-    assert.deepEqual(runs(host), [["status", ...OPTIONS], ["list", "items", ...OPTIONS]]);
+    assert.deepEqual(runs(host), [["list", "items", ...OPTIONS]], "the listing answers for the lock itself");
   });
 
-  test("the codes column lists only the logins with a TOTP key", async () => {
+  test("the codes column lists the logins with a TOTP code to paste", async () => {
     const host = hostWith(await newHelper(), fakeBw());
     assert.deepEqual(await host.list("codes"), { rows: CODE_ROWS });
   });
@@ -164,6 +170,15 @@ describe("list", () => {
       ["iosapp://dev.ornek.app", undefined],
       ["bir not", undefined],
       ["", undefined],
+      // Text without a scheme is a host only when it looks like one; a PIN or a note is not.
+      ["4821", undefined],
+      ["pin:1234", undefined],
+      ["kapikodu", undefined],
+      ["Ev-alarmi-9921", undefined],
+      ["3.14", undefined],
+      ["192.168.1.10:8080", "192.168.1.10"],
+      ["localhost:3000", "localhost"],
+      ["http://intranet/", "intranet"],
     ];
     const items = uris.map(([uri], index) => login(100 + index, `Site ${index}`, { uris: [{ match: null, uri }] }));
     const host = hostWith(await newHelper(), fakeBw({ items }));
@@ -183,6 +198,15 @@ describe("list", () => {
       { id: ID(52), title: "Ornek", subtitle: "ornek.dev" },
       { id: ID(50), title: "Ornek.dev", subtitle: "deniz.k" },
       { id: ID(51), title: "ornek.dev" },
+    ] });
+  });
+
+  test("two logins with the same name are both listed, by id", async () => {
+    const items = [login(61, "Posta", { username: "deniz.k" }), login(60, "Posta", { username: "deniz.k@ornek.dev" })];
+    const host = hostWith(await newHelper(), fakeBw({ items }));
+    assert.deepEqual(await host.list("vault"), { rows: [
+      { id: ID(60), title: "Posta", subtitle: "deniz.k@ornek.dev" },
+      { id: ID(61), title: "Posta", subtitle: "deniz.k" },
     ] });
   });
 
@@ -219,19 +243,20 @@ describe("list", () => {
     assert.equal(listings(third), 1);
   });
 
-  test("another account's vault is read at once", async () => {
+  test("a new session key (another login, another account) reads the vault again at once", async () => {
     const sources = await newHelper();
     const bw = fakeBw();
     await hostWith(sources, bw).list("vault");
-    Object.assign(bw.state, { user: "5a1d0c3e-7b2f-4e6a-9c1d-000000000def", items: [login(30, "Başka", {})] });
-    const host = hostWith(sources, bw, { now: START + 1_000 });
+    Object.assign(bw.state, { key: OTHER_KEY, items: [login(30, "Başka", {})] });
+    const host = hostWith(sources, bw, { key: OTHER_KEY, now: START + 1_000 });
     assert.deepEqual(await host.list("vault"), { rows: [{ id: ID(30), title: "Başka" }] });
+    assert.deepEqual(commands(host), ["list items"]);
   });
 
   test("no session key: unlock first, or log in first, as bw's status says", async () => {
     const locked = hostWith(await newHelper(), fakeBw(), { key: null });
     assert.deepEqual(await locked.list("vault"), NEEDS_KEY);
-    assert.deepEqual(runs(locked), [["status", "--nointeraction", "--response", "--pretty"]], "status only, without a key");
+    assert.deepEqual(runs(locked), [["status", ...NO_KEY]], "status only, without a key");
 
     const loggedOut = hostWith(await newHelper(), fakeBw({ loggedIn: false }), { key: null });
     assert.deepEqual(await loggedOut.list("codes"), NOT_LOGGED_IN);
@@ -244,7 +269,9 @@ describe("list", () => {
   });
 
   test("a session key that is not one bw makes never reaches bw", async () => {
-    for (const key of ["not a key", "--help", "-k" + "k".repeat(40), "abc", `${KEY} --raw`, `${KEY}\n--quiet`, "k".repeat(2000)]) {
+    const masterPasswords = ["CorrectHorseBatteryStaple", "MasterPassword2026", "Korkusuz2024Parola", "a".repeat(87) + "=", "a".repeat(88)];
+    const others = ["not a key", "--help", "-k" + "k".repeat(85) + "==", "abc", KEY.slice(0, -2), `${KEY}=`, `${KEY} --raw`, `${KEY}\n--quiet`, "k".repeat(2000)];
+    for (const key of [...masterPasswords, ...others]) {
       const host = hostWith(await newHelper(), fakeBw(), { key });
       assert.deepEqual(await host.list("vault"), BAD_KEY, JSON.stringify(key));
       assert.deepEqual(runs(host), [], "bw never runs");
@@ -255,14 +282,14 @@ describe("list", () => {
     for (const key of [`  ${KEY}\n`, `$ export BW_SESSION="${KEY}"`, `> $env:BW_SESSION="${KEY}"`]) {
       const host = hostWith(await newHelper(), fakeBw(), { key });
       assert.deepEqual(await host.list("codes"), { rows: CODE_ROWS }, key);
-      assert.deepEqual(runs(host)[0], ["status", ...OPTIONS]);
+      assert.deepEqual(runs(host), [["list", "items", ...OPTIONS]]);
     }
   });
 
   test("not logged in", async () => {
     const host = hostWith(await newHelper(), fakeBw({ loggedIn: false }));
     assert.deepEqual(await host.list("vault"), NOT_LOGGED_IN);
-    assert.deepEqual(commands(host), ["status"], "nothing is listed");
+    assert.deepEqual(commands(host), ["list items"], "one run, which bw refuses");
   });
 
   test("an ended session key (bw lock, bw logout or a newer bw unlock) drops the rows", async () => {
@@ -281,7 +308,7 @@ describe("list", () => {
     assert.equal(listings(after), 1, "the rows are read again, well within five minutes");
   });
 
-  test("bw locking between its status and its list still answers locked", async () => {
+  test("bw's own lock answers to the listing give the locked row", async () => {
     for (const [message, expected] of [["Vault is locked.", EXPIRED], ["You are not logged in.", NOT_LOGGED_IN]]) {
       const answers = { list: { exitCode: 1, stdout: JSON.stringify({ success: false, message }), stderr: "" } };
       const host = hostWith(await newHelper(), fakeBw({ answers }));
@@ -313,23 +340,39 @@ describe("list", () => {
       { exitCode: 0, stdout: JSON.stringify({ success: true, data: { object: "list", data: "hepsi" } }), stderr: "" },
       { exitCode: 0, stdout: JSON.stringify({ data: [] }), stderr: "" },
       { exitCode: 0, stdout: "Node.js uyarısı\n" + JSON.stringify({ success: true, data: { object: "list", data: [] } }), stderr: "" },
+      // A whole success, but bw did not exit cleanly: not trusted.
+      { ...listAnswer(), exitCode: 1 },
     ];
     for (const list of broken) {
-      await assert.rejects(hostWith(await newHelper(), fakeBw({ answers: { list } })).list("vault"), { message: LIST_FAILED }, list.stdout);
+      await assert.rejects(hostWith(await newHelper(), fakeBw({ answers: { list } })).list("vault"), { message: LIST_FAILED }, list.stdout.slice(0, 60));
     }
-    for (const status of [{ exitCode: 0, stdout: "{", stderr: "" }, { exitCode: 0, stdout: JSON.stringify({ success: true, data: { object: "template", template: { status: "uyuyor" } } }), stderr: "" }]) {
-      const host = hostWith(await newHelper(), fakeBw({ answers: { status } }));
+    const statuses = [
+      { exitCode: 0, stdout: "{", stderr: "" },
+      { exitCode: 0, stdout: JSON.stringify({ success: true, data: { object: "template", template: { status: "uyuyor" } } }), stderr: "" },
+      { exitCode: 1, stdout: JSON.stringify({ success: true, data: { object: "template", template: { status: "unlocked" } } }), stderr: "" },
+    ];
+    for (const status of statuses) {
+      const sources = await newHelper();
+      const bw = fakeBw();
+      await hostWith(sources, bw).list("vault");
+      bw.state.answers = { status };
+      const host = hostWith(sources, bw, { now: START + 1_000 });
       await assert.rejects(host.list("vault"), { message: LIST_FAILED }, status.stdout);
       assert.deepEqual(commands(host), ["status"], "nothing is listed without a status");
     }
   });
 
-  test("bw's plain JSON, without --response's envelope, still lists", async () => {
+  test("a bare data array, and a status without its template, still read", async () => {
+    const sources = await newHelper();
     const answers = {
-      status: { exitCode: 0, stdout: JSON.stringify({ success: true, data: { status: "unlocked", userId: USER } }), stderr: "" },
+      status: { exitCode: 0, stdout: JSON.stringify({ success: true, data: { status: "unlocked" } }), stderr: "" },
       list: { exitCode: 0, stdout: JSON.stringify({ success: true, data: ITEMS.filter((item) => item.deletedDate === null) }), stderr: "" },
     };
-    assert.deepEqual(await hostWith(await newHelper(), fakeBw({ answers })).list("vault"), { rows: VAULT_ROWS });
+    const bw = fakeBw({ answers });
+    assert.deepEqual(await hostWith(sources, bw).list("vault"), { rows: VAULT_ROWS });
+    const warm = hostWith(sources, bw, { now: START + 1_000 });
+    assert.deepEqual(await warm.list("codes"), { rows: CODE_ROWS });
+    assert.deepEqual(commands(warm), ["status"]);
   });
 });
 
@@ -405,6 +448,23 @@ describe("run", () => {
     assert.ok(!commands(host).includes("get totp"));
     const named = hostWith(await newHelper(), fakeBw({ items: [login(41, "Korumalı", { username: "deniz.k" }, { reprompt: 1 })] }));
     assert.deepEqual(await named.runSource("vault", ID(41), "username"), { text: "deniz.k" }, "the username is not protected");
+  });
+
+  test("an item whose re-prompt setting is missing or unexpected counts as one that asks", async () => {
+    const { reprompt: _, ...absent } = login(42, "Alan yok", { username: "deniz.k", totp: TOTP_KEY });
+    const items = [absent, login(43, "İki", { username: "deniz.k", totp: TOTP_KEY }, { reprompt: 2 }),
+      login(44, "Metin", { username: "deniz.k", totp: TOTP_KEY }, { reprompt: "1" }), login(45, "Hiç", { username: "deniz.k", totp: TOTP_KEY }, { reprompt: null })];
+    const sources = await newHelper();
+    const host = hostWith(sources, fakeBw({ items }));
+    assert.equal((await host.list("vault")).rows.length, 4, "listed, for their usernames");
+    assert.deepEqual(await host.list("codes"), { rows: [] }, "no code to paste");
+    const message = "This item asks for your master password first. Open it in Bitwarden.";
+    for (const n of [42, 43, 44, 45]) {
+      await assert.rejects(host.runSource("vault", ID(n), "password"), { message }, String(n));
+      await assert.rejects(host.runSource("codes", ID(n), "code"), { message }, String(n));
+      assert.deepEqual(await host.runSource("vault", ID(n), "username"), { text: "deniz.k" });
+    }
+    assert.ok(!commands(host).includes("get totp"));
   });
 
   test("an item gone from the vault, or in the trash, says so", async () => {
@@ -486,8 +546,9 @@ describe("run", () => {
     }
   });
 
-  test("an answer that is not bw's JSON is refused", async () => {
-    for (const broken of [{ exitCode: 0, stdout: PASSWORD, stderr: "" }, { exitCode: 0, stdout: "", stderr: "" }, { exitCode: 0, stdout: "[]", stderr: "" }]) {
+  test("an answer that is not bw's JSON, or a success from a bw that failed, is refused", async () => {
+    const crashed = { exitCode: 1, stdout: JSON.stringify({ success: true, data: { ...ITEMS[0], object: "item", data: PASSWORD } }), stderr: "" };
+    for (const broken of [{ exitCode: 0, stdout: PASSWORD, stderr: "" }, { exitCode: 0, stdout: "", stderr: "" }, { exitCode: 0, stdout: "[]", stderr: "" }, crashed]) {
       const host = hostWith(await newHelper(), fakeBw({ answers: { "get item": broken, "get username": broken } }));
       await assert.rejects(host.runSource("vault", ID(1), "password"), { message: SHOW_FAILED });
       await assert.rejects(host.runSource("vault", ID(1), "username"), { message: SHOW_FAILED });
@@ -495,21 +556,116 @@ describe("run", () => {
   });
 });
 
+describe("both columns at once", () => {
+  /** An answer to `bw list items` that waits until `release()`. */
+  function held() {
+    let release;
+    const gate = new Promise((resolve) => (release = resolve));
+    return { answer: () => gate.then(() => listAnswer()), release: () => release() };
+  }
+  /** The signals bw got, run by run. */
+  function signalsOf(host) {
+    const signals = [];
+    const exec = host.yab.exec;
+    host.yab.exec = (tool, args, options) => {
+      signals.push(options?.signal);
+      return exec(tool, args, options);
+    };
+    return signals;
+  }
+
+  test("a panel opening with no rows in hand lists once for both columns", async () => {
+    const host = hostWith(await newHelper(), fakeBw());
+    assert.deepEqual(await Promise.all([host.list("vault"), host.list("codes")]), [{ rows: VAULT_ROWS }, { rows: CODE_ROWS }]);
+    assert.deepEqual(commands(host), ["list items"]);
+  });
+
+  test("a panel opening with rows in hand checks the lock once for both columns", async () => {
+    const sources = await newHelper();
+    const bw = fakeBw();
+    await hostWith(sources, bw).list("vault");
+    const host = hostWith(sources, bw, { now: START + 1_000 });
+    assert.deepEqual(await Promise.all([host.list("vault"), host.list("codes")]), [{ rows: VAULT_ROWS }, { rows: CODE_ROWS }]);
+    assert.deepEqual(commands(host), ["status"]);
+  });
+
+  test("both columns see the same lock", async () => {
+    const host = hostWith(await newHelper(), fakeBw({ key: OTHER_KEY }));
+    assert.deepEqual(await Promise.all([host.list("vault"), host.list("codes")]), [EXPIRED, EXPIRED]);
+    assert.deepEqual(commands(host), ["list items"]);
+  });
+
+  test("one column's cancel leaves bw running for the other", async () => {
+    const sources = await newHelper();
+    const list = held();
+    const bw = fakeBw({ answers: { list: list.answer } });
+    const first = hostWith(sources, bw);
+    const second = hostWith(sources, bw);
+    const signals = signalsOf(first);
+    const vault = first.list("vault");
+    await nextTurn();
+    const codes = second.list("codes");
+    await nextTurn();
+    second.cancel();
+    await assert.rejects(codes, { code: "cancelled" });
+    assert.equal(signals[0].aborted, false, "bw is not stopped while the other column waits");
+    list.release();
+    assert.deepEqual(await vault, { rows: VAULT_ROWS });
+    assert.equal(listings(first), 1);
+    assert.equal(listings(second), 0, "the second column ran no bw of its own");
+  });
+
+  test("when the column that started bw is cancelled, the other runs it again", async () => {
+    const sources = await newHelper();
+    let started = 0;
+    const bw = fakeBw({ answers: { list: () => (++started === 1 ? new Promise(() => {}) : listAnswer()) } });
+    const first = hostWith(sources, bw);
+    const second = hostWith(sources, bw);
+    const vault = first.list("vault");
+    await nextTurn();
+    const codes = second.list("codes");
+    await nextTurn();
+    first.cancel();
+    await assert.rejects(vault, { code: "cancelled" });
+    assert.deepEqual(await codes, { rows: CODE_ROWS });
+    assert.equal(listings(second), 1);
+  });
+
+  test("when every column has gone, bw is stopped, and the next opening starts afresh", async () => {
+    const sources = await newHelper();
+    const bw = fakeBw({ answers: { list: () => new Promise(() => {}) } });
+    const host = hostWith(sources, bw);
+    const signals = signalsOf(host);
+    const both = [host.list("vault"), host.list("codes")];
+    await nextTurn();
+    host.cancel();
+    for (const listing of both) await assert.rejects(listing, { code: "cancelled" });
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].aborted, true);
+    bw.state.answers = {};
+    const after = hostWith(sources, bw);
+    assert.deepEqual(await after.list("codes"), { rows: CODE_ROWS });
+    assert.equal(listings(after), 1);
+  });
+});
+
 describe("time", () => {
   /** A bw whose `command` answers only once cancelled. */
   const slowAt = (command) => fakeBw({ answers: { [command]: () => new Promise(() => {}) } });
-  const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
 
   test("a bw that takes too long is stopped before the app's limit, and says so", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout"] });
     const slow = "Bitwarden took too long to answer. Try again.";
-    for (const [command, call] of [
+    for (const [command, call, warm] of [
       ["get item", (host) => host.runSource("vault", ID(1), "password")],
       ["get totp", (host) => host.runSource("codes", ID(1), "code")],
       ["list", (host) => host.list("vault")],
-      ["status", (host) => host.list("codes")],
+      ["status", (host) => host.list("codes"), true],
     ]) {
-      const host = hostWith(await newHelper(), slowAt(command));
+      const sources = await newHelper();
+      // `bw status` runs only with rows in hand.
+      if (warm) await hostWith(sources, fakeBw()).list("vault");
+      const host = hostWith(sources, slowAt(command), { now: START + 1_000 });
       const running = call(host);
       for (let turn = 0; turn < 5; turn++) await nextTurn();
       t.mock.timers.tick(8_999);
@@ -570,7 +726,7 @@ describe("everywhere", () => {
     await on({ key: OTHER_KEY }, (host) => host.list("vault"));
     await on({}, (host) => host.list("vault"), { key: `${KEY} --raw` });
     await on({ answers: { list: leaky } }, (host) => host.list("vault"));
-    await on({ answers: { status: leaky } }, (host) => host.list("codes"));
+    await on({ answers: { status: leaky } }, (host) => host.list("codes"), { sources });
     await on({}, async (host) => [
       await host.runSource("vault", ID(1), "password"),
       await host.runSource("vault", ID(1), "username"),
@@ -602,12 +758,20 @@ describe("everywhere", () => {
   test("the session key never reaches a row, a locked row, a message or a value; only bw's --session option", async () => {
     const { hosts, outcomes } = await everyPath();
     assert.ok(!JSON.stringify(outcomes).includes(KEY));
+    let keyed = 0;
     for (const host of hosts) {
       for (const args of runs(host)) {
-        const at = args.indexOf(KEY);
-        assert.ok(at === -1 || (args[at - 1] === "--session" && args.lastIndexOf(KEY) === at), JSON.stringify(args.slice(0, 3)));
+        const label = JSON.stringify(args.slice(0, 3));
+        if (!args.includes("--session")) {
+          assert.deepEqual(args, ["status", ...NO_KEY], "only the status without a key runs without one");
+          continue;
+        }
+        keyed++;
+        assert.equal(args.filter((arg) => arg.includes(KEY)).length, 1, label);
+        assert.equal(args[args.indexOf("--session") + 1], KEY, label);
       }
     }
+    assert.ok(keyed > 10);
   });
 
   test("passwords and codes are answers only: never in a row or a message", async () => {
@@ -630,7 +794,7 @@ describe("everywhere", () => {
     await host.runSource("vault", ID(1), "password");
     await host.runSource("codes", ID(1), "code");
     await host.runSource("vault", ID(1), "username");
-    assert.equal(signals.length, 6);
+    assert.equal(signals.length, 5, "one for the list, two for the code, one each for the password and username");
     assert.ok(signals.every((signal) => signal instanceof AbortSignal));
   });
 
@@ -647,9 +811,9 @@ describe("everywhere", () => {
     const host = hostWith(await newHelper(), fakeBw({ premium: false }), tr);
     await assert.rejects(host.runSource("vault", ID(3), "password"), { message: "Bu kayıtta yapıştırılacak bir şifre yok." });
     await assert.rejects(host.runSource("vault", ID(3), "username"), { message: "Bu kayıtta kullanıcı adı yok." });
-    await assert.rejects(host.runSource("codes", ID(2), "code"), { message: "Bu kayıtta doğrulayıcı anahtarı (TOTP) yok." });
+    await assert.rejects(host.runSource("codes", ID(2), "code"), { message: "Bu kayıtta kimlik doğrulama anahtarı (TOTP) yok." });
     await assert.rejects(host.runSource("codes", ID(1), "code"), { message: "TOTP kodları için Bitwarden Premium gerekiyor." });
-    await assert.rejects(host.runSource("vault", ID(4), "password"), { message: "Bu kayıt önce ana şifreni istiyor. Onu Bitwarden’da aç." });
+    await assert.rejects(host.runSource("vault", ID(4), "password"), { message: "Bu kayıt önce ana şifreni istiyor. Bitwarden’da aç." });
     await assert.rejects(host.runSource("vault", ID(99), "password"), { message: "Bu kayıt artık kasanda yok." });
     await assert.rejects(host.runSource("vault", "x", "password"), { message: "bw bu kaydı okuyamadı." });
     await assert.rejects(hostWith(await newHelper(), fakeBw({ answers: { list: { exitCode: 1, stdout: "", stderr: "" } } }), tr).list("vault"), { message: "bw kasayı listeleyemedi." });
