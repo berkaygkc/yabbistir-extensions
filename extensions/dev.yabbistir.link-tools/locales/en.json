@@ -3,17 +3,30 @@
   "description": "Shows where a short link goes, and makes short links.",
   "tag": "Short link",
   "expand.title": "Expand short link",
-  "expand.keywords": ["expand", "unshorten", "short", "link", "destination", "redirect"],
+  "expand.keywords": [
+    "expand",
+    "unshorten",
+    "short",
+    "link",
+    "destination",
+    "redirect"
+  ],
   "shorten.title": "Shorten with is.gd",
-  "shorten.keywords": ["shorten", "short", "link", "isgd", "url"],
-  "notShort": "This is not a known short link.",
+  "shorten.keywords": [
+    "shorten",
+    "short",
+    "link",
+    "isgd",
+    "url"
+  ],
+  "notShort": "This is not an is.gd or v.gd link.",
   "noLink": "There is no link to shorten.",
   "tooMany": "This short link hops through more than 5 short links.",
   "loop": "This short link leads back to itself.",
-  "noRedirect": "This short link did not say where it goes.",
-  "blocked": "Couldn’t read where this link goes. Its service sends the app straight to the destination, which Link Tools may not follow.",
   "lookupFailed": "is.gd couldn’t find where this link goes.",
   "rateLimit": "is.gd is busy. Try again in a minute.",
   "shortenFailed": "is.gd couldn’t shorten this link.",
-  "badLocation": "The short link points to something that is not a web link."
+  "badLocation": "The short link points to something that is not a web link.",
+  "alreadyShort": "This link is already short.",
+  "hasCredentials": "This link contains a username or password, so it is not sent to is.gd."
 }

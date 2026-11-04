@@ -17,26 +17,8 @@
   ],
   "network": {
     "domains": [
-      "amzn.to",
-      "bit.do",
-      "bit.ly",
-      "buff.ly",
-      "cutt.ly",
-      "fb.me",
-      "ift.tt",
       "is.gd",
-      "lnkd.in",
-      "ow.ly",
-      "rb.gy",
-      "rebrand.ly",
-      "s.id",
-      "shorturl.at",
-      "t.co",
-      "t.ly",
-      "tiny.cc",
-      "tinyurl.com",
-      "v.gd",
-      "wp.me"
+      "v.gd"
     ]
   },
   "contributes": {
@@ -80,7 +62,7 @@
             "link",
             "text"
           ],
-          "pattern": "(?i)^\\s*https?://([a-z0-9-]+\\.)*(bit\\.ly|t\\.co|tinyurl\\.com|ow\\.ly|buff\\.ly|lnkd\\.in|is\\.gd|v\\.gd|rebrand\\.ly|cutt\\.ly|rb\\.gy|t\\.ly|tiny\\.cc|shorturl\\.at|s\\.id|amzn\\.to|fb\\.me|ift\\.tt|bit\\.do|wp\\.me)(:[0-9]+)?([/?#]|\\s*$)"
+          "pattern": "(?i)^\\s*https?://([a-z0-9-]+\\.)*(is\\.gd|v\\.gd)(:[0-9]+)?([/?#]|\\s*$)"
         },
         "validate": true
       }

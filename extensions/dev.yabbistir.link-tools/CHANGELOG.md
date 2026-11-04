@@ -2,4 +2,4 @@
 
 ## 1.0.0
 
-- First version: Expand short link, Shorten with is.gd, and a "Short link" tag on links from known shorteners.
+- First version: Expand short link and Shorten with is.gd for is.gd and v.gd links, and a "Short link" tag on them.

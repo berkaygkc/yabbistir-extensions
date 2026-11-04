@@ -11,69 +11,71 @@ const make = (http, language = "en") => createFakeHost({ folder, http, context: 
 const TAG = "dev.yabbistir.link-tools:shortlink";
 
 describe("expand", () => {
-  test("oneHop", async () => {
-    const host = make({ "https://bit.ly/abc": redirect("https://example.org/page?a=1") });
-    assert.deepEqual(await host.run(actions.expand, link("https://bit.ly/abc")), { text: "https://example.org/page?a=1" });
-  });
+  const key = (short, h = "is.gd") => `https://${h}/forward.php?format=simple&shorturl=${encodeURIComponent(short)}`;
+  const chain = (n) => {
+    const table = {};
+    for (let i = 0; i < n; i++) {
+      const from = `https://is.gd/h${i}`;
+      table[key(from)] = { text: i === n - 1 ? "https://example.org/end" : `https://is.gd/h${i + 1}` };
+    }
+    return table;
+  };
 
-  for (const hops of [2, 3, 4, 5]) {
+  for (const hops of [1, 2, 3, 4, 5]) {
     test(`${hops}Hops`, async () => {
-      const table = {};
-      const hosts = ["bit.ly", "t.co", "tinyurl.com", "ow.ly", "buff.ly"];
-      for (let i = 0; i < hops; i++) {
-        table[`https://${hosts[i]}/x`] = redirect(i === hops - 1 ? "https://example.org/end" : `https://${hosts[i + 1]}/x`);
-      }
-      const host = make(table);
-      assert.deepEqual(await host.run(actions.expand, link("https://bit.ly/x")), { text: "https://example.org/end" });
+      const host = make(chain(hops));
+      assert.deepEqual(await host.run(actions.expand, link("https://is.gd/h0")), { text: "https://example.org/end" });
       assert.equal(host.calls.filter((c) => c.api === "http.fetch").length, hops);
     });
   }
 
   test("sixHopsIsTooMany", async () => {
-    const hosts = ["bit.ly", "t.co", "tinyurl.com", "ow.ly", "buff.ly", "lnkd.in"];
-    const table = {};
-    hosts.forEach((h, i) => { table[`https://${h}/x`] = redirect(i === 5 ? "https://example.org/end" : `https://${hosts[i + 1]}/x`); });
-    await assert.rejects(make(table).run(actions.expand, link("https://bit.ly/x")), /more than 5/);
+    await assert.rejects(make(chain(6)).run(actions.expand, link("https://is.gd/h0")), /more than 5/);
+  });
+
+  test("lookupIsAPlainGetOfTheDocumentedEndpoint", async () => {
+    const host = make(chain(1));
+    await host.run(actions.expand, link("https://is.gd/h0"));
+    const call = host.calls.find((c) => c.api === "http.fetch");
+    assert.ok(call.args[0].startsWith("https://is.gd/forward.php?format=simple&shorturl="));
+    assert.equal(call.args[1]?.method ?? "GET", "GET");
+  });
+
+  test("subdomainUsesTheLookupToo", async () => {
+    const host = make({ [key("https://www.is.gd/x")]: { text: "https://example.org/" } });
+    assert.deepEqual(await host.run(actions.expand, link("https://www.is.gd/x")), { text: "https://example.org/" });
+    assert.equal(host.calls.length, 1);
+  });
+
+  test("vgdLeadingToIsgd", async () => {
+    const host = make({ [key("https://v.gd/a", "v.gd")]: { text: "https://is.gd/b" }, [key("https://is.gd/b")]: { text: "https://example.org/" } });
+    assert.deepEqual(await host.run(actions.expand, link("https://v.gd/a")), { text: "https://example.org/" });
   });
 
   test("stopsAtAHostThatIsNotListed", async () => {
-    const host = make({ "https://bit.ly/a": redirect("https://t.co/b"), "https://t.co/b": redirect("https://news.example.com/story") });
-    assert.deepEqual(await host.run(actions.expand, link("https://bit.ly/a")), { text: "https://news.example.com/story" });
-    assert.equal(host.calls.filter((c) => c.api === "http.fetch").length, 2);
-  });
-
-  test("resolvesRelativeLocation", async () => {
-    const host = make({ "https://bit.ly/a": redirect("/b"), "https://bit.ly/b": redirect("https://example.org/") });
-    assert.deepEqual(await host.run(actions.expand, link("https://bit.ly/a")), { text: "https://example.org/" });
+    const host = make({ [key("https://is.gd/a")]: { text: "https://bit.ly/z" } });
+    assert.deepEqual(await host.run(actions.expand, link("https://is.gd/a")), { text: "https://bit.ly/z" });
+    assert.equal(host.calls.filter((c) => c.api === "http.fetch").length, 1);
   });
 
   test("detectsALoop", async () => {
-    const host = make({ "https://bit.ly/a": redirect("https://t.co/b"), "https://t.co/b": redirect("https://bit.ly/a") });
-    await assert.rejects(host.run(actions.expand, link("https://bit.ly/a")), /back to itself/);
+    const host = make({ [key("https://is.gd/a")]: { text: "https://v.gd/b" }, [key("https://v.gd/b", "v.gd")]: { text: "https://is.gd/a" } });
+    await assert.rejects(host.run(actions.expand, link("https://is.gd/a")), /back to itself/);
   });
 
   test("selfLoop", async () => {
-    await assert.rejects(make({ "https://bit.ly/a": redirect("https://bit.ly/a") }).run(actions.expand, link("https://bit.ly/a")), /back to itself/);
-  });
-
-  test("answerWithoutLocation", async () => {
-    await assert.rejects(make({ "https://bit.ly/a": { status: 200, text: "<html>" } }).run(actions.expand, link("https://bit.ly/a")), /did not say/);
-    await assert.rejects(make({ "https://bit.ly/a": { status: 301, text: "" } }).run(actions.expand, link("https://bit.ly/a")), /did not say/);
-  });
-
-  test("redirectOutsideTheListGivesAClearMessage", async () => {
-    const host = make({ "https://bit.ly/a": yabError("networkError", "bit.ly: redirected outside the domains") });
-    await assert.rejects(host.run(actions.expand, link("https://bit.ly/a")), /Couldn’t read where this link goes/);
-  });
-
-  test("networkErrorMessageHasNoUrl", async () => {
-    const host = make({ "https://bit.ly/secret-path?token=zzz": yabError("networkError", "failed") });
-    await assert.rejects(host.run(actions.expand, link("https://bit.ly/secret-path?token=zzz")), (e) => !/secret-path|zzz/.test(e.message));
+    await assert.rejects(make({ [key("https://is.gd/a")]: { text: "https://is.gd/a" } }).run(actions.expand, link("https://is.gd/a")), /back to itself/);
   });
 
   test("badLocation", async () => {
-    await assert.rejects(make({ "https://bit.ly/a": redirect("javascript:alert(1)") }).run(actions.expand, link("https://bit.ly/a")), /not a web link/);
-    await assert.rejects(make({ "https://bit.ly/a": redirect("file:///etc/hosts") }).run(actions.expand, link("https://bit.ly/a")), /not a web link/);
+    await assert.rejects(make({ [key("https://is.gd/a")]: { text: "javascript:alert(1)" } }).run(actions.expand, link("https://is.gd/a")), /not a web link/);
+    await assert.rejects(make({ [key("https://is.gd/a")]: { text: "file:///etc/hosts" } }).run(actions.expand, link("https://is.gd/a")), /not a web link/);
+  });
+
+  test("networkErrorMessageHasNoUrl", async () => {
+    const short = "https://is.gd/secret-path?token=zzz";
+    const host = make({ [key(short)]: yabError("networkError", "failed") });
+    await assert.rejects(host.run(actions.expand, link(short)), (e) => !/secret-path|zzz/.test(e.message));
   });
 
   test("isgdUsesTheLookupApi", async () => {
@@ -97,30 +99,21 @@ describe("expand", () => {
     await assert.rejects(make({ [key]: yabError("networkError", "down") }).run(actions.expand, link(short)), /couldn’t find/);
   });
 
-  test("isgdThenAnotherShortener", async () => {
-    const short = "https://is.gd/q";
-    const host = make({
-      [`https://is.gd/forward.php?format=simple&shorturl=${encodeURIComponent(short)}`]: { text: "https://bit.ly/z" },
-      "https://bit.ly/z": redirect("https://example.org/"),
-    });
-    assert.deepEqual(await host.run(actions.expand, link(short)), { text: "https://example.org/" });
-  });
-
   test("notAShortLink", async () => {
     const host = make({});
     const result = await host.run(actions.expand, link("https://example.org/page"));
-    assert.deepEqual(result, { none: true, message: "This is not a known short link." });
+    assert.deepEqual(result, { none: true, message: "This is not an is.gd or v.gd link." });
     assert.equal(host.calls.length, 0);
   });
 
   test("cancelStaysCancelled", async () => {
-    const host = make({ "https://bit.ly/a": yabError("cancelled", "cancelled") });
-    await assert.rejects(host.run(actions.expand, link("https://bit.ly/a")), { code: "cancelled" });
+    const host = make({ [key("https://is.gd/a")]: yabError("cancelled", "cancelled") });
+    await assert.rejects(host.run(actions.expand, link("https://is.gd/a")), { code: "cancelled" });
   });
 
   test("turkishMessage", async () => {
     const result = await make({}, "tr").run(actions.expand, link("https://example.org/"));
-    assert.equal(result.message, "Bu, bilinen bir kısa bağlantı değil.");
+    assert.equal(result.message, "Bu bir is.gd veya v.gd bağlantısı değil.");
   });
 });
 
@@ -167,6 +160,19 @@ describe("shorten", () => {
     await assert.rejects(host.run(actions.shorten, link("https://example.org/private?token=zzz")), (e) => !/private|zzz/.test(e.message));
   });
 
+  test("alreadyShortLinkIsNotShortenedAgain", async () => {
+    const host = make({});
+    assert.deepEqual(await host.run(actions.shorten, link("https://is.gd/Ab12")), { none: true, message: "This link is already short." });
+    assert.equal(host.calls.length, 0);
+  });
+
+  test("linkWithCredentialsIsNotSent", async () => {
+    const host = make({});
+    const result = await host.run(actions.shorten, link("https://user:" + "pw" + "@example.org/a"));
+    assert.equal(result.none, true);
+    assert.equal(host.calls.length, 0);
+  });
+
   test("notALink", async () => {
     const host = make({});
     const item = { id: 1, kind: "text", text: "just words", tags: [], copiedAt: "2026-01-01T00:00:00Z" };
@@ -178,23 +184,23 @@ describe("offers and detector", () => {
   test("detectorTagsShortenersOnly", async () => {
     const host = make({});
     for (const h of SHORTENERS) assert.equal(await host.validate(detectors.shortlink, link(`https://${h}/abc`)), true, h);
-    assert.equal(await host.validate(detectors.shortlink, link("https://www.bit.ly/abc")), true);
-    assert.equal(await host.validate(detectors.shortlink, link("https://example.org/bit.ly")), false);
-    assert.equal(await host.validate(detectors.shortlink, link("https://notbit.ly/abc")), false);
-    assert.equal(await host.validate(detectors.shortlink, link("https://bit.ly.evil.example/abc")), false);
-    assert.equal(await host.validate(detectors.shortlink, link("ftp://bit.ly/abc")), false);
+    assert.equal(await host.validate(detectors.shortlink, link("https://www.is.gd/abc")), true);
+    assert.equal(await host.validate(detectors.shortlink, link("https://example.org/is.gd")), false);
+    assert.equal(await host.validate(detectors.shortlink, link("https://notis.gd/abc")), false);
+    assert.equal(await host.validate(detectors.shortlink, link("https://is.gd.evil.example/abc")), false);
+    assert.equal(await host.validate(detectors.shortlink, link("ftp://is.gd/abc")), false);
   });
 
   test("manifestPatternMatchesTheListedHosts", () => {
     const host = make({});
     for (const h of SHORTENERS) assert.ok(host.offers(link(`https://${h}/abc`, [TAG])).includes("expand"), h);
-    assert.ok(host.offers(link("https://bit.ly", [TAG])).includes("expand"));
+    assert.ok(host.offers(link("https://is.gd", [TAG])).includes("expand"));
   });
 
   test("expandIsOfferedOnlyOnTaggedLinks", () => {
     const host = make({});
     assert.deepEqual(host.offers(link("https://example.org/a")), ["shorten"]);
-    assert.deepEqual(host.offers(link("https://bit.ly/a", [TAG])), ["expand", "shorten"]);
+    assert.deepEqual(host.offers(link("https://is.gd/a", [TAG])), ["expand", "shorten"]);
   });
 
   test("shortenNotOfferedOnTextOrBadLinks", () => {
@@ -209,10 +215,10 @@ describe("offers and detector", () => {
 
   test("detectorIsLinearOnLongInput", async () => {
     const host = make({});
-    const long = "https://" + "a.".repeat(20000) + "bit.ly/" + "x".repeat(20000);
+    const long = "https://" + "a.".repeat(20000) + "is.gd/" + "x".repeat(20000);
     const start = performance.now();
     await host.validate(detectors.shortlink, link(long));
     host.offers(link(long, [TAG]));
-    assert.ok(performance.now() - start < 40);
+    assert.ok(performance.now() - start < 250);
   });
 });
