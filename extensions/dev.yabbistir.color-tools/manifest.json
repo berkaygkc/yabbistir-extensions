@@ -1,0 +1,42 @@
+{
+  "id": "dev.yabbistir.color-tools",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:eyedropper",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "minAppVersion": "0.4.0",
+  "categories": ["developer"],
+  "contributes": {
+    "actions": [
+      { "id": "lighter", "title": "lighter.title", "keywords": "lighter.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true,
+        "variants": [
+          { "id": "10", "title": "lighter10.title" },
+          { "id": "20", "title": "lighter20.title" },
+          { "id": "30", "title": "lighter30.title" }
+        ] },
+      { "id": "darker", "title": "darker.title", "keywords": "darker.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true,
+        "variants": [
+          { "id": "10", "title": "darker10.title" },
+          { "id": "20", "title": "darker20.title" },
+          { "id": "30", "title": "darker30.title" }
+        ] },
+      { "id": "complementary", "title": "complementary.title", "keywords": "complementary.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true },
+      { "id": "inverted", "title": "inverted.title", "keywords": "inverted.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true },
+      { "id": "grayscale", "title": "grayscale.title", "keywords": "grayscale.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true },
+      { "id": "tailwind", "title": "tailwind.title", "keywords": "tailwind.keywords", "input": "item",
+        "accepts": { "kinds": ["color"] }, "output": "text", "hint": true }
+    ],
+    "detectors": [
+      { "id": "color", "tag": "tag", "accepts": { "kinds": ["color"] }, "validate": true, "preview": true }
+    ]
+  }
+}
