@@ -1,0 +1,7 @@
+{
+  "name": "Sır Bekçisi",
+  "description": "Kopyaladığın API anahtarlarını, özel anahtarları ve diğer gizli bilgileri geçmişin dışında tutar.",
+  "guard.title": "Gizli bilgileri geçmişin dışında tut",
+  "guard.description": "API anahtarı, token, özel anahtar, veritabanı şifresi ya da iki adımlı doğrulama anahtarı içeren bir kopya yine yapıştırılır ama hiç saklanmaz.",
+  "jwt.title": "JSON Web Token’ları da gizli say"
+}
