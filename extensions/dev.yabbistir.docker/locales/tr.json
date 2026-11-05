@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "Docker konteynerların bir sütunda. ↵ adı, ⇧↵ bir docker exec komutunu yapıştırır. Docker Desktop, OrbStack ve Colima ile çalışır.",
+  "all.title": "Durdurulmuş konteynerları da göster",
+  "source.title": "Konteynerlar",
+  "name.title": "Adı yapıştır",
+  "name.label": "Ad",
+  "name.copyTitle": "Adı kopyala",
+  "name.copied": "Ad kopyalandı.",
+  "exec.title": "Exec komutunu yapıştır",
+  "exec.label": "Exec komutu",
+  "locked": "Docker çalışmıyor",
+  "denied": "Docker erişimi reddetti",
+  "listFailed": "Docker konteynerları listeleyemedi.",
+  "badRow": "Bu konteyner kullanılamıyor.",
+  "morePorts": "+{count}"
+}
