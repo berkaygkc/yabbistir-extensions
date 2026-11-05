@@ -1,0 +1,27 @@
+{
+  "id": "dev.yabbistir.symbols",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:command",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["text"],
+  "contributes": {
+    "sources": [
+      { "id": "symbols", "title": "symbols.title", "actions": [
+        { "id": "paste", "kind": "text", "title": "symbols.paste.title", "label": "symbols.paste.label",
+          "copyTitle": "symbols.paste.copyTitle", "copied": "symbols.paste.copied" },
+        { "id": "entity", "kind": "text", "title": "symbols.entity.title", "label": "symbols.entity.label" }
+      ] },
+      { "id": "kaomoji", "title": "kaomoji.title", "actions": [
+        { "id": "paste", "kind": "text", "title": "kaomoji.paste.title", "label": "kaomoji.paste.label",
+          "copyTitle": "kaomoji.paste.copyTitle", "copied": "kaomoji.paste.copied" },
+        { "id": "markdown", "kind": "text", "title": "kaomoji.markdown.title", "label": "kaomoji.markdown.label" }
+      ] }
+    ]
+  }
+}
