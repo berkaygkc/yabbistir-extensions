@@ -24,7 +24,8 @@ Every pull request is read against this list before it is merged. Authors: go th
 - [ ] Each tool in `requires.tools` is needed, named by its bare command, with an `install` command that works (`brew install …`).
 - [ ] **Arguments are fixed or checked by the extension.** Anything that comes from the item (a link, a file name, text) is one argument, after `--` when the tool accepts it, so it can never be read as an option.
 - [ ] No option that runs another program, reads a config file from elsewhere or writes outside the work folder (for yt-dlp: no `--exec`, `--config-locations`, `--batch-file`, `--netrc`), unless the reason is in the pull request.
-- [ ] No shell (`sh`, `bash`, `zsh`, `osascript`) as a tool.
+- [ ] No shell (`sh`, `bash`, `zsh`) as a tool.
+- [ ] `osascript` only with a script written in the extension's code, the same on every run: never one built from the item, a preference or anything else. The item's content reaches the script only as arguments (`on run argv`), after `--`. The README names the apps the script talks to; macOS asks the person once for each app, and only yabbistir 0.4.1 or later can ask.
 - [ ] The exit code is checked; output is parsed, not trusted.
 - [ ] Cancelling stops the tool: `ctx.signal` is passed to `yab.exec`.
 
