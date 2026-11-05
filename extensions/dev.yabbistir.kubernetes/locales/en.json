@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "The pods of your current Kubernetes context as a column. ↵ pastes the pod name, ⇧↵ a kubectl logs or exec command. Uses kubectl.",
+  "source.title": "Pods",
+  "name.title": "Paste pod name",
+  "name.label": "Pod name",
+  "name.copyTitle": "Copy pod name",
+  "name.copied": "Pod name copied.",
+  "command.title": "Paste kubectl command",
+  "command.label": "Command",
+  "namespace.title": "Namespace (empty for all)",
+  "shift.title": "⇧↵ pastes",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "No Kubernetes context is selected",
+  "unreachable": "The cluster can’t be reached",
+  "unauthorized": "kubectl isn’t signed in to the cluster",
+  "forbidden": "Your account can’t list pods here",
+  "badNamespace": "The namespace in Settings isn’t valid",
+  "listFailed": "kubectl could not list the pods.",
+  "badRow": "This pod can’t be used."
+}
