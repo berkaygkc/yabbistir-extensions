@@ -1,0 +1,196 @@
+{
+  "id": "dev.yabbistir.fake-data",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:person.text.rectangle",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": [
+    "developer",
+    "text"
+  ],
+  "permissions": [],
+  "preferences": [
+    {
+      "id": "locale",
+      "type": "choice",
+      "title": "locale.title",
+      "default": "auto",
+      "options": [
+        {
+          "id": "auto",
+          "title": "locale.auto"
+        },
+        {
+          "id": "tr",
+          "title": "locale.tr"
+        },
+        {
+          "id": "en",
+          "title": "locale.en"
+        }
+      ]
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "person",
+        "title": "person.title",
+        "keywords": "person.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true,
+        "variants": [
+          {
+            "id": "fullName",
+            "title": "fullName.title",
+            "subtitle": "fullName.subtitle"
+          },
+          {
+            "id": "firstName",
+            "title": "firstName.title",
+            "subtitle": "firstName.subtitle"
+          },
+          {
+            "id": "lastName",
+            "title": "lastName.title",
+            "subtitle": "lastName.subtitle"
+          },
+          {
+            "id": "username",
+            "title": "username.title",
+            "subtitle": "username.subtitle"
+          },
+          {
+            "id": "birthDate",
+            "title": "birthDate.title",
+            "subtitle": "birthDate.subtitle"
+          }
+        ]
+      },
+      {
+        "id": "contact",
+        "title": "contact.title",
+        "keywords": "contact.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true,
+        "variants": [
+          {
+            "id": "email",
+            "title": "email.title",
+            "subtitle": "email.subtitle"
+          },
+          {
+            "id": "phone",
+            "title": "phone.title",
+            "subtitle": "phone.subtitle"
+          },
+          {
+            "id": "address",
+            "title": "address.title",
+            "subtitle": "address.subtitle"
+          },
+          {
+            "id": "city",
+            "title": "city.title",
+            "subtitle": "city.subtitle"
+          }
+        ]
+      },
+      {
+        "id": "work",
+        "title": "work.title",
+        "keywords": "work.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true,
+        "variants": [
+          {
+            "id": "company",
+            "title": "company.title",
+            "subtitle": "company.subtitle"
+          },
+          {
+            "id": "jobTitle",
+            "title": "jobTitle.title",
+            "subtitle": "jobTitle.subtitle"
+          }
+        ]
+      },
+      {
+        "id": "numbers",
+        "title": "numbers.title",
+        "keywords": "numbers.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true,
+        "variants": [
+          {
+            "id": "tckn",
+            "title": "tckn.title",
+            "subtitle": "tckn.subtitle"
+          },
+          {
+            "id": "vkn",
+            "title": "vkn.title",
+            "subtitle": "vkn.subtitle"
+          },
+          {
+            "id": "iban",
+            "title": "iban.title",
+            "subtitle": "iban.subtitle"
+          },
+          {
+            "id": "visa",
+            "title": "visa.title",
+            "subtitle": "visa.subtitle"
+          },
+          {
+            "id": "mastercard",
+            "title": "mastercard.title",
+            "subtitle": "mastercard.subtitle"
+          },
+          {
+            "id": "amex",
+            "title": "amex.title",
+            "subtitle": "amex.subtitle"
+          }
+        ]
+      },
+      {
+        "id": "lorem",
+        "title": "lorem.title",
+        "keywords": "lorem.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true,
+        "variants": [
+          {
+            "id": "sentence",
+            "title": "sentence.title",
+            "subtitle": "sentence.subtitle"
+          },
+          {
+            "id": "paragraph",
+            "title": "paragraph.title",
+            "subtitle": "paragraph.subtitle"
+          }
+        ]
+      },
+      {
+        "id": "user",
+        "title": "user.title",
+        "keywords": "user.keywords",
+        "input": "none",
+        "output": "text",
+        "hint": true
+      }
+    ]
+  }
+}
