@@ -1,0 +1,17 @@
+{
+  "name": "Doğrulayıcı",
+  "description": "Doğrulayıcı uygulamanın dışa aktarımından üretilen iki adımlı doğrulama kodların bir sütunda. ↵ geçerli kodu yapıştırır. otpauth linklerini ve LastPass, Google, Aegis, 2FAS ve Bitwarden dışa aktarımlarını okur; kodlar hiçbir yerde saklanmaz ve gösterilmez.",
+  "source.title": "Doğrulayıcı",
+  "code.title": "Kodu yapıştır",
+  "code.label": "Kod",
+  "accounts.title": "Hesaplar",
+  "setUp": "Doğrulayıcı uygulamanın dışa aktarımını Ayarlar › Uzantılar › Doğrulayıcı’daki Hesaplar alanına yapıştır.",
+  "encrypted": "Bu {app} dışa aktarımı şifreli. Parola koymadan yeniden dışa aktar, sonra Ayarlar’daki Hesaplar alanına yapıştır.",
+  "lastPassQr": "LastPass Authenticator’ın QR kodları burada okunamıyor. Settings › Transfer accounts › Export accounts to file ile dışa aktar ve o dosyayı yapıştır.",
+  "noTotp": "Bu dışa aktarımda zamana dayalı hesap yok. HOTP ve Steam hesapları desteklenmiyor.",
+  "unrecognized": "Hesap bulunamadı. Ayarlar’daki Hesaplar alanına otpauth linklerini ya da LastPass, Google, Aegis, 2FAS veya Bitwarden dışa aktarımını yapıştır.",
+  "gone": "Bu hesap artık Ayarlar’daki Hesaplar alanında yok.",
+  "readFailed": "Ayarlar’daki hesaplar okunamadı.",
+  "noCode": "Bu satırın kodu yok.",
+  "unnamed": "Adsız hesap"
+}
