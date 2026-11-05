@@ -1,0 +1,34 @@
+{
+  "id": "dev.yabbistir.bitwarden",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:lock.shield",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "bw", "install": "brew install bitwarden-cli" }
+    ]
+  },
+  "preferences": [
+    { "id": "session", "type": "secret", "title": "session.title" }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "vault", "title": "vault.title", "sensitive": true, "actions": [
+        { "id": "password", "kind": "secret", "title": "password.title", "label": "password.label" },
+        { "id": "username", "kind": "text", "title": "username.title", "label": "username.label",
+          "copyTitle": "username.copyTitle", "copied": "username.copied" }
+      ] },
+      { "id": "codes", "title": "codes.title", "sensitive": true, "actions": [
+        { "id": "code", "kind": "secret", "title": "code.title", "label": "code.label" }
+      ] }
+    ]
+  }
+}
