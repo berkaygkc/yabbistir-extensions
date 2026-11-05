@@ -1,0 +1,138 @@
+{
+  "id": "dev.yabbistir.send-to",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:paperplane",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": [
+    "text"
+  ],
+  "permissions": [
+    "exec"
+  ],
+  "requires": {
+    "tools": [
+      {
+        "name": "open",
+        "install": "Included with macOS"
+      },
+      {
+        "name": "osascript",
+        "install": "Included with macOS"
+      }
+    ]
+  },
+  "preferences": [
+    {
+      "id": "obsidian",
+      "type": "toggle",
+      "title": "pref.obsidian",
+      "default": true
+    },
+    {
+      "id": "things",
+      "type": "toggle",
+      "title": "pref.things",
+      "default": true
+    },
+    {
+      "id": "bear",
+      "type": "toggle",
+      "title": "pref.bear",
+      "default": true
+    },
+    {
+      "id": "drafts",
+      "type": "toggle",
+      "title": "pref.drafts",
+      "default": true
+    },
+    {
+      "id": "omnifocus",
+      "type": "toggle",
+      "title": "pref.omnifocus",
+      "default": true
+    },
+    {
+      "id": "reminders",
+      "type": "toggle",
+      "title": "pref.reminders",
+      "default": false
+    },
+    {
+      "id": "notes",
+      "type": "toggle",
+      "title": "pref.notes",
+      "default": false
+    },
+    {
+      "id": "obsidianVault",
+      "type": "text",
+      "title": "pref.vault"
+    },
+    {
+      "id": "obsidianFolder",
+      "type": "text",
+      "title": "pref.folder"
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "send",
+        "title": "send.title",
+        "keywords": "send.keywords",
+        "input": "item",
+        "accepts": {
+          "kinds": [
+            "text",
+            "code",
+            "link"
+          ]
+        },
+        "output": "none",
+        "variants": [
+          {
+            "id": "obsidian",
+            "title": "to.obsidian",
+            "subtitle": "to.obsidian.sub"
+          },
+          {
+            "id": "things",
+            "title": "to.things",
+            "subtitle": "to.things.sub"
+          },
+          {
+            "id": "bear",
+            "title": "to.bear",
+            "subtitle": "to.bear.sub"
+          },
+          {
+            "id": "drafts",
+            "title": "to.drafts",
+            "subtitle": "to.drafts.sub"
+          },
+          {
+            "id": "omnifocus",
+            "title": "to.omnifocus",
+            "subtitle": "to.omnifocus.sub"
+          },
+          {
+            "id": "reminders",
+            "title": "to.reminders",
+            "subtitle": "to.reminders.sub"
+          },
+          {
+            "id": "notes",
+            "title": "to.notes",
+            "subtitle": "to.notes.sub"
+          }
+        ]
+      }
+    ]
+  }
+}
