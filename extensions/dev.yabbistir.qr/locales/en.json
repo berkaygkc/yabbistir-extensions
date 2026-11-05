@@ -1,0 +1,15 @@
+{
+  "name": "QR Code",
+  "description": "Turns text and links into a QR code, and reads the QR codes in an image.",
+  "size.title": "QR code size",
+  "size.256": "Small (256 px)",
+  "size.512": "Medium (512 px)",
+  "size.1024": "Large (1024 px)",
+  "show.title": "Show as QR code",
+  "show.keywords": ["qr", "qr code", "code", "scan", "share"],
+  "read.title": "Read QR code",
+  "read.keywords": ["qr", "qr code", "scan", "read", "barcode"],
+  "empty": "There’s no text to turn into a QR code",
+  "tooLong": "This is too long for a QR code",
+  "noCode": "No QR code found in this image"
+}
