@@ -1,0 +1,36 @@
+{
+  "id": "dev.yabbistir.kubernetes",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:shippingbox",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "kubectl", "install": "brew install kubectl" }
+    ]
+  },
+  "preferences": [
+    { "id": "namespace", "type": "text", "title": "namespace.title", "default": "" },
+    { "id": "shiftAction", "type": "choice", "title": "shift.title", "default": "logs",
+      "options": [
+        { "id": "logs", "title": "shift.logs" },
+        { "id": "exec", "title": "shift.exec" }
+      ] }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "pods", "title": "source.title", "actions": [
+        { "id": "name", "kind": "text", "title": "name.title", "label": "name.label",
+          "copyTitle": "name.copyTitle", "copied": "name.copied" },
+        { "id": "command", "kind": "text", "title": "command.title", "label": "command.label" }
+      ] }
+    ]
+  }
+}

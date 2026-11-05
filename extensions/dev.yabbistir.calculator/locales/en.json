@@ -1,0 +1,13 @@
+{
+  "name": "Calculator",
+  "description": "Recognizes a copied sum such as 12 * 3 + 4 or 15% of 80 and pastes the answer.",
+  "tag": "calc",
+  "preview": "Calculation",
+  "result": "Result",
+  "expression": "Expression",
+  "result.title": "Paste result",
+  "result.keywords": ["result", "calculate", "calc", "answer", "sum", "math"],
+  "full.title": "Paste expression = result",
+  "full.keywords": ["expression", "calculate", "calc", "equals", "sum", "math"],
+  "notAnExpression": "This isn’t a calculation."
+}

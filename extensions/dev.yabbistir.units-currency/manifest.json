@@ -1,0 +1,44 @@
+{
+  "id": "dev.yabbistir.units-currency",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:arrow.left.arrow.right",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "permissions": ["network"],
+  "network": { "domains": ["www.ecb.europa.eu"] },
+  "preferences": [
+    { "id": "moreCurrencies", "type": "text", "title": "pref.more", "default": "" }
+  ],
+  "contributes": {
+    "detectors": [
+      { "id": "unit", "tag": "tag.unit",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^\\s*[+\\-−]?\\s*[0-9][0-9.,'’\\s]{0,30}[^0-9.,'’\\s].{0,24}$" },
+        "validate": true, "preview": true },
+      { "id": "currency", "tag": "tag.currency",
+        "accepts": { "kinds": ["text", "code"], "pattern": "^\\s*[+\\-−]?\\s*([\\$€£₺¥₩₹]\\s*[0-9][0-9.,'’\\s]{0,30}|[0-9][0-9.,'’\\s]{0,30}[^0-9.,'’\\s].{0,10}|[A-Za-z]{2,3}\\s*[0-9][0-9.,'’\\s]{0,30})$" },
+        "validate": true, "preview": true }
+    ],
+    "actions": [
+      { "id": "convertUnit", "title": "convertUnit.title", "keywords": "convertUnit.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["unit"] }, "output": "text", "hint": true, "priority": 2 },
+      { "id": "convertUnitAll", "title": "convertUnitAll.title", "keywords": "convertUnitAll.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["unit"] }, "output": "text" },
+      { "id": "convertCurrency", "title": "convertCurrency.title", "keywords": "convertCurrency.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["currency"] }, "output": "text", "priority": 2,
+        "variants": [
+          { "id": "try", "title": "to.try", "subtitle": "to.subtitle" },
+          { "id": "eur", "title": "to.eur", "subtitle": "to.subtitle" },
+          { "id": "usd", "title": "to.usd", "subtitle": "to.subtitle" },
+          { "id": "gbp", "title": "to.gbp", "subtitle": "to.subtitle" }
+        ] },
+      { "id": "convertCurrencyAll", "title": "convertCurrencyAll.title", "keywords": "convertCurrencyAll.keywords", "input": "item",
+        "accepts": { "kinds": ["text", "code"], "tags": ["currency"] }, "output": "text" }
+    ]
+  }
+}

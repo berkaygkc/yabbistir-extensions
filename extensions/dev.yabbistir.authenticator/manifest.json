@@ -1,0 +1,23 @@
+{
+  "id": "dev.yabbistir.authenticator",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.3.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:lock.badge.clock",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["productivity"],
+  "preferences": [
+    { "id": "accounts", "type": "secret", "title": "accounts.title" }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "codes", "title": "source.title", "sensitive": true, "actions": [
+        { "id": "code", "kind": "secret", "title": "code.title", "label": "code.label" }
+      ] }
+    ]
+  }
+}

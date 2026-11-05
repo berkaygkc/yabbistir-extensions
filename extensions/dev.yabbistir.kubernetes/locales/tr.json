@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "Geçerli Kubernetes bağlamının pod’larını bir sütun olarak gösterir. ↵ pod adını, ⇧↵ kubectl logs veya exec komutunu yapıştırır. kubectl kullanır.",
+  "source.title": "Pod’lar",
+  "name.title": "Pod adını yapıştır",
+  "name.label": "Pod adı",
+  "name.copyTitle": "Pod adını kopyala",
+  "name.copied": "Pod adı kopyalandı.",
+  "command.title": "kubectl komutunu yapıştır",
+  "command.label": "Komut",
+  "namespace.title": "Namespace (boşsa hepsi)",
+  "shift.title": "⇧↵ yapıştırır",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "Bir Kubernetes bağlamı seçili değil",
+  "unreachable": "Kümeye ulaşılamıyor",
+  "unauthorized": "kubectl kümede oturum açmış değil",
+  "forbidden": "Hesabın burada pod’ları listeleyemiyor",
+  "badNamespace": "Ayarlardaki namespace geçerli değil",
+  "listFailed": "kubectl pod’ları listeleyemedi.",
+  "badRow": "Bu pod kullanılamıyor."
+}

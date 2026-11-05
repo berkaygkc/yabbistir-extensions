@@ -1,0 +1,50 @@
+{
+  "id": "dev.yabbistir.password-generator",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:key.fill",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer", "productivity"],
+  "permissions": [],
+  "preferences": [
+    { "id": "length", "type": "text", "title": "pref.length", "default": "20" },
+    { "id": "lowercase", "type": "toggle", "title": "pref.lowercase", "default": true },
+    { "id": "uppercase", "type": "toggle", "title": "pref.uppercase", "default": true },
+    { "id": "digits", "type": "toggle", "title": "pref.digits", "default": true },
+    { "id": "symbols", "type": "toggle", "title": "pref.symbols", "default": true },
+    { "id": "noLookAlikes", "type": "toggle", "title": "pref.noLookAlikes", "default": true },
+    { "id": "words", "type": "choice", "title": "pref.words", "default": "5",
+      "options": [
+        { "id": "4", "title": "words.4" }, { "id": "5", "title": "words.5" }, { "id": "6", "title": "words.6" },
+        { "id": "7", "title": "words.7" }, { "id": "8", "title": "words.8" }
+      ] },
+    { "id": "separator", "type": "choice", "title": "pref.separator", "default": "dash",
+      "options": [
+        { "id": "dash", "title": "sep.dash" }, { "id": "space", "title": "sep.space" }, { "id": "period", "title": "sep.period" },
+        { "id": "underscore", "title": "sep.underscore" }, { "id": "comma", "title": "sep.comma" }, { "id": "none", "title": "sep.none" }
+      ] },
+    { "id": "pinLength", "type": "choice", "title": "pref.pinLength", "default": "6",
+      "options": [
+        { "id": "4", "title": "digits.4" }, { "id": "5", "title": "digits.5" }, { "id": "6", "title": "digits.6" },
+        { "id": "7", "title": "digits.7" }, { "id": "8", "title": "digits.8" }, { "id": "9", "title": "digits.9" },
+        { "id": "10", "title": "digits.10" }, { "id": "11", "title": "digits.11" }, { "id": "12", "title": "digits.12" }
+      ] }
+  ],
+  "contributes": {
+    "actions": [
+      { "id": "generate", "title": "generate.title", "keywords": "generate.keywords", "input": "none", "output": "text", "hint": true,
+        "variants": [
+          { "id": "password", "title": "password.title", "subtitle": "password.subtitle" },
+          { "id": "passphrase", "title": "passphrase.title", "subtitle": "passphrase.subtitle" },
+          { "id": "pin", "title": "pin.title", "subtitle": "pin.subtitle" },
+          { "id": "hex", "title": "hex.title", "subtitle": "hex.subtitle" },
+          { "id": "base64url", "title": "base64url.title", "subtitle": "base64url.subtitle" }
+        ] }
+    ]
+  }
+}

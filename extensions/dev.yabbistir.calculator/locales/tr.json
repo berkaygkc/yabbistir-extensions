@@ -1,0 +1,13 @@
+{
+  "name": "Hesap Makinesi",
+  "description": "Kopyaladığın 12 * 3 + 4 ya da 15% of 80 gibi işlemleri tanır ve sonucu yapıştırır.",
+  "tag": "hesap",
+  "preview": "Hesaplama",
+  "result": "Sonuç",
+  "expression": "İşlem",
+  "result.title": "Sonucu yapıştır",
+  "result.keywords": ["sonuç", "sonuc", "hesapla", "hesap", "toplam", "matematik"],
+  "full.title": "İşlem = sonuç yapıştır",
+  "full.keywords": ["işlem", "islem", "hesapla", "hesap", "eşittir", "toplam", "matematik"],
+  "notAnExpression": "Bu bir hesaplama değil."
+}

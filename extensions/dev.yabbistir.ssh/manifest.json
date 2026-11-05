@@ -1,0 +1,25 @@
+{
+  "id": "dev.yabbistir.ssh",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.0",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:terminal",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["developer", "productivity"],
+  "preferences": [
+    { "id": "folder", "type": "folder", "title": "folder.title" }
+  ],
+  "contributes": {
+    "sources": [
+      { "id": "hosts", "title": "source.title", "actions": [
+        { "id": "alias", "kind": "text", "title": "alias.title", "label": "alias.label",
+          "copyTitle": "alias.copyTitle", "copied": "alias.copied" },
+        { "id": "full", "kind": "text", "title": "full.title", "label": "full.label" }
+      ] }
+    ]
+  }
+}

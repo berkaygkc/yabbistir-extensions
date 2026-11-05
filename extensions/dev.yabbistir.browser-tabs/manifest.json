@@ -1,0 +1,28 @@
+{
+  "id": "dev.yabbistir.browser-tabs",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "minAppVersion": "0.4.1",
+  "defaultLocale": "en",
+  "name": "name",
+  "description": "description",
+  "icon": "sf:macwindow.on.rectangle",
+  "author": "Berkay Gökçe",
+  "license": "MIT",
+  "categories": ["links", "productivity"],
+  "permissions": ["exec"],
+  "requires": {
+    "tools": [
+      { "name": "osascript", "install": "Part of macOS (/usr/bin/osascript)" }
+    ]
+  },
+  "contributes": {
+    "sources": [
+      { "id": "tabs", "title": "source.title", "actions": [
+        { "id": "link", "kind": "text", "title": "link.title", "label": "link.label",
+          "copyTitle": "link.copyTitle", "copied": "link.copied" },
+        { "id": "markdown", "kind": "text", "title": "markdown.title", "label": "markdown.label" }
+      ] }
+    ]
+  }
+}

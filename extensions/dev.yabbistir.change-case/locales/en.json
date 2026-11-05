@@ -1,0 +1,23 @@
+{
+  "name": "Change Case",
+  "description": "Turns text into camelCase, snake_case, Title Case, a URL slug and more, and shows the result first.",
+  "changeCase.title": "Change case",
+  "changeCase.keywords": ["case", "change case", "camel", "pascal", "snake", "kebab", "constant", "dot", "title", "sentence", "upper", "uppercase", "lower", "lowercase", "slug", "capital", "büyük", "küçük", "harf"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Title Case",
+  "sentence.title": "Sentence case",
+  "upper.title": "UPPERCASE",
+  "lower.title": "lowercase",
+  "slug.title": "URL slug",
+  "casing.title": "Casing rules",
+  "casing.auto": "Automatic (the app’s language)",
+  "casing.tr": "Turkish",
+  "casing.en": "English",
+  "empty": "There’s no text to change.",
+  "emptySlug": "Nothing in this text can go into a slug."
+}

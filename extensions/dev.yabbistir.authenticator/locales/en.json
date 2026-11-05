@@ -1,0 +1,17 @@
+{
+  "name": "Authenticator",
+  "description": "Two-factor codes from your authenticator’s export, as a column. ↵ pastes the current code. Reads otpauth links and LastPass, Google, Aegis, 2FAS and Bitwarden exports; codes are never stored or shown.",
+  "source.title": "Authenticator",
+  "code.title": "Paste code",
+  "code.label": "Code",
+  "accounts.title": "Accounts",
+  "setUp": "Paste your authenticator’s export into Accounts, in Settings › Extensions › Authenticator.",
+  "encrypted": "This {app} export is encrypted. Export again without a password, then paste it into Accounts in Settings.",
+  "lastPassQr": "LastPass Authenticator’s QR codes can’t be read here. Use Settings › Transfer accounts › Export accounts to file, and paste that file.",
+  "noTotp": "No time-based accounts in this export. HOTP and Steam accounts aren’t supported.",
+  "unrecognized": "No accounts found. Paste otpauth links, or an export from LastPass, Google, Aegis, 2FAS or Bitwarden, into Accounts in Settings.",
+  "gone": "This account is no longer in Accounts in Settings.",
+  "readFailed": "The accounts in Settings couldn’t be read.",
+  "noCode": "There’s no code for this row.",
+  "unnamed": "Unnamed account"
+}

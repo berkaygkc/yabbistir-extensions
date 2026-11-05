@@ -1,0 +1,14 @@
+{
+  "name": "Dev Servers",
+  "description": "The local servers listening on your Mac, as a column. ↵ pastes http://localhost:3000, ⇧↵ pastes localhost:3000.",
+  "source.title": "Dev servers",
+  "url.title": "Paste localhost link",
+  "url.label": "Link",
+  "url.copyTitle": "Copy localhost link",
+  "url.copied": "Link copied.",
+  "address.title": "Paste localhost address",
+  "address.label": "Address",
+  "allInterfaces": "all interfaces",
+  "listFailed": "lsof could not list the servers.",
+  "gone": "This server is no longer listed."
+}

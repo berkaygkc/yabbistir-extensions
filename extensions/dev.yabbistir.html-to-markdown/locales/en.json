@@ -1,0 +1,10 @@
+{
+  "name": "HTML to Markdown",
+  "description": "Turns rich text copied from web pages and documents into clean Markdown.",
+  "markdown.title": "Paste as Markdown",
+  "markdown.subtitle": "From the copied formatting",
+  "markdown.keywords": ["markdown", "md", "html", "rich text", "formatting"],
+  "noRichText": "This copy has no formatting to turn into Markdown",
+  "empty": "There’s no text in this copy to turn into Markdown",
+  "unreadable": "Couldn’t read the formatting of this copy"
+}

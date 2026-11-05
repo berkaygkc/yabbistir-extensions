@@ -1,0 +1,22 @@
+{
+  "name": "Tarayıcı Sekmeleri",
+  "description": "Açık tarayıcı sekmelerin bir sütunda. ↵ sekmenin linkini, ⇧↵ Markdown linkini yapıştırır. Safari, Chrome, Arc, Brave, Edge ve Vivaldi ile çalışır.",
+  "source.title": "Açık sekmeler",
+  "link.title": "Linki yapıştır",
+  "link.label": "Link",
+  "link.copyTitle": "Linki kopyala",
+  "link.copied": "Link kopyalandı.",
+  "markdown.title": "Markdown linki olarak yapıştır",
+  "markdown.label": "Markdown linki",
+  "file": "Dosya",
+  "noBrowser": "Desteklenen bir tarayıcı açık değil.",
+  "noTabs": "Açık sekme yok.",
+  "onlyPrivate": "Yalnızca gizli pencereler açık; sekmeleri gösterilmez.",
+  "denied.one": "yabbistir’in {browsers} uygulamasını denetlemesine izin ver: Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon.",
+  "denied.many": "yabbistir’in {browsers} uygulamalarını denetlemesine izin ver: Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon.",
+  "deniedAll": "yabbistir’in tarayıcıları denetlemesine izin ver: Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon.",
+  "deniedRow.title": "{browser} sekmelerine erişim izni ver",
+  "deniedRow.subtitle": "Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon",
+  "tabGone": "Bu sekme artık açık değil.",
+  "readFailed": "Tarayıcıların sekmeleri okunamadı."
+}
