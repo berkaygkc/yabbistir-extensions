@@ -1,0 +1,17 @@
+{
+  "name": "Textbausteine",
+  "description": "Vorgefertigte Antworten, Signaturen und Vorlagen aus einer Markdown-Datei, als Spalte. ↵ setzt einen ein, mit {date}, {time} und mehr ausgefüllt.",
+  "folder.title": "Ordner mit deiner Textbaustein-Datei",
+  "file.title": "Dateiname",
+  "source.title": "Textbausteine",
+  "paste.title": "Textbaustein einsetzen",
+  "paste.label": "Textbaustein",
+  "paste.copyTitle": "Textbaustein kopieren",
+  "paste.copied": "Textbaustein kopiert.",
+  "noFolder": "Wähle einen Ordner unter Einstellungen › Erweiterungen › Textbausteine.",
+  "badFileName": "Der Dateiname unter Einstellungen › Erweiterungen › Textbausteine muss ein einfacher Name wie snippets.md sein.",
+  "noFile": "In diesem Ordner gibt es keine Datei {file}. Erstelle sie dort oder wähle einen anderen Ordner unter Einstellungen › Erweiterungen › Textbausteine.",
+  "unreadable": "{file} konnte nicht gelesen werden. Prüfe die Datei und den Ordner unter Einstellungen › Erweiterungen › Textbausteine.",
+  "noSnippets": "{file} enthält noch keine Textbausteine. Beginne einen mit einer Zeile wie ## Danke.",
+  "gone": "Dieser Textbaustein ist nicht mehr in der Datei."
+}

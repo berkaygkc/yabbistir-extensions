@@ -1,0 +1,17 @@
+{
+  "name": "Extraits de texte",
+  "description": "Réponses toutes faites, signatures et modèles tirés d’un fichier Markdown, en colonne. ↵ en colle un avec {date}, {time} et plus encore remplis.",
+  "folder.title": "Dossier de votre fichier d’extraits",
+  "file.title": "Nom du fichier",
+  "source.title": "Extraits de texte",
+  "paste.title": "Coller l’extrait",
+  "paste.label": "Extrait",
+  "paste.copyTitle": "Copier l’extrait",
+  "paste.copied": "Extrait copié.",
+  "noFolder": "Choisissez un dossier dans Réglages › Extensions › Extraits de texte.",
+  "badFileName": "Le nom de fichier dans Réglages › Extensions › Extraits de texte doit être un nom simple comme snippets.md.",
+  "noFile": "Il n’y a pas de {file} dans ce dossier. Créez-le ou choisissez un autre dossier dans Réglages › Extensions › Extraits de texte.",
+  "unreadable": "Impossible de lire {file}. Vérifiez le fichier et le dossier dans Réglages › Extensions › Extraits de texte.",
+  "noSnippets": "{file} ne contient pas encore d’extraits. Commencez-en un avec une ligne comme ## Merci.",
+  "gone": "Cet extrait n’est plus dans le fichier."
+}

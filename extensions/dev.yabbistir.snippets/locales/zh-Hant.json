@@ -1,0 +1,17 @@
+{
+  "name": "文字片段",
+  "description": "以直欄顯示Markdown檔案中的常用回覆、簽名檔和範本。↵貼上其中一則，並填入{date}、{time}等內容。",
+  "folder.title": "存放片段檔案的檔案夾",
+  "file.title": "檔名",
+  "source.title": "文字片段",
+  "paste.title": "貼上片段",
+  "paste.label": "片段",
+  "paste.copyTitle": "拷貝片段",
+  "paste.copied": "已拷貝片段。",
+  "noFolder": "請在「設定 › 延伸功能 › 文字片段」中選擇一個檔案夾。",
+  "badFileName": "「設定 › 延伸功能 › 文字片段」中的檔名必須是像snippets.md這樣的一般名稱。",
+  "noFile": "該檔案夾中沒有{file}。請在那裡建立它，或在「設定 › 延伸功能 › 文字片段」中選擇其他檔案夾。",
+  "unreadable": "無法讀取{file}。請在「設定 › 延伸功能 › 文字片段」中檢查該檔案和檔案夾。",
+  "noSnippets": "{file}中還沒有片段。可以用「## Thanks」這樣的一行開始。",
+  "gone": "該片段已不在檔案中。"
+}

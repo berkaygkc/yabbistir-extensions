@@ -1,0 +1,17 @@
+{
+  "name": "文本片段",
+  "description": "以列的形式显示Markdown文件中的常用回复、签名和模板。↵粘贴其中一条，并填入{date}、{time}等内容。",
+  "folder.title": "存放片段文件的文件夹",
+  "file.title": "文件名",
+  "source.title": "文本片段",
+  "paste.title": "粘贴片段",
+  "paste.label": "片段",
+  "paste.copyTitle": "拷贝片段",
+  "paste.copied": "已拷贝片段。",
+  "noFolder": "请在“设置 › 扩展 › 文本片段”中选取一个文件夹。",
+  "badFileName": "“设置 › 扩展 › 文本片段”中的文件名必须是像snippets.md这样的普通名称。",
+  "noFile": "该文件夹中没有{file}。请在那里创建它，或在“设置 › 扩展 › 文本片段”中选取其他文件夹。",
+  "unreadable": "无法读取{file}。请在“设置 › 扩展 › 文本片段”中检查该文件和文件夹。",
+  "noSnippets": "{file}中还没有片段。可以用“## Thanks”这样的一行开始。",
+  "gone": "该片段已不在文件中。"
+}
