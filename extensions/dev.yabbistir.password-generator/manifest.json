@@ -1,6 +1,6 @@
 {
   "id": "dev.yabbistir.password-generator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 1,
   "minAppVersion": "0.4.0",
   "defaultLocale": "en",
