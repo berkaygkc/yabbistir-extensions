@@ -4,6 +4,7 @@
 
 - Switching a destination off in settings now takes it out of the list: the ⇧ panel, ⌘K, search and ⇧↵ no longer offer it. Reminders and Notes, off by default, appear once you turn them on.
 - Needs yabbistir 0.5.1 or later, the version that hides a switched-off destination.
+- When Reminders or Notes can't take the item, the notice now gives macOS's error number, such as "Couldn’t send to Reminders (error -1744).", so the cause can be looked up.
 
 ## 1.0.0
 

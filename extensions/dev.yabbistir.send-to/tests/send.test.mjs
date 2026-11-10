@@ -311,7 +311,22 @@ describe("speed", () => {
 
   test("onlyAnchoredCodesCountAsAppMissing", async () => {
     const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr: "odd (-6000) and Can't get object. (-1728)" }) });
-    await assert.rejects(send(host, "x", "notes"), /Couldn’t send to Notes\./);
+    await assert.rejects(send(host, "x", "notes"), { message: "Couldn’t send to Notes (error -1728)." });
+  });
+
+  test("anyOtherScriptErrorGivesMacOSNumberAndNoneOfStderr", async () => {
+    const stderr = "41:120: execution error: Reminders got an error: AppleEvent handler failed for \"Buy oat milk\". (-1744)\n";
+    const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+    await assert.rejects(send(host, "Buy oat milk", "reminders"), { message: "Couldn’t send to Reminders (error -1744)." });
+    const { host: tr } = make({ language: "tr", osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+    await assert.rejects(send(tr, "Buy oat milk", "reminders"), { message: "Hatırlatıcılar uygulamasına gönderilemedi (hata -1744)." });
+  });
+
+  test("aScriptErrorWithoutANumberKeepsThePlainMessage", async () => {
+    for (const stderr of ["", "something odd happened", "a number in the text (-1744) is not at the end."]) {
+      const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+      await assert.rejects(send(host, "x", "notes"), { message: "Couldn’t send to Notes." }, JSON.stringify(stderr));
+    }
   });
 
   test("turkishUsesLocalizedNamesForRemindersAndNotes", async () => {

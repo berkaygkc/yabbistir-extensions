@@ -38,7 +38,9 @@ export const actions: Actions = {
         if (/\(-1743\)/.test(result.stderr)) return { none: true, message: t("denied", { app }) };
         // -1728 ("can't get object") is not "app missing", so it falls through to the generic failure.
         if (/\((?:-600|-10814)\)/.test(result.stderr)) return { none: true, message: t("notInstalled", { app }) };
-        throw new Error(t("failed", { app }));
+        // Any other error: macOS's number, so the cause can be looked up. Only the number: stderr may quote the text.
+        const code = /\((-\d{1,6})\)\s*$/.exec(result.stderr)?.[1];
+        throw new Error(code ? t("failedCode", { app, code }) : t("failed", { app }));
       }
 
       const folder = cleanFolder(String(ctx.preferences.obsidianFolder ?? ""));

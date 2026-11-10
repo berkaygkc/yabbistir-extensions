@@ -26,6 +26,7 @@
   "notInstalled": "Couldn’t reach {app}. Is it installed?",
   "denied": "Allow yabbistir to control {app} in System Settings › Privacy & Security › Automation, then try again.",
   "failed": "Couldn’t send to {app}.",
+  "failedCode": "Couldn’t send to {app} (error {code}).",
   "badFolder": "The Obsidian folder in settings isn’t a valid folder path.",
   "pref.vault": "Obsidian vault name",
   "pref.folder": "Obsidian folder",
