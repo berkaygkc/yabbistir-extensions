@@ -1,0 +1,18 @@
+{
+  "name": "SSH-Hosts",
+  "description": "Die Hosts aus deiner SSH-Konfiguration als Spalte. ↵ setzt ssh <alias> ein, ⇧↵ den vollständigen Befehl. Liest nur den Ordner, den du auswählst.",
+  "folder.title": "SSH-Ordner",
+  "source.title": "SSH-Hosts",
+  "alias.title": "ssh-Befehl einsetzen",
+  "alias.label": "Befehl",
+  "alias.copyTitle": "ssh-Befehl kopieren",
+  "alias.copied": "Befehl kopiert.",
+  "full.title": "Mit Benutzer und Port einsetzen",
+  "full.label": "Vollständiger Befehl",
+  "noFolder": "Wähle deinen SSH-Ordner in den Einstellungen",
+  "noConfig": "Keine lesbare Konfigurationsdatei im SSH-Ordner",
+  "noHosts": "Keine Hosts in der Konfiguration gefunden",
+  "listFailed": "Die SSH-Konfiguration konnte nicht gelesen werden.",
+  "gone": "Dieser Host ist nicht mehr in der SSH-Konfiguration.",
+  "noHostsSkipped": "Keine verwendbaren Hosts: Namen mit Leerzeichen oder einem Bindestrich am Anfang werden übersprungen"
+}

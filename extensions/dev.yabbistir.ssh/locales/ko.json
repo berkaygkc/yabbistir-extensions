@@ -1,0 +1,18 @@
+{
+  "name": "SSH 호스트",
+  "description": "SSH 설정의 호스트를 열로 표시합니다. ↵는 ssh <별칭>, ⇧↵는 전체 명령을 붙여넣습니다. 선택한 폴더만 읽습니다.",
+  "folder.title": "SSH 폴더",
+  "source.title": "SSH 호스트",
+  "alias.title": "ssh 명령 붙여넣기",
+  "alias.label": "명령",
+  "alias.copyTitle": "ssh 명령 복사하기",
+  "alias.copied": "명령을 복사했습니다.",
+  "full.title": "사용자와 포트 포함하여 붙여넣기",
+  "full.label": "전체 명령",
+  "noFolder": "설정에서 SSH 폴더를 선택하십시오",
+  "noConfig": "SSH 폴더에 읽을 수 있는 config 파일이 없습니다",
+  "noHosts": "config에서 호스트를 찾지 못했습니다",
+  "listFailed": "SSH config를 읽지 못했습니다.",
+  "gone": "이 호스트는 SSH config에 더 이상 없습니다.",
+  "noHostsSkipped": "사용할 수 있는 호스트가 없습니다. 공백이 있거나 대시로 시작하는 이름은 건너뜁니다"
+}

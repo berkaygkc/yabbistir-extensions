@@ -1,0 +1,18 @@
+{
+  "name": "SSH主機",
+  "description": "以直欄顯示SSH設定中的主機。↵貼上ssh <alias>，⇧↵貼上完整指令。只會讀取你選擇的檔案夾。",
+  "folder.title": "SSH檔案夾",
+  "source.title": "SSH主機",
+  "alias.title": "貼上ssh指令",
+  "alias.label": "指令",
+  "alias.copyTitle": "拷貝ssh指令",
+  "alias.copied": "已拷貝指令。",
+  "full.title": "連同使用者和連接埠一起貼上",
+  "full.label": "完整指令",
+  "noFolder": "請在設定中選擇你的SSH檔案夾",
+  "noConfig": "SSH檔案夾中沒有可讀取的設定檔",
+  "noHosts": "設定中找不到主機",
+  "listFailed": "無法讀取SSH設定。",
+  "gone": "該主機已不在SSH設定中。",
+  "noHostsSkipped": "沒有可用的主機：名稱含空格或以連字號開頭的會被跳過"
+}

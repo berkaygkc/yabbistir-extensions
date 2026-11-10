@@ -1,0 +1,18 @@
+{
+  "name": "Hosts SSH",
+  "description": "Los hosts de tu configuración de SSH en una columna. ↵ pega ssh <alias> y ⇧↵ pega el comando completo. Solo lee la carpeta que elijas.",
+  "folder.title": "Carpeta de SSH",
+  "source.title": "Hosts SSH",
+  "alias.title": "Pegar comando ssh",
+  "alias.label": "Comando",
+  "alias.copyTitle": "Copiar comando ssh",
+  "alias.copied": "Comando copiado.",
+  "full.title": "Pegar con usuario y puerto",
+  "full.label": "Comando completo",
+  "noFolder": "Elige tu carpeta de SSH en Ajustes",
+  "noConfig": "No hay ningún archivo de configuración legible en la carpeta de SSH",
+  "noHosts": "No se han encontrado hosts en la configuración",
+  "listFailed": "No se ha podido leer la configuración de SSH.",
+  "gone": "Este host ya no está en la configuración de SSH.",
+  "noHostsSkipped": "No hay hosts utilizables: se omiten los nombres con espacios o con un guion al principio"
+}

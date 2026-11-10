@@ -1,0 +1,18 @@
+{
+  "name": "Hôtes SSH",
+  "description": "Les hôtes de votre configuration SSH en colonne. ↵ colle ssh <alias>, ⇧↵ colle la commande complète. Ne lit que le dossier que vous choisissez.",
+  "folder.title": "Dossier SSH",
+  "source.title": "Hôtes SSH",
+  "alias.title": "Coller la commande ssh",
+  "alias.label": "Commande",
+  "alias.copyTitle": "Copier la commande ssh",
+  "alias.copied": "Commande copiée.",
+  "full.title": "Coller avec utilisateur et port",
+  "full.label": "Commande complète",
+  "noFolder": "Choisissez votre dossier SSH dans les Réglages",
+  "noConfig": "Aucun fichier de configuration lisible dans le dossier SSH",
+  "noHosts": "Aucun hôte trouvé dans la configuration",
+  "listFailed": "Impossible de lire la configuration SSH.",
+  "gone": "Cet hôte n’est plus dans la configuration SSH.",
+  "noHostsSkipped": "Aucun hôte utilisable : les noms avec des espaces ou un tiret initial sont ignorés"
+}

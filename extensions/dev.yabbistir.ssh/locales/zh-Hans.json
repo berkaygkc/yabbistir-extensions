@@ -1,0 +1,18 @@
+{
+  "name": "SSH主机",
+  "description": "以列的形式显示SSH配置中的主机。↵粘贴ssh <alias>，⇧↵粘贴完整命令。只会读取你选取的文件夹。",
+  "folder.title": "SSH文件夹",
+  "source.title": "SSH主机",
+  "alias.title": "粘贴ssh命令",
+  "alias.label": "命令",
+  "alias.copyTitle": "拷贝ssh命令",
+  "alias.copied": "已拷贝命令。",
+  "full.title": "连同用户和端口一起粘贴",
+  "full.label": "完整命令",
+  "noFolder": "请在设置中选取你的SSH文件夹",
+  "noConfig": "SSH文件夹中没有可读取的配置文件",
+  "noHosts": "配置中未找到主机",
+  "listFailed": "无法读取SSH配置。",
+  "gone": "该主机已不在SSH配置中。",
+  "noHostsSkipped": "没有可用的主机：名称含空格或以短横线开头的会被跳过"
+}

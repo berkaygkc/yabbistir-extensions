@@ -1,0 +1,18 @@
+{
+  "name": "SSHホスト",
+  "description": "SSH設定のホストをカラムに表示します。↵でssh <alias>、⇧↵で完全なコマンドをペーストします。選択したフォルダだけを読み取ります。",
+  "folder.title": "SSHフォルダ",
+  "source.title": "SSHホスト",
+  "alias.title": "sshコマンドをペースト",
+  "alias.label": "コマンド",
+  "alias.copyTitle": "sshコマンドをコピー",
+  "alias.copied": "コマンドをコピーしました。",
+  "full.title": "ユーザとポート付きでペースト",
+  "full.label": "完全なコマンド",
+  "noFolder": "設定でSSHフォルダを選択してください",
+  "noConfig": "SSHフォルダに読み取れる設定ファイルがありません",
+  "noHosts": "設定にホストが見つかりません",
+  "listFailed": "SSH設定を読み取れませんでした。",
+  "gone": "このホストはもうSSH設定にありません。",
+  "noHostsSkipped": "使用できるホストがありません。スペースを含む名前や先頭がダッシュの名前は除外されます"
+}
