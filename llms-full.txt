@@ -549,7 +549,7 @@ An **action** is a command in the panel. Its manifest entry says what it is call
 
 - **Transforms** (`"input": "item"`) work on an item: Base64-encode it, download the video a link points to. `accepts` says which items: `kinds`, an optional regular expression `pattern` over the text or URL, and optional detector `tags`.
 - **Generators** (`"input": "none"`) make something from nothing, such as a UUID. `run` gets `null` for the item.
-- **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen.
+- **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen. A variant can name one of the extension's `toggle` preferences in `preference`: it is offered only while that toggle is on, so the person can hide the ones they don't use.
 - **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted. A hint that returns `{ none: true }` leaves the action offered, and its row shows no preview.
 - **Jobs** (`"job": true`) are long actions: a card under the menu bar icon shows their progress and lets the person cancel. See [Jobs](jobs.md).
 
@@ -640,6 +640,7 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Mark copies for the person, without changing them | A detector: its tag shows as a chip on the item; no permission | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Make something new (UUID, timestamp, lorem ipsum) | An action, `"input": "none"` | `--template action` |
 | A few fixed flavors of one action (to Turkish / to English) | `variants` on one action | [Translate and summarize](recipes/translate-and-summarize.md) |
+| Let the person hide the flavors they don't use | A `toggle` preference per variant, named in the variant's `preference` | [Manifest reference](manifest.md#contributesactionsvariants) |
 | Show the result before it is chosen | `"hint": true` | [Getting started](getting-started.md) |
 | Something that takes seconds or minutes (download, convert) | An action with `"job": true` | `--template job`, [Download with yt-dlp](recipes/download-with-yt-dlp.md) |
 | Hand a file to Finder | An action with `"output": "file"` and `"targets": ["finder"]` | [Drop a file into Finder](recipes/drop-a-file-in-finder.md) |
@@ -787,7 +788,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `job` | boolean |  | Runs as a long-running job. See [Jobs](jobs.md). Without it, `run` must finish in 10 seconds. |
 | `verb` | [locale key](localization.md) |  | A job's label in the ⇧ panel: "↵ <verb> · ⌘C <verb> and copy", such as "Download". Without it a job says "Start". |
 | `failTitle` | [locale key](localization.md) |  | A failed job's title, such as "Couldn't download the video"; a variant's own wins. |
-| `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. |
+| `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. A variant tied to a toggle with `preference` can be hidden by the person. |
 | `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. A hint that returns `{ none: true }` leaves the action offered, with no preview on its row. Never for jobs or `file`/`files` output. |
 | `priority` | integer |  | Orders the extension's own actions on an item, highest first. Defaults to 0. |
 
@@ -813,6 +814,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `title` | [locale key](localization.md) | yes | The variant's row title. |
 | `subtitle` | [locale key](localization.md) |  | The variant's second line. |
 | `failTitle` | [locale key](localization.md) |  | The job card's title when this variant fails. |
+| `preference` | string |  | The id of one of the extension's toggle preferences: the variant is offered only while that toggle is on. Switched off in Settings, the variant leaves the ⇧ panel, ⌘K, search and ⇧↵, and an action whose variants are all off leaves with them. The toggle's title should say so, such as "Show Bear". `run` still gets `ctx.preferences`, so it can refuse a switched-off variant too. Needs yabbistir 0.5.1 or later: set `minAppVersion` to `"0.5.1"`, since an older app ignores the field and always offers the variant. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -875,6 +877,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 - Ids are unique within their list (actions, variants of one action, detectors, capture rules, sources, actions of one source, preferences).
 - A `secret` preference has no `default`; a `folder` default starts with `~`; a `choice` has `options`.
 - `targetsOnly` needs at least one entry in `targets`.
+- A variant's `preference` names a `toggle` preference of the same extension.
 - A source has one or two actions. A `secret` action needs `"sensitive": true` on its source and has no `copyTitle` or `copied`, and an extension with one cannot ask for `network`.
 - `accepts.pattern` compiles as an ICU regular expression, the kind the app uses.
 - README.md and CHANGELOG.md exist, and, once built, so does `index.js`.
@@ -1964,6 +1967,7 @@ The validator runs the app's own checks, with the app's messages, and then the s
 - `accepts.pattern` may use only what the store can verify ([`invalidPattern`](#invalidpattern)).
 - A license, README.md, CHANGELOG.md and a complete `locales/en.json` are required.
 - The folder holds regular files and folders only ([`notARegularFile`](#notaregularfile)).
+- A variant's `preference` names a toggle of the same extension ([`variantPreference`](#variantpreference)). The app only warns, and offers that variant always.
 
 ## Validator messages
 
@@ -2134,6 +2138,10 @@ A warning: `capture rules never see tags; this rule would never run`. A rule's `
 ### `sourceCopyNeedsText`
 
 `a secret action has no "<copyTitle, copied>"; secrets are never copied to be kept`. Reported once for each of the two keys. **Fix:** remove the key, or make the action `"kind": "text"`.
+
+### `variantPreference`
+
+`there is no preference "<id>"; this variant is always offered`, `"<id>" is a <text, choice, secret, folder> preference, not a toggle; this variant is always offered`, or `"preference" must be the id of a toggle preference; this variant is always offered`. A variant's `preference` names the switch that shows and hides it, so it must be one of the same extension's `toggle` preferences. The store refuses anything else. yabbistir itself still loads the extension, always offers that variant, and shows this as a warning in Settings → Extensions → Development. **Fix:** write the toggle's `id`, add that toggle to `preferences`, or remove `preference` ([the field](manifest.md#contributesactionsvariants)).
 
 ### `indexMissing`
 
@@ -3188,7 +3196,7 @@ await assert.rejects(running, { code: "cancelled" });
 
 The app offers an action, and runs a detector or a rule, only on items its manifest's `accepts` takes. Two helpers apply `accepts` in a test:
 
-- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`).
+- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`). An action is left out while every one of its variants names a toggle in `preference` that is off (set them with `preferences: { … }` when you make the host).
 - `acceptsMatch(accepts, item, { extensionID }?)`, exported next to `createFakeHost`, applies any one `accepts` block, such as a detector's or a rule's. `extensionID` lets a tag written as `"tag"` stand for the extension's own detector, as in the app.
 
 ```js

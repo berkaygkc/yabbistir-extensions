@@ -35,7 +35,7 @@ An **action** is a command in the panel. Its manifest entry says what it is call
 
 - **Transforms** (`"input": "item"`) work on an item: Base64-encode it, download the video a link points to. `accepts` says which items: `kinds`, an optional regular expression `pattern` over the text or URL, and optional detector `tags`.
 - **Generators** (`"input": "none"`) make something from nothing, such as a UUID. `run` gets `null` for the item.
-- **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen.
+- **Variants** are ready-made choices of one action, each its own row: "Download as video" and "Download audio". `ctx.variant` says which one was chosen. A variant can name one of the extension's `toggle` preferences in `preference`: it is offered only while that toggle is on, so the person can hide the ones they don't use.
 - **Hints** (`"hint": true`) run the action before it is picked, without effects, and show the result on the row. The result shown is the one pasted. A hint that returns `{ none: true }` leaves the action offered, and its row shows no preview.
 - **Jobs** (`"job": true`) are long actions: a card under the menu bar icon shows their progress and lets the person cancel. See [Jobs](jobs.md).
 
@@ -126,6 +126,7 @@ An extension starts with no permissions, and most need none: text transforms, de
 | Mark copies for the person, without changing them | A detector: its tag shows as a chip on the item; no permission | `--template detector`, [Tag and preview](recipes/tag-and-preview.md) |
 | Make something new (UUID, timestamp, lorem ipsum) | An action, `"input": "none"` | `--template action` |
 | A few fixed flavors of one action (to Turkish / to English) | `variants` on one action | [Translate and summarize](recipes/translate-and-summarize.md) |
+| Let the person hide the flavors they don't use | A `toggle` preference per variant, named in the variant's `preference` | [Manifest reference](manifest.md#contributesactionsvariants) |
 | Show the result before it is chosen | `"hint": true` | [Getting started](getting-started.md) |
 | Something that takes seconds or minutes (download, convert) | An action with `"job": true` | `--template job`, [Download with yt-dlp](recipes/download-with-yt-dlp.md) |
 | Hand a file to Finder | An action with `"output": "file"` and `"targets": ["finder"]` | [Drop a file into Finder](recipes/drop-a-file-in-finder.md) |

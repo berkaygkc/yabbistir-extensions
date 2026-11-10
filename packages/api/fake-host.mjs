@@ -56,7 +56,9 @@
 //                                           "toolMissing" for a tool of requires.tools missing from `exec`.
 //   offers(item?, context?)                 the ids of the actions the app would offer on the item: `input: "item"` actions
 //                                           whose `accepts` takes it (see acceptsMatch), highest priority first, the
-//                                           target's own first, a `targetsOnly` one only for its targets
+//                                           target's own first, a `targetsOnly` one only for its targets, and one whose
+//                                           variants are all switched off (each names a toggle in `preference` that is off)
+//                                           not at all
 //   cancel()             cancels the calls in progress, as the person's ✕ does
 //   install()            makes them the globals outside calls too; returns a function that puts the old ones back
 //   calls                the yab calls in order, as { api, args } with callbacks and signals left out; t and plain
@@ -1168,9 +1170,16 @@ export function createFakeHost(options = {}) {
       const target = overrides?.target ?? options.context?.target ?? null;
       const actions = Array.isArray(manifest.contributes?.actions) ? manifest.contributes.actions : [];
       const isFor = (action) => target !== null && Array.isArray(action.targets) && action.targets.includes(target.kind);
+      // A variant that names a toggle is offered only while it is on; one that names anything else always is. The first
+      // preference with an id decides, as when the app reads the values.
+      const kindOf = (id) => declared.find((preference) => isObject(preference) && preference.id === id)?.type;
+      const shown = (variant) => !isObject(variant) || typeof variant.preference !== "string" || kindOf(variant.preference) !== "toggle"
+        || preferences[variant.preference] === true;
+      const hasRow = (action) => !Array.isArray(action.variants) || action.variants.length === 0 || action.variants.some(shown);
       const offered = actions
         .map((action, index) => ({ action, index }))
         .filter(({ action }) => isObject(action) && action.input === "item" && acceptsMatch(action.accepts, subject, { extensionID }))
+        .filter(({ action }) => hasRow(action))
         .sort((a, b) => (b.action.priority ?? 0) - (a.action.priority ?? 0) || a.index - b.index)
         .map(({ action }) => action)
         .filter((action) => action.targetsOnly !== true || isFor(action));

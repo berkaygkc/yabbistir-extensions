@@ -150,7 +150,7 @@ await assert.rejects(running, { code: "cancelled" });
 
 The app offers an action, and runs a detector or a rule, only on items its manifest's `accepts` takes. Two helpers apply `accepts` in a test:
 
-- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`).
+- `host.offers(item?, context?)` returns the ids of the actions the app would offer on the item, in the app's order: `"input": "item"` actions whose `accepts` takes it, highest `priority` first, the paste target's own actions first, and a `targetsOnly` action only for its targets (`context: { target: { … } }`). An action is left out while every one of its variants names a toggle in `preference` that is off (set them with `preferences: { … }` when you make the host).
 - `acceptsMatch(accepts, item, { extensionID }?)`, exported next to `createFakeHost`, applies any one `accepts` block, such as a detector's or a rule's. `extensionID` lets a tag written as `"tag"` stand for the extension's own detector, as in the app.
 
 ```js
