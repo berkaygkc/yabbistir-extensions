@@ -29,14 +29,13 @@ Nothing to install: both tools are part of macOS.
 
 ## Setup
 
-1. Open the extension's settings and turn on the destinations you use. Reminders and Notes are off by default because macOS asks for permission the first time.
+1. Open the extension's settings and turn on the destinations you use; the ones you turn off leave the list. Reminders and Notes are off by default because macOS asks for permission the first time.
 2. Optional: set the Obsidian vault name (Obsidian uses the vault you last had open when this is empty) and a folder inside the vault, such as `Inbox/Clips`.
 3. The first time you use Reminders or Notes, macOS asks whether yabbistir may control it. Allow it (System Settings › Privacy & Security › Automation). If the question stays open longer than ten seconds the first send may time out; just send again.
 
 ## Limits
 
-- Turning a destination off in settings does not hide its row: the manifest format has no per-variant visibility field, so all seven rows are always listed and a disabled one answers "turned off" without doing anything. Reminders and Notes are off by default, so they show up as rows that ask you to turn them on first.
-- Reminders and Notes need yabbistir 0.4.1 or later. Earlier versions can't ask macOS for Automation access: macOS refuses the request without asking, and yabbistir doesn't show up in System Settings › Privacy & Security › Automation. The other five destinations work on 0.3.0 and later.
+- Needs yabbistir 0.5.1 or later, which takes a destination you switch off out of the list.
 - Reminders and Notes use `osascript`, which `docs/review-checklist.md` lists among shells. It is a constant script with your text passed only as arguments (no injection is possible); if a maintainer rejects it, the fallback is to drop those two destinations.
 - OmniFocus: `name`, `note` and `autosave=true` come from community write-ups, not an official page. If OmniFocus ignores `autosave`, the item may wait as an unsaved draft in the Inbox.
 - An encoded URL is cut to 30,000 characters (our own conservative limit: the apps' documents name no limit except Things' notes, 10,000 characters). Cut text ends with an ellipsis and the notice says "cut to fit".

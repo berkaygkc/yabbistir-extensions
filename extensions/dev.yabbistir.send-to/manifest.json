@@ -1,7 +1,8 @@
 {
   "id": "dev.yabbistir.send-to",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 1,
+  "minAppVersion": "0.5.1",
   "defaultLocale": "en",
   "name": "name",
   "description": "description",
@@ -99,37 +100,44 @@
           {
             "id": "obsidian",
             "title": "to.obsidian",
-            "subtitle": "to.obsidian.sub"
+            "subtitle": "to.obsidian.sub",
+            "preference": "obsidian"
           },
           {
             "id": "things",
             "title": "to.things",
-            "subtitle": "to.things.sub"
+            "subtitle": "to.things.sub",
+            "preference": "things"
           },
           {
             "id": "bear",
             "title": "to.bear",
-            "subtitle": "to.bear.sub"
+            "subtitle": "to.bear.sub",
+            "preference": "bear"
           },
           {
             "id": "drafts",
             "title": "to.drafts",
-            "subtitle": "to.drafts.sub"
+            "subtitle": "to.drafts.sub",
+            "preference": "drafts"
           },
           {
             "id": "omnifocus",
             "title": "to.omnifocus",
-            "subtitle": "to.omnifocus.sub"
+            "subtitle": "to.omnifocus.sub",
+            "preference": "omnifocus"
           },
           {
             "id": "reminders",
             "title": "to.reminders",
-            "subtitle": "to.reminders.sub"
+            "subtitle": "to.reminders.sub",
+            "preference": "reminders"
           },
           {
             "id": "notes",
             "title": "to.notes",
-            "subtitle": "to.notes.sub"
+            "subtitle": "to.notes.sub",
+            "preference": "notes"
           }
         ]
       }

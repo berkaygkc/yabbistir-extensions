@@ -1,5 +1,6 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createFakeHost } from "@yabbistir/api/fake-host";
 
 import { actions } from "../src/index.ts";
@@ -232,6 +233,16 @@ describe("preferences", () => {
     const result = await send(host, "x", "bear");
     assert.match(result.message, /Bear is turned off/);
     assert.equal(calls.length, 0);
+  });
+
+  // yabbistir 0.5.1 lists a variant only while the toggle its "preference" names is on.
+  test("eachDestinationIsShownByItsOwnToggle", () => {
+    const manifest = JSON.parse(fs.readFileSync(new URL("manifest.json", folder), "utf8"));
+    const toggles = manifest.preferences.filter((preference) => preference.type === "toggle").map((preference) => preference.id);
+    const variants = manifest.contributes.actions.find((action) => action.id === "send").variants;
+    assert.deepEqual(variants.map((variant) => variant.preference), variants.map((variant) => variant.id));
+    assert.deepEqual([...toggles].sort(), variants.map((variant) => variant.id).sort());
+    assert.equal(manifest.minAppVersion, "0.5.1");
   });
 });
 
