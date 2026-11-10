@@ -1,0 +1,130 @@
+{
+  "name": "해시 및 인코딩",
+  "description": "텍스트와 코드의 해시와 인코딩: MD5, SHA, URL, HTML, 유니코드, 16진수, ROT13, Punycode.",
+  "hash.title": "해시",
+  "hash.keywords": [
+    "해시",
+    "체크섬",
+    "다이제스트",
+    "md5",
+    "sha",
+    "hash"
+  ],
+  "md5.title": "MD5 해시",
+  "md5.subtitle": "16진수 32자",
+  "sha1.title": "SHA-1 해시",
+  "sha1.subtitle": "16진수 40자",
+  "sha256.title": "SHA-256 해시",
+  "sha256.subtitle": "16진수 64자",
+  "sha512.title": "SHA-512 해시",
+  "sha512.subtitle": "16진수 128자",
+  "urlEncode.title": "URL용으로 인코딩",
+  "urlEncode.keywords": [
+    "url",
+    "인코딩",
+    "퍼센트",
+    "이스케이프",
+    "uri",
+    "encode"
+  ],
+  "urlDecode.title": "URL에서 디코딩",
+  "urlDecode.keywords": [
+    "url",
+    "디코딩",
+    "퍼센트",
+    "이스케이프 해제",
+    "uri",
+    "decode"
+  ],
+  "htmlEncode.title": "HTML 엔티티 인코딩",
+  "htmlEncode.keywords": [
+    "html",
+    "엔티티",
+    "인코딩",
+    "이스케이프",
+    "amp",
+    "encode"
+  ],
+  "htmlDecode.title": "HTML 엔티티 디코딩",
+  "htmlDecode.keywords": [
+    "html",
+    "엔티티",
+    "디코딩",
+    "이스케이프 해제",
+    "amp",
+    "decode"
+  ],
+  "unicodeEscape.title": "유니코드로 이스케이프",
+  "unicodeEscape.keywords": [
+    "유니코드",
+    "이스케이프",
+    "유니코드 이스케이프",
+    "unicode",
+    "u00"
+  ],
+  "unicodeUnescape.title": "유니코드 이스케이프 해제",
+  "unicodeUnescape.keywords": [
+    "유니코드",
+    "이스케이프 해제",
+    "디코딩",
+    "unicode",
+    "u00"
+  ],
+  "hexEncode.title": "텍스트를 16진수로",
+  "hexEncode.keywords": [
+    "16진수",
+    "헥스",
+    "바이트",
+    "인코딩",
+    "hex",
+    "encode"
+  ],
+  "hexDecode.title": "16진수를 텍스트로",
+  "hexDecode.keywords": [
+    "16진수",
+    "헥스",
+    "바이트",
+    "디코딩",
+    "hex",
+    "decode"
+  ],
+  "rot13.title": "ROT13",
+  "rot13.keywords": [
+    "카이사르",
+    "암호",
+    "카이사르 암호",
+    "rot13",
+    "rot",
+    "caesar"
+  ],
+  "punycodeEncode.title": "도메인을 Punycode로",
+  "punycodeEncode.keywords": [
+    "퓨니코드",
+    "도메인",
+    "한글 도메인",
+    "punycode",
+    "idn",
+    "xn--"
+  ],
+  "punycodeDecode.title": "Punycode를 도메인으로",
+  "punycodeDecode.keywords": [
+    "퓨니코드",
+    "도메인",
+    "한글 도메인",
+    "punycode",
+    "idn",
+    "xn--"
+  ],
+  "empty": "변환할 텍스트가 없습니다",
+  "url.nothing": "여기에는 디코딩할 내용이 없습니다",
+  "html.nothing": "여기에는 알려진 HTML 엔티티가 없습니다",
+  "unicode.nothing": "여기에는 디코딩할 유니코드 이스케이프가 없습니다",
+  "rot13.nothing": "회전시킬 알파벳이 없습니다",
+  "hex.invalid": "올바른 16진수가 아닙니다. 숫자가 두 자리씩 짝지어져야 합니다",
+  "hex.notText": "이 바이트는 올바른 UTF-8 텍스트가 아닙니다",
+  "punycode.notDomain": "도메인이나 링크가 아닙니다",
+  "punycode.invalid": "올바른 Punycode가 아닙니다",
+  "punycode.tooLong": "도메인의 한 부분이 63자보다 깁니다",
+  "punycode.nothingToEncode": "도메인이 이미 일반 ASCII입니다",
+  "punycode.nothingToDecode": "도메인에 Punycode가 없습니다"
+}
