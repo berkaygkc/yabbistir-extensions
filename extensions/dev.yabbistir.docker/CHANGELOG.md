@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Translations: Chinese (Simplified and Traditional), Japanese, Korean, German, French and Spanish.
+
 ## 1.0.0
 
 - First version: running containers as a column; ↵ pastes the name, ⇧↵ pastes `docker exec -it <name> sh`.
