@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "Vos entrées LastPass en colonne. ↵ colle le mot de passe, ⇧↵ le nom d’utilisateur. Utilise lpass, qui peut lire tout votre coffre-fort ; les mots de passe ne sont jamais enregistrés ni affichés.",
+  "source.title": "LastPass",
+  "password.title": "Coller le mot de passe",
+  "password.label": "Mot de passe",
+  "username.title": "Coller le nom d’utilisateur",
+  "username.label": "Nom d’utilisateur",
+  "username.copyTitle": "Copier le nom d’utilisateur",
+  "username.copied": "Nom d’utilisateur copié.",
+  "locked": "LastPass est verrouillé",
+  "emailPlaceholder": "<email>",
+  "updateNeeded": "lpass doit être mis à jour",
+  "listFailed": "lpass n’a pas pu lister le coffre-fort.",
+  "showFailed": "lpass n’a pas pu lire cette entrée.",
+  "emptyPassword": "Le mot de passe de cette entrée n’a pas pu être lu (lpass doit peut-être être mis à jour).",
+  "emptyUsername": "Cette entrée n’a pas de nom d’utilisateur."
+}

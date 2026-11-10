@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "LastPassのエントリをカラムに表示します。↵でパスワード、⇧↵でユーザ名をペースト。lpassを使うため、保管庫全体を読み取れます。パスワードは保存も表示もされません。",
+  "source.title": "LastPass",
+  "password.title": "パスワードをペースト",
+  "password.label": "パスワード",
+  "username.title": "ユーザ名をペースト",
+  "username.label": "ユーザ名",
+  "username.copyTitle": "ユーザ名をコピー",
+  "username.copied": "ユーザ名をコピーしました。",
+  "locked": "LastPassがロックされています",
+  "emailPlaceholder": "<email>",
+  "updateNeeded": "lpassのアップデートが必要です",
+  "listFailed": "lpassが保管庫の一覧を取得できませんでした。",
+  "showFailed": "lpassがこのエントリを読み取れませんでした。",
+  "emptyPassword": "このエントリのパスワードを読み取れませんでした（lpassのアップデートが必要かもしれません）。",
+  "emptyUsername": "このエントリにはユーザ名がありません。"
+}

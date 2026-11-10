@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "以直欄顯示你的LastPass項目。↵貼上密碼，⇧↵貼上使用者名稱。使用lpass，它可以讀取你的整個密碼庫；密碼絕不會被儲存或顯示。",
+  "source.title": "LastPass",
+  "password.title": "貼上密碼",
+  "password.label": "密碼",
+  "username.title": "貼上使用者名稱",
+  "username.label": "使用者名稱",
+  "username.copyTitle": "拷貝使用者名稱",
+  "username.copied": "已拷貝使用者名稱。",
+  "locked": "LastPass已鎖定",
+  "emailPlaceholder": "<email>",
+  "updateNeeded": "lpass需要更新",
+  "listFailed": "lpass無法列出密碼庫。",
+  "showFailed": "lpass無法讀取這個項目。",
+  "emptyPassword": "無法讀取這個項目的密碼（lpass可能需要更新）。",
+  "emptyUsername": "這個項目沒有使用者名稱。"
+}

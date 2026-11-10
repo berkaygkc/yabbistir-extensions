@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "以列的形式显示你的LastPass条目。↵粘贴密码，⇧↵粘贴用户名。使用lpass，它可以读取你的整个密码库；密码绝不会被存储或显示。",
+  "source.title": "LastPass",
+  "password.title": "粘贴密码",
+  "password.label": "密码",
+  "username.title": "粘贴用户名",
+  "username.label": "用户名",
+  "username.copyTitle": "拷贝用户名",
+  "username.copied": "已拷贝用户名。",
+  "locked": "LastPass已锁定",
+  "emailPlaceholder": "<email>",
+  "updateNeeded": "lpass需要更新",
+  "listFailed": "lpass无法列出密码库。",
+  "showFailed": "lpass无法读取这个条目。",
+  "emptyPassword": "无法读取这个条目的密码（lpass可能需要更新）。",
+  "emptyUsername": "这个条目没有用户名。"
+}
