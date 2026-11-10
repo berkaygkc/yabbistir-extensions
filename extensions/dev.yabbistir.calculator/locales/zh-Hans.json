@@ -1,0 +1,13 @@
+{
+  "name": "计算器",
+  "description": "识别拷贝的算式，例如12 * 3 + 4或15% of 80，并粘贴计算结果。",
+  "tag": "计算",
+  "preview": "计算",
+  "result": "结果",
+  "expression": "算式",
+  "result.title": "粘贴结果",
+  "result.keywords": ["结果", "计算", "答案", "求和", "数学", "算式", "calc", "result"],
+  "full.title": "粘贴算式 = 结果",
+  "full.keywords": ["算式", "计算", "等于", "求和", "数学", "表达式", "calc", "equals"],
+  "notAnExpression": "这不是算式。"
+}

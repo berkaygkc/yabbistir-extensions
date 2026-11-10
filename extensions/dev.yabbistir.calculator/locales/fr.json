@@ -1,0 +1,30 @@
+{
+  "name": "Calculatrice",
+  "description": "Reconnaît un calcul copié, comme 12 * 3 + 4 ou 15% of 80, et colle la réponse.",
+  "tag": "calcul",
+  "preview": "Calcul",
+  "result": "Résultat",
+  "expression": "Expression",
+  "result.title": "Coller le résultat",
+  "result.keywords": [
+    "résultat",
+    "calculer",
+    "calcul",
+    "réponse",
+    "somme",
+    "maths",
+    "calc",
+    "result"
+  ],
+  "full.title": "Coller l’expression = résultat",
+  "full.keywords": [
+    "expression",
+    "calculer",
+    "calcul",
+    "égale",
+    "somme",
+    "maths",
+    "calc"
+  ],
+  "notAnExpression": "Ce n’est pas un calcul."
+}

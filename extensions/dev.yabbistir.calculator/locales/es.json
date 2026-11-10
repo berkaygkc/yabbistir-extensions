@@ -1,0 +1,13 @@
+{
+  "name": "Calculadora",
+  "description": "Reconoce una operación copiada, como 12 * 3 + 4 o 15% of 80, y pega el resultado.",
+  "tag": "calc",
+  "preview": "Cálculo",
+  "result": "Resultado",
+  "expression": "Expresión",
+  "result.title": "Pegar resultado",
+  "result.keywords": ["resultado", "calcular", "cálculo", "operación", "suma", "matemáticas", "calc", "result"],
+  "full.title": "Pegar expresión = resultado",
+  "full.keywords": ["expresión", "calcular", "cálculo", "igual", "suma", "matemáticas", "calc", "equals"],
+  "notAnExpression": "Esto no es un cálculo."
+}

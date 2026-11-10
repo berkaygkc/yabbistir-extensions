@@ -1,0 +1,13 @@
+{
+  "name": "Rechner",
+  "description": "Erkennt eine kopierte Rechnung wie 12 * 3 + 4 oder 15% of 80 und setzt das Ergebnis ein.",
+  "tag": "rechnung",
+  "preview": "Rechnung",
+  "result": "Ergebnis",
+  "expression": "Ausdruck",
+  "result.title": "Ergebnis einsetzen",
+  "result.keywords": ["ergebnis", "berechnen", "rechnen", "rechner", "summe", "mathe", "calc", "result"],
+  "full.title": "Ausdruck = Ergebnis einsetzen",
+  "full.keywords": ["ausdruck", "rechnung", "berechnen", "gleich", "summe", "mathe", "calc", "equals"],
+  "notAnExpression": "Das ist keine Rechnung."
+}
