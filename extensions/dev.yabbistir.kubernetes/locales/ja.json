@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "現在のKubernetesコンテキストのPodをカラムに表示します。↵でPod名、⇧↵でkubectl logsまたはexecコマンドをペースト。kubectlを使用します。",
+  "source.title": "Pod",
+  "name.title": "Pod名をペースト",
+  "name.label": "Pod名",
+  "name.copyTitle": "Pod名をコピー",
+  "name.copied": "Pod名をコピーしました。",
+  "command.title": "kubectlコマンドをペースト",
+  "command.label": "コマンド",
+  "namespace.title": "ネームスペース（空欄ですべて）",
+  "shift.title": "⇧↵でペースト",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "Kubernetesコンテキストが選択されていません",
+  "unreachable": "クラスタに接続できません",
+  "unauthorized": "kubectlがクラスタにサインインしていません",
+  "forbidden": "お使いのアカウントではここのPodを一覧表示できません",
+  "badNamespace": "設定のネームスペースが無効です",
+  "listFailed": "kubectlがPodの一覧を取得できませんでした。",
+  "badRow": "このPodは使用できません。"
+}

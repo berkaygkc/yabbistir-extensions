@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "Les pods de votre contexte Kubernetes actuel en colonne. ↵ colle le nom du pod, ⇧↵ une commande kubectl logs ou exec. Utilise kubectl.",
+  "source.title": "Pods",
+  "name.title": "Coller le nom du pod",
+  "name.label": "Nom du pod",
+  "name.copyTitle": "Copier le nom du pod",
+  "name.copied": "Nom du pod copié.",
+  "command.title": "Coller la commande kubectl",
+  "command.label": "Commande",
+  "namespace.title": "Namespace (vide pour tous)",
+  "shift.title": "⇧↵ colle",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "Aucun contexte Kubernetes n’est sélectionné",
+  "unreachable": "Le cluster est injoignable",
+  "unauthorized": "kubectl n’est pas connecté au cluster",
+  "forbidden": "Votre compte ne peut pas lister les pods ici",
+  "badNamespace": "Le namespace des Réglages n’est pas valide",
+  "listFailed": "kubectl n’a pas pu lister les pods.",
+  "badRow": "Ce pod ne peut pas être utilisé."
+}

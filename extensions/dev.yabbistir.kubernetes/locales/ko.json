@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "현재 Kubernetes 컨텍스트의 파드를 열로 표시합니다. ↵는 파드 이름, ⇧↵는 kubectl logs 또는 exec 명령을 붙여넣습니다. kubectl을 사용합니다.",
+  "source.title": "파드",
+  "name.title": "파드 이름 붙여넣기",
+  "name.label": "파드 이름",
+  "name.copyTitle": "파드 이름 복사하기",
+  "name.copied": "파드 이름을 복사했습니다.",
+  "command.title": "kubectl 명령 붙여넣기",
+  "command.label": "명령",
+  "namespace.title": "네임스페이스(비워 두면 전체)",
+  "shift.title": "⇧↵ 붙여넣기",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "선택된 Kubernetes 컨텍스트가 없습니다",
+  "unreachable": "클러스터에 연결할 수 없습니다",
+  "unauthorized": "kubectl이 클러스터에 로그인되어 있지 않습니다",
+  "forbidden": "이 계정으로는 여기서 파드 목록을 볼 수 없습니다",
+  "badNamespace": "설정의 네임스페이스가 올바르지 않습니다",
+  "listFailed": "kubectl이 파드 목록을 가져오지 못했습니다.",
+  "badRow": "이 파드는 사용할 수 없습니다."
+}
