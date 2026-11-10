@@ -1,0 +1,78 @@
+{
+  "name": "Outils couleur",
+  "description": "Couleur CSS et Tailwind la plus proche, contraste, et nuances plus claires, plus sombres ou opposées d’une couleur copiée.",
+  "tag": "couleur",
+  "nearest": "Plus proche",
+  "contrast": "Contraste",
+  "css": "Nom CSS",
+  "white": "Sur blanc",
+  "black": "Sur noir",
+  "luminance": "Luminance",
+  "exact": "exacte",
+  "delta": "ΔE {n}",
+  "levels": "Texte normal {normal} · Grand texte {large}",
+  "fail": "échoue",
+  "onWhite": "{percent} % opaque, comparé sur blanc",
+  "empty": "Il n’y a pas de couleur à modifier.",
+  "lighter.title": "Éclaircir",
+  "lighter.keywords": [
+    "plus clair",
+    "éclaircir",
+    "clair",
+    "teinte",
+    "lumineux",
+    "lighter",
+    "tint"
+  ],
+  "lighter10.title": "Éclaircir de 10 %",
+  "lighter20.title": "Éclaircir de 20 %",
+  "lighter30.title": "Éclaircir de 30 %",
+  "darker.title": "Assombrir",
+  "darker.keywords": [
+    "plus sombre",
+    "assombrir",
+    "foncé",
+    "ombre",
+    "foncer",
+    "darker",
+    "shade"
+  ],
+  "darker10.title": "Assombrir de 10 %",
+  "darker20.title": "Assombrir de 20 %",
+  "darker30.title": "Assombrir de 30 %",
+  "complementary.title": "Couleur complémentaire",
+  "complementary.keywords": [
+    "complémentaire",
+    "opposée",
+    "complément",
+    "contraire",
+    "complementary",
+    "opposite"
+  ],
+  "inverted.title": "Inverser la couleur",
+  "inverted.keywords": [
+    "inverser",
+    "inversée",
+    "négatif",
+    "inverse",
+    "invert",
+    "negative"
+  ],
+  "grayscale.title": "Passer en gris",
+  "grayscale.keywords": [
+    "gris",
+    "niveaux de gris",
+    "désaturer",
+    "noir et blanc",
+    "grayscale",
+    "grey"
+  ],
+  "tailwind.title": "Coller en nom Tailwind",
+  "tailwind.keywords": [
+    "tailwind",
+    "classe",
+    "nom",
+    "palette",
+    "class"
+  ]
+}
