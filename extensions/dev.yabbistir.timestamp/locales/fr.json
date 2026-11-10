@@ -1,0 +1,81 @@
+{
+  "name": "Horodatage",
+  "description": "Reconnaît les horodatages Unix et les dates ISO copiés, indique de quel instant il s’agit et les convertit.",
+  "tag": "heure",
+  "pref.zone": "Fuseau horaire supplémentaire dans l’aperçu (par exemple Europe/London)",
+  "preview.time": "Date et heure",
+  "preview.details": "Détails",
+  "local": "Local",
+  "relative": "Relatif",
+  "weekday": "Jour de la semaine",
+  "unixSeconds": "Secondes Unix",
+  "readAs": "Lu comme",
+  "form.seconds": "Secondes Unix",
+  "form.milliseconds": "Millisecondes Unix",
+  "form.microseconds": "Microsecondes Unix",
+  "form.nanoseconds": "Nanosecondes Unix",
+  "form.iso": "ISO 8601",
+  "form.isoLocal": "ISO 8601, sans fuseau (heure de ce Mac)",
+  "form.rfc2822": "RFC 2822",
+  "form.rfc2822Local": "RFC 2822, sans fuseau (heure de ce Mac)",
+  "toIso.title": "Convertir en ISO 8601 (UTC)",
+  "toIso.keywords": [
+    "iso",
+    "iso8601",
+    "utc",
+    "date",
+    "horodatage",
+    "heure",
+    "timestamp"
+  ],
+  "toSeconds.title": "Convertir en secondes Unix",
+  "toSeconds.keywords": [
+    "unix",
+    "secondes",
+    "epoch",
+    "époque",
+    "horodatage",
+    "heure",
+    "timestamp"
+  ],
+  "toMilliseconds.title": "Convertir en millisecondes Unix",
+  "toMilliseconds.keywords": [
+    "unix",
+    "millisecondes",
+    "ms",
+    "epoch",
+    "époque",
+    "horodatage",
+    "timestamp"
+  ],
+  "toLocal.title": "Convertir en date et heure locales",
+  "toLocal.keywords": [
+    "local",
+    "date",
+    "lisible",
+    "heure locale",
+    "horodatage",
+    "timestamp"
+  ],
+  "nowSeconds.title": "Coller maintenant en secondes Unix",
+  "nowSeconds.keywords": [
+    "maintenant",
+    "actuel",
+    "unix",
+    "epoch",
+    "horodatage",
+    "timestamp",
+    "now"
+  ],
+  "nowIso.title": "Coller maintenant en ISO 8601",
+  "nowIso.keywords": [
+    "maintenant",
+    "actuel",
+    "iso",
+    "iso8601",
+    "date",
+    "heure",
+    "now"
+  ],
+  "notATimestamp": "Ce n’est pas un horodatage."
+}
