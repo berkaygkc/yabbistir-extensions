@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Translations: Chinese (Simplified and Traditional), Japanese, Korean, German, French and Spanish.
+
 ## 1.0.0
 
 - First version: fix spelling and grammar, make shorter, more formal or friendlier, turn into bullet points, extract action items, draft a reply, explain, and write a commit message or a PR description from a copied diff, all with Apple Intelligence on this Mac.
