@@ -1,0 +1,23 @@
+{
+  "name": "大小寫轉換",
+  "description": "將文字轉為camelCase、snake_case、Title Case、URL slug等格式，並先顯示結果。",
+  "changeCase.title": "轉換大小寫",
+  "changeCase.keywords": ["大小寫", "轉換大小寫", "大寫", "小寫", "駝峰", "底線", "標題", "命名", "case", "camel", "snake"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Title Case",
+  "sentence.title": "Sentence case",
+  "upper.title": "UPPERCASE",
+  "lower.title": "lowercase",
+  "slug.title": "URL slug",
+  "casing.title": "大小寫規則",
+  "casing.auto": "自動（App的語言）",
+  "casing.tr": "土耳其文",
+  "casing.en": "英文",
+  "empty": "沒有可轉換的文字。",
+  "emptySlug": "這段文字中沒有可用於slug的內容。"
+}

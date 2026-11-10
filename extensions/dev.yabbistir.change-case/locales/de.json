@@ -1,0 +1,23 @@
+{
+  "name": "Groß-/Kleinschreibung",
+  "description": "Wandelt Text in camelCase, snake_case, Title Case, einen URL-Slug und mehr um und zeigt das Ergebnis vorher an.",
+  "changeCase.title": "Schreibweise ändern",
+  "changeCase.keywords": ["groß", "klein", "großbuchstaben", "kleinbuchstaben", "schreibweise", "großschreibung", "kleinschreibung", "titel", "case", "camel", "snake"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Title Case",
+  "sentence.title": "Satzanfang groß",
+  "upper.title": "GROSSBUCHSTABEN",
+  "lower.title": "kleinbuchstaben",
+  "slug.title": "URL-Slug",
+  "casing.title": "Regeln für Groß-/Kleinschreibung",
+  "casing.auto": "Automatisch (Sprache der App)",
+  "casing.tr": "Türkisch",
+  "casing.en": "Englisch",
+  "empty": "Es gibt keinen Text zum Ändern.",
+  "emptySlug": "Aus diesem Text lässt sich kein Slug bilden."
+}

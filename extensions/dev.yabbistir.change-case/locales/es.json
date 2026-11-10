@@ -1,0 +1,23 @@
+{
+  "name": "Cambiar mayúsculas",
+  "description": "Convierte el texto a camelCase, snake_case, Title Case, un slug de URL y más, y muestra antes el resultado.",
+  "changeCase.title": "Cambiar mayúsculas y minúsculas",
+  "changeCase.keywords": ["mayúsculas", "minúsculas", "capitalizar", "formato", "título", "oración", "camel", "snake", "slug", "case"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Title Case",
+  "sentence.title": "Sentence case",
+  "upper.title": "MAYÚSCULAS",
+  "lower.title": "minúsculas",
+  "slug.title": "Slug de URL",
+  "casing.title": "Reglas de mayúsculas",
+  "casing.auto": "Automáticas (el idioma de la app)",
+  "casing.tr": "Turco",
+  "casing.en": "Inglés",
+  "empty": "No hay texto que cambiar.",
+  "emptySlug": "Nada de este texto puede ir en un slug."
+}
