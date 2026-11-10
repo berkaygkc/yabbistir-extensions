@@ -1,0 +1,17 @@
+{
+  "name": "Fragmentos",
+  "description": "Respuestas prediseñadas, firmas y plantillas de un archivo Markdown, en una columna. ↵ pega una con {date}, {time} y más ya rellenados.",
+  "folder.title": "Carpeta con tu archivo de fragmentos",
+  "file.title": "Nombre del archivo",
+  "source.title": "Fragmentos",
+  "paste.title": "Pegar fragmento",
+  "paste.label": "Fragmento",
+  "paste.copyTitle": "Copiar fragmento",
+  "paste.copied": "Fragmento copiado.",
+  "noFolder": "Elige una carpeta en Ajustes › Extensiones › Fragmentos.",
+  "badFileName": "El nombre del archivo de Ajustes › Extensiones › Fragmentos debe ser un nombre simple, como snippets.md.",
+  "noFile": "No hay ningún {file} en esa carpeta. Créalo allí o elige otra carpeta en Ajustes › Extensiones › Fragmentos.",
+  "unreadable": "No se ha podido leer {file}. Comprueba el archivo y la carpeta en Ajustes › Extensiones › Fragmentos.",
+  "noSnippets": "{file} aún no tiene fragmentos. Empieza uno con una línea como ## Gracias.",
+  "gone": "Este fragmento ya no está en el archivo."
+}
