@@ -1,0 +1,15 @@
+{
+  "name": "Código QR",
+  "description": "Convierte texto y enlaces en un código QR y lee los códigos QR de una imagen.",
+  "size.title": "Tamaño del código QR",
+  "size.256": "Pequeño (256 px)",
+  "size.512": "Mediano (512 px)",
+  "size.1024": "Grande (1024 px)",
+  "show.title": "Mostrar como código QR",
+  "show.keywords": ["qr", "código qr", "código", "escanear", "compartir", "show"],
+  "read.title": "Leer código QR",
+  "read.keywords": ["qr", "código qr", "escanear", "leer", "código de barras", "barcode"],
+  "empty": "No hay texto que convertir en un código QR",
+  "tooLong": "Esto es demasiado largo para un código QR",
+  "noCode": "No se ha encontrado ningún código QR en esta imagen"
+}

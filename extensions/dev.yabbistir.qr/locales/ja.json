@@ -1,0 +1,15 @@
+{
+  "name": "QRコード",
+  "description": "テキストやリンクをQRコードにし、画像内のQRコードを読み取ります。",
+  "size.title": "QRコードのサイズ",
+  "size.256": "小（256 px）",
+  "size.512": "中（512 px）",
+  "size.1024": "大（1024 px）",
+  "show.title": "QRコードとして表示",
+  "show.keywords": ["QRコード", "コード", "スキャン", "共有", "二次元", "qr", "qr code"],
+  "read.title": "QRコードを読み取る",
+  "read.keywords": ["QRコード", "スキャン", "読み取り", "バーコード", "qr", "scan"],
+  "empty": "QRコードにするテキストがありません",
+  "tooLong": "QRコードにするには長すぎます",
+  "noCode": "この画像にQRコードは見つかりませんでした"
+}
