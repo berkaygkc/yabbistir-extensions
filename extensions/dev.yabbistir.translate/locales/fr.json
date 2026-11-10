@@ -1,0 +1,37 @@
+{
+  "name": "Traduire",
+  "description": "Traduit du texte sur ce Mac et le résume avec Apple Intelligence.",
+  "translate.title": "Traduire",
+  "translate.keywords": [
+    "traduire",
+    "traduction",
+    "turc",
+    "anglais",
+    "langue",
+    "translate",
+    "translation"
+  ],
+  "tr.title": "Traduire en turc",
+  "tr.subtitle": "Sur ce Mac",
+  "en.title": "Traduire en anglais",
+  "en.subtitle": "Sur ce Mac",
+  "summarize.title": "Résumer",
+  "summarize.keywords": [
+    "résumer",
+    "résumé",
+    "raccourcir",
+    "synthèse",
+    "summarize",
+    "summary",
+    "tl;dr"
+  ],
+  "verb.translate": "Traduire",
+  "verb.summarize": "Résumer",
+  "failTitle.summarize": "Impossible de résumer",
+  "summarizing": "Résumé en cours",
+  "sameLanguage.tr": "Le texte est déjà en turc",
+  "sameLanguage.en": "Le texte est déjà en anglais",
+  "empty.translate": "Il n’y a pas de texte à traduire",
+  "empty.summarize": "Il n’y a pas de texte à résumer",
+  "instructions": "Résumez ce texte en français simple, en 3 phrases au maximum. Écrivez uniquement le résumé."
+}

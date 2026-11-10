@@ -1,0 +1,21 @@
+{
+  "name": "번역",
+  "description": "이 Mac에서 텍스트를 번역하고 Apple Intelligence로 요약합니다.",
+  "translate.title": "번역",
+  "translate.keywords": ["번역", "번역하기", "터키어", "영어", "translate", "translation"],
+  "tr.title": "터키어로 번역",
+  "tr.subtitle": "이 Mac에서",
+  "en.title": "영어로 번역",
+  "en.subtitle": "이 Mac에서",
+  "summarize.title": "요약",
+  "summarize.keywords": ["요약", "줄이기", "간추리기", "핵심", "summarize", "tl;dr"],
+  "verb.translate": "번역",
+  "verb.summarize": "요약",
+  "failTitle.summarize": "요약하지 못했습니다",
+  "summarizing": "요약 중",
+  "sameLanguage.tr": "텍스트가 이미 터키어입니다",
+  "sameLanguage.en": "텍스트가 이미 영어입니다",
+  "empty.translate": "번역할 텍스트가 없습니다",
+  "empty.summarize": "요약할 텍스트가 없습니다",
+  "instructions": "이 텍스트를 쉬운 한국어로 최대 3문장으로 요약하십시오. 요약만 쓰십시오."
+}
