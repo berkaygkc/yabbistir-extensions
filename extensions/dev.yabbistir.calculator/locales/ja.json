@@ -1,0 +1,13 @@
+{
+  "name": "計算機",
+  "description": "コピーした12 * 3 + 4や15% of 80のような計算式を認識して、答えをペーストします。",
+  "tag": "計算",
+  "preview": "計算",
+  "result": "結果",
+  "expression": "計算式",
+  "result.title": "結果をペースト",
+  "result.keywords": ["結果", "計算", "答え", "合計", "算数", "calc", "result"],
+  "full.title": "計算式 = 結果をペースト",
+  "full.keywords": ["計算式", "式", "計算", "イコール", "合計", "calc", "equals"],
+  "notAnExpression": "これは計算式ではありません。"
+}

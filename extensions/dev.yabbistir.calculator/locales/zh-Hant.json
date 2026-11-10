@@ -1,0 +1,13 @@
+{
+  "name": "計算機",
+  "description": "辨識拷貝的算式，例如12 * 3 + 4或15% of 80，並貼上計算結果。",
+  "tag": "計算",
+  "preview": "計算",
+  "result": "結果",
+  "expression": "算式",
+  "result.title": "貼上結果",
+  "result.keywords": ["結果", "計算", "答案", "加總", "數學", "算式", "calc", "result"],
+  "full.title": "貼上算式 = 結果",
+  "full.keywords": ["算式", "計算", "等於", "加總", "數學", "運算式", "calc", "equals"],
+  "notAnExpression": "這不是算式。"
+}

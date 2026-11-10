@@ -1,0 +1,13 @@
+{
+  "name": "계산기",
+  "description": "복사한 12 * 3 + 4나 15% of 80 같은 계산식을 인식하여 결과를 붙여넣습니다.",
+  "tag": "계산",
+  "preview": "계산",
+  "result": "결과",
+  "expression": "계산식",
+  "result.title": "결과 붙여넣기",
+  "result.keywords": ["결과", "계산", "계산기", "합계", "수학", "답", "calc", "result"],
+  "full.title": "계산식 = 결과 붙여넣기",
+  "full.keywords": ["계산식", "수식", "계산", "계산기", "합계", "수학", "calc", "equals"],
+  "notAnExpression": "계산식이 아닙니다."
+}
