@@ -1,0 +1,15 @@
+{
+  "name": "QR 코드",
+  "description": "텍스트와 링크를 QR 코드로 바꾸고, 이미지에 있는 QR 코드를 읽습니다.",
+  "size.title": "QR 코드 크기",
+  "size.256": "작게(256px)",
+  "size.512": "보통(512px)",
+  "size.1024": "크게(1024px)",
+  "show.title": "QR 코드로 보기",
+  "show.keywords": ["qr", "qr 코드", "큐알", "코드", "스캔", "공유"],
+  "read.title": "QR 코드 읽기",
+  "read.keywords": ["qr", "qr 코드", "큐알", "스캔", "읽기", "바코드"],
+  "empty": "QR 코드로 바꿀 텍스트가 없습니다",
+  "tooLong": "QR 코드로 만들기에는 너무 깁니다",
+  "noCode": "이 이미지에서 QR 코드를 찾지 못했습니다"
+}

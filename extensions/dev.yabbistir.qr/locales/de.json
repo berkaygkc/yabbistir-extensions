@@ -1,0 +1,15 @@
+{
+  "name": "QR-Code",
+  "description": "Wandelt Text und Links in einen QR-Code um und liest die QR-Codes in einem Bild.",
+  "size.title": "Größe des QR-Codes",
+  "size.256": "Klein (256 px)",
+  "size.512": "Mittel (512 px)",
+  "size.1024": "Groß (1024 px)",
+  "show.title": "Als QR-Code anzeigen",
+  "show.keywords": ["qr-code", "code", "scannen", "teilen", "anzeigen", "qr", "qr code", "share"],
+  "read.title": "QR-Code lesen",
+  "read.keywords": ["qr-code", "scannen", "lesen", "barcode", "strichcode", "qr", "qr code", "scan"],
+  "empty": "Es gibt keinen Text, der sich in einen QR-Code umwandeln lässt",
+  "tooLong": "Das ist zu lang für einen QR-Code",
+  "noCode": "In diesem Bild wurde kein QR-Code gefunden"
+}
