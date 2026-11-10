@@ -1,0 +1,36 @@
+{
+  "name": "Link-Werkzeuge",
+  "description": "Zeigt, wohin ein Kurzlink führt, und erstellt Kurzlinks.",
+  "tag": "Kurzlink",
+  "expand.title": "Kurzlink auflösen",
+  "expand.keywords": [
+    "auflösen",
+    "kurzlink",
+    "ziel",
+    "weiterleitung",
+    "link",
+    "expand",
+    "unshorten",
+    "redirect"
+  ],
+  "shorten.title": "Mit is.gd kürzen",
+  "shorten.keywords": [
+    "kürzen",
+    "kurzlink",
+    "verkürzen",
+    "link",
+    "isgd",
+    "shorten",
+    "url"
+  ],
+  "notShort": "Das ist kein is.gd- oder v.gd-Link.",
+  "noLink": "Es gibt keinen Link zum Kürzen.",
+  "tooMany": "Dieser Kurzlink führt über mehr als 5 Kurzlinks.",
+  "loop": "Dieser Kurzlink führt auf sich selbst zurück.",
+  "lookupFailed": "is.gd konnte nicht herausfinden, wohin dieser Link führt.",
+  "rateLimit": "is.gd ist ausgelastet. Versuche es in einer Minute erneut.",
+  "shortenFailed": "is.gd konnte diesen Link nicht kürzen.",
+  "badLocation": "Der Kurzlink verweist auf etwas, das kein Weblink ist.",
+  "alreadyShort": "Dieser Link ist bereits kurz.",
+  "hasCredentials": "Dieser Link enthält einen Benutzernamen oder ein Passwort und wird deshalb nicht an is.gd gesendet."
+}

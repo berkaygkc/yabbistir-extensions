@@ -1,0 +1,35 @@
+{
+  "name": "Outils de liens",
+  "description": "Montre où mène un lien court, et crée des liens courts.",
+  "tag": "Lien court",
+  "expand.title": "Développer le lien court",
+  "expand.keywords": [
+    "développer",
+    "dérouler",
+    "lien court",
+    "lien",
+    "destination",
+    "redirection",
+    "expand",
+    "unshorten"
+  ],
+  "shorten.title": "Raccourcir avec is.gd",
+  "shorten.keywords": [
+    "raccourcir",
+    "lien court",
+    "lien",
+    "isgd",
+    "url",
+    "shorten"
+  ],
+  "notShort": "Ce n’est pas un lien is.gd ou v.gd.",
+  "noLink": "Il n’y a pas de lien à raccourcir.",
+  "tooMany": "Ce lien court passe par plus de 5 liens courts.",
+  "loop": "Ce lien court revient sur lui-même.",
+  "lookupFailed": "is.gd n’a pas pu trouver où mène ce lien.",
+  "rateLimit": "is.gd est occupé. Réessayez dans une minute.",
+  "shortenFailed": "is.gd n’a pas pu raccourcir ce lien.",
+  "badLocation": "Le lien court pointe vers autre chose qu’un lien web.",
+  "alreadyShort": "Ce lien est déjà court.",
+  "hasCredentials": "Ce lien contient un nom d’utilisateur ou un mot de passe, il n’est donc pas envoyé à is.gd."
+}

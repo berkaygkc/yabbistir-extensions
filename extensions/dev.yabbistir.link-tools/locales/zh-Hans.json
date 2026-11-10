@@ -1,0 +1,19 @@
+{
+  "name": "链接工具",
+  "description": "显示短链接的去向，并生成短链接。",
+  "tag": "短链接",
+  "expand.title": "展开短链接",
+  "expand.keywords": ["展开", "还原", "短链接", "链接", "目标", "跳转", "expand", "unshorten", "redirect"],
+  "shorten.title": "用is.gd缩短",
+  "shorten.keywords": ["缩短", "短链接", "链接", "网址", "短网址", "shorten", "isgd", "url"],
+  "notShort": "这不是is.gd或v.gd链接。",
+  "noLink": "没有可缩短的链接。",
+  "tooMany": "这个短链接经过了超过5个短链接的跳转。",
+  "loop": "这个短链接又指回了它自己。",
+  "lookupFailed": "is.gd找不到这个链接的去向。",
+  "rateLimit": "is.gd正忙。请1分钟后再试。",
+  "shortenFailed": "is.gd无法缩短这个链接。",
+  "badLocation": "这个短链接指向的不是网页链接。",
+  "alreadyShort": "这个链接已经很短了。",
+  "hasCredentials": "这个链接包含用户名或密码，因此不会发送给is.gd。"
+}

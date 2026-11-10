@@ -1,0 +1,36 @@
+{
+  "name": "リンクツール",
+  "description": "短縮リンクの行き先を表示し、短縮リンクを作成します。",
+  "tag": "短縮リンク",
+  "expand.title": "短縮リンクを展開",
+  "expand.keywords": [
+    "展開",
+    "短縮解除",
+    "短縮リンク",
+    "リンク",
+    "行き先",
+    "リダイレクト",
+    "expand",
+    "unshorten"
+  ],
+  "shorten.title": "is.gdで短縮",
+  "shorten.keywords": [
+    "短縮",
+    "短い",
+    "リンク",
+    "URL短縮",
+    "shorten",
+    "isgd",
+    "url"
+  ],
+  "notShort": "is.gdまたはv.gdのリンクではありません。",
+  "noLink": "短縮するリンクがありません。",
+  "tooMany": "この短縮リンクは、5つを超える短縮リンクを経由しています。",
+  "loop": "この短縮リンクは自分自身に戻ります。",
+  "lookupFailed": "is.gdでこのリンクの行き先を見つけられませんでした。",
+  "rateLimit": "is.gdが混み合っています。1分後にもう一度お試しください。",
+  "shortenFailed": "is.gdでこのリンクを短縮できませんでした。",
+  "badLocation": "この短縮リンクの行き先はWebリンクではありません。",
+  "alreadyShort": "このリンクはすでに短いです。",
+  "hasCredentials": "このリンクにはユーザ名またはパスワードが含まれているため、is.gdには送信されません。"
+}

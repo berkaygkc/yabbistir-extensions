@@ -1,0 +1,19 @@
+{
+  "name": "링크 도구",
+  "description": "단축 링크가 가리키는 곳을 보여주고, 단축 링크를 만듭니다.",
+  "tag": "단축 링크",
+  "expand.title": "단축 링크 펼치기",
+  "expand.keywords": ["펼치기", "단축", "단축 링크", "링크", "목적지", "리디렉션", "expand", "unshorten"],
+  "shorten.title": "is.gd로 단축",
+  "shorten.keywords": ["단축", "줄이기", "짧은 링크", "링크", "isgd", "shorten", "url"],
+  "notShort": "is.gd 또는 v.gd 링크가 아닙니다.",
+  "noLink": "단축할 링크가 없습니다.",
+  "tooMany": "이 단축 링크는 5개가 넘는 단축 링크를 거쳐 이동합니다.",
+  "loop": "이 단축 링크는 자기 자신으로 돌아옵니다.",
+  "lookupFailed": "is.gd가 이 링크가 가리키는 곳을 찾지 못했습니다.",
+  "rateLimit": "is.gd가 바쁩니다. 1분 후 다시 시도하십시오.",
+  "shortenFailed": "is.gd가 이 링크를 단축하지 못했습니다.",
+  "badLocation": "단축 링크가 웹 링크가 아닌 대상을 가리킵니다.",
+  "alreadyShort": "이 링크는 이미 짧습니다.",
+  "hasCredentials": "이 링크에는 사용자 이름이나 암호가 들어 있어 is.gd로 보내지 않습니다."
+}

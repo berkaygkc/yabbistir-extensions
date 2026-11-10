@@ -1,0 +1,19 @@
+{
+  "name": "Herramientas de enlaces",
+  "description": "Muestra adónde lleva un enlace corto y crea enlaces cortos.",
+  "tag": "Enlace corto",
+  "expand.title": "Expandir enlace corto",
+  "expand.keywords": ["expandir", "desacortar", "corto", "enlace", "destino", "redirección", "expand", "redirect"],
+  "shorten.title": "Acortar con is.gd",
+  "shorten.keywords": ["acortar", "corto", "enlace", "isgd", "url", "shorten"],
+  "notShort": "Este no es un enlace de is.gd ni de v.gd.",
+  "noLink": "No hay ningún enlace que acortar.",
+  "tooMany": "Este enlace corto pasa por más de 5 enlaces cortos.",
+  "loop": "Este enlace corto vuelve a sí mismo.",
+  "lookupFailed": "is.gd no ha podido averiguar adónde lleva este enlace.",
+  "rateLimit": "is.gd está ocupado. Inténtalo de nuevo dentro de un minuto.",
+  "shortenFailed": "is.gd no ha podido acortar este enlace.",
+  "badLocation": "El enlace corto apunta a algo que no es un enlace web.",
+  "alreadyShort": "Este enlace ya es corto.",
+  "hasCredentials": "Este enlace contiene un nombre de usuario o una contraseña, así que no se envía a is.gd."
+}
