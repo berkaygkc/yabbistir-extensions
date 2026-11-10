@@ -1,0 +1,6 @@
+{
+  "name": "連結清理器",
+  "description": "清除你拷貝的連結中的追蹤參數。",
+  "clean.title": "移除追蹤參數",
+  "clean.description": "從拷貝的連結中去掉utm_*、fbclid、gclid等類似參數。"
+}

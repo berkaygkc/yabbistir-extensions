@@ -1,0 +1,6 @@
+{
+  "name": "링크 정리",
+  "description": "복사한 링크에서 추적 매개변수를 제거합니다.",
+  "clean.title": "추적 매개변수 제거",
+  "clean.description": "복사한 링크에서 utm_*, fbclid, gclid 같은 매개변수를 제거합니다."
+}

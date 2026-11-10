@@ -1,0 +1,6 @@
+{
+  "name": "链接清理器",
+  "description": "清除你拷贝的链接中的跟踪参数。",
+  "clean.title": "移除跟踪参数",
+  "clean.description": "从拷贝的链接中去掉utm_*、fbclid、gclid等类似参数。"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Limpiador de enlaces",
+  "description": "Quita los parámetros de seguimiento de los enlaces que copias.",
+  "clean.title": "Quitar parámetros de seguimiento",
+  "clean.description": "Elimina utm_*, fbclid, gclid y parámetros similares de los enlaces copiados."
+}

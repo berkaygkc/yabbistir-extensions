@@ -1,0 +1,6 @@
+{
+  "name": "リンククリーナ",
+  "description": "コピーしたリンクからトラッキングパラメータを取り除きます。",
+  "clean.title": "トラッキングパラメータを削除",
+  "clean.description": "コピーしたリンクから、utm_*、fbclid、gclidなどのパラメータを取り除きます。"
+}

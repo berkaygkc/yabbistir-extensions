@@ -1,0 +1,6 @@
+{
+  "name": "Nettoyeur de liens",
+  "description": "Retire les paramètres de suivi des liens que vous copiez.",
+  "clean.title": "Retirer les paramètres de suivi",
+  "clean.description": "Supprime utm_*, fbclid, gclid et les paramètres similaires des liens copiés."
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Link-Bereiniger",
+  "description": "Entfernt Tracking-Parameter aus den Links, die du kopierst.",
+  "clean.title": "Tracking-Parameter entfernen",
+  "clean.description": "Entfernt utm_*, fbclid, gclid und ähnliche Parameter aus kopierten Links."
+}
