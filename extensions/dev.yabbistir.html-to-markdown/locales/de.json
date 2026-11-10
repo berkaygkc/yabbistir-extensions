@@ -1,0 +1,10 @@
+{
+  "name": "HTML zu Markdown",
+  "description": "Wandelt formatierten Text aus Webseiten und Dokumenten in sauberes Markdown um.",
+  "markdown.title": "Als Markdown einsetzen",
+  "markdown.subtitle": "Aus der kopierten Formatierung",
+  "markdown.keywords": ["markdown", "md", "html", "formatierung", "formatierter text", "umwandeln", "text formatieren", "rich text"],
+  "noRichText": "Diese Kopie hat keine Formatierung, die sich in Markdown umwandeln lässt",
+  "empty": "Diese Kopie enthält keinen Text, der sich in Markdown umwandeln lässt",
+  "unreadable": "Die Formatierung dieser Kopie konnte nicht gelesen werden"
+}

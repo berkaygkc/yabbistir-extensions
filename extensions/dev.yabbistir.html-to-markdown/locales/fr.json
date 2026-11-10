@@ -1,0 +1,19 @@
+{
+  "name": "HTML vers Markdown",
+  "description": "Transforme le texte enrichi copié depuis des pages web et des documents en Markdown propre.",
+  "markdown.title": "Coller en Markdown",
+  "markdown.subtitle": "À partir de la mise en forme copiée",
+  "markdown.keywords": [
+    "markdown",
+    "html",
+    "texte enrichi",
+    "mise en forme",
+    "format",
+    "balisage",
+    "md",
+    "rich text"
+  ],
+  "noRichText": "Cette copie n’a pas de mise en forme à transformer en Markdown",
+  "empty": "Il n’y a pas de texte dans cette copie à transformer en Markdown",
+  "unreadable": "Impossible de lire la mise en forme de cette copie"
+}

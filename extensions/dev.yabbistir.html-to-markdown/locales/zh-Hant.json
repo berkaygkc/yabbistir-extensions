@@ -1,0 +1,10 @@
+{
+  "name": "HTML轉Markdown",
+  "description": "將從網頁和文件中拷貝的格式化文字轉換為簡潔的Markdown。",
+  "markdown.title": "以Markdown貼上",
+  "markdown.subtitle": "來自拷貝內容的格式",
+  "markdown.keywords": ["markdown", "格式化文字", "格式", "網頁", "轉換", "md", "html"],
+  "noRichText": "這次拷貝沒有可轉換為Markdown的格式",
+  "empty": "這次拷貝中沒有可轉換為Markdown的文字",
+  "unreadable": "無法讀取這次拷貝的格式"
+}

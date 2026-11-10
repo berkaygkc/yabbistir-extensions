@@ -1,0 +1,10 @@
+{
+  "name": "HTML转Markdown",
+  "description": "将从网页和文档中拷贝的富文本转换为简洁的Markdown。",
+  "markdown.title": "粘贴为Markdown",
+  "markdown.subtitle": "来自拷贝内容的格式",
+  "markdown.keywords": ["markdown", "富文本", "格式", "网页", "转换", "md", "html"],
+  "noRichText": "这次拷贝没有可转换为Markdown的格式",
+  "empty": "这次拷贝中没有可转换为Markdown的文本",
+  "unreadable": "无法读取这次拷贝的格式"
+}
