@@ -1,0 +1,7 @@
+{
+  "name": "Garde des secrets",
+  "description": "Garde hors de votre historique les clés d’API, les clés privées et les autres secrets que vous copiez.",
+  "guard.title": "Garder les secrets hors de l’historique",
+  "guard.description": "Une copie contenant une clé d’API, un jeton, une clé privée, un mot de passe de base de données ou une graine d’authentification à deux facteurs se colle toujours, mais n’est jamais enregistrée.",
+  "jwt.title": "Traiter les JSON Web Tokens comme des secrets"
+}

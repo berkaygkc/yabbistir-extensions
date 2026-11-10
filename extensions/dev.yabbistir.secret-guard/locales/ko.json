@@ -1,0 +1,7 @@
+{
+  "name": "비밀 값 보호",
+  "description": "복사한 API 키, 개인 키 등의 비밀 값이 기록에 남지 않게 합니다.",
+  "guard.title": "비밀 값을 기록에서 제외",
+  "guard.description": "API 키, 토큰, 개인 키, 데이터베이스 암호, 2단계 인증 시드가 들어 있는 복사본은 붙여넣을 수는 있지만 저장되지 않습니다.",
+  "jwt.title": "JSON Web Token을 비밀 값으로 취급"
+}
