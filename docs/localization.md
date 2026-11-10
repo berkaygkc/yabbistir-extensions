@@ -1,6 +1,6 @@
 # Localization
 
-yabbistir speaks English and Turkish, and an extension speaks the app's language through its locale files. Every extension ships English; other languages are welcome and optional.
+yabbistir speaks nine languages (English `en`, German `de`, Spanish `es`, French `fr`, Turkish `tr`, Japanese `ja`, Korean `ko`, Simplified Chinese `zh-Hans` and Traditional Chinese `zh-Hant`), and an extension speaks the app's language through its locale files. Every extension ships English; other languages are welcome and optional.
 
 ## Locale files
 
