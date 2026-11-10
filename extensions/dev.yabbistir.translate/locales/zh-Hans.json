@@ -1,0 +1,21 @@
+{
+  "name": "翻译",
+  "description": "在这台Mac上翻译文本，并用Apple智能生成摘要。",
+  "translate.title": "翻译",
+  "translate.keywords": ["翻译", "译文", "语言", "土耳其语", "英语", "translate", "translation"],
+  "tr.title": "翻译为土耳其语",
+  "tr.subtitle": "在这台Mac上",
+  "en.title": "翻译为英语",
+  "en.subtitle": "在这台Mac上",
+  "summarize.title": "生成摘要",
+  "summarize.keywords": ["摘要", "总结", "概括", "缩短", "简述", "summarize", "tl;dr"],
+  "verb.translate": "翻译",
+  "verb.summarize": "生成摘要",
+  "failTitle.summarize": "无法生成摘要",
+  "summarizing": "正在生成摘要",
+  "sameLanguage.tr": "文本已经是土耳其语",
+  "sameLanguage.en": "文本已经是英语",
+  "empty.translate": "没有可翻译的文本",
+  "empty.summarize": "没有可生成摘要的文本",
+  "instructions": "用通俗的简体中文，用不超过3句话概括这段文本。只写摘要。"
+}

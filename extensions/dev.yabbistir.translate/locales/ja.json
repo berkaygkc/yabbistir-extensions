@@ -1,0 +1,21 @@
+{
+  "name": "翻訳",
+  "description": "このMac上でテキストを翻訳し、Apple Intelligenceで要約します。",
+  "translate.title": "翻訳",
+  "translate.keywords": ["翻訳", "通訳", "訳す", "トルコ語", "英語", "translate", "turkish", "english"],
+  "tr.title": "トルコ語に翻訳",
+  "tr.subtitle": "このMac上で",
+  "en.title": "英語に翻訳",
+  "en.subtitle": "このMac上で",
+  "summarize.title": "要約",
+  "summarize.keywords": ["要約", "まとめ", "短縮", "概要", "summarize", "summary", "tl;dr"],
+  "verb.translate": "翻訳",
+  "verb.summarize": "要約",
+  "failTitle.summarize": "要約できませんでした",
+  "summarizing": "要約中",
+  "sameLanguage.tr": "テキストはすでにトルコ語です",
+  "sameLanguage.en": "テキストはすでに英語です",
+  "empty.translate": "翻訳するテキストがありません",
+  "empty.summarize": "要約するテキストがありません",
+  "instructions": "このテキストを、やさしい日本語で3文以内に要約してください。要約だけを書いてください。"
+}

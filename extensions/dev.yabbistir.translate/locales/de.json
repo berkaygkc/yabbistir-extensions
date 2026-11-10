@@ -1,0 +1,21 @@
+{
+  "name": "Übersetzen",
+  "description": "Übersetzt Text auf diesem Mac und fasst ihn mit Apple Intelligence zusammen.",
+  "translate.title": "Übersetzen",
+  "translate.keywords": ["übersetzen", "übersetzung", "sprache", "türkisch", "englisch", "translate", "translation"],
+  "tr.title": "Ins Türkische übersetzen",
+  "tr.subtitle": "Auf diesem Mac",
+  "en.title": "Ins Englische übersetzen",
+  "en.subtitle": "Auf diesem Mac",
+  "summarize.title": "Zusammenfassen",
+  "summarize.keywords": ["zusammenfassen", "zusammenfassung", "kürzen", "kurzfassung", "summarize", "tl;dr"],
+  "verb.translate": "Übersetzen",
+  "verb.summarize": "Zusammenfassen",
+  "failTitle.summarize": "Zusammenfassen fehlgeschlagen",
+  "summarizing": "Wird zusammengefasst",
+  "sameLanguage.tr": "Der Text ist bereits auf Türkisch",
+  "sameLanguage.en": "Der Text ist bereits auf Englisch",
+  "empty.translate": "Es gibt keinen Text zum Übersetzen",
+  "empty.summarize": "Es gibt keinen Text zum Zusammenfassen",
+  "instructions": "Fasse diesen Text in einfachem Deutsch in höchstens 3 Sätzen zusammen. Schreibe nur die Zusammenfassung."
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Traducir",
+  "description": "Traduce texto en este Mac y lo resume con Apple Intelligence.",
+  "translate.title": "Traducir",
+  "translate.keywords": ["traducir", "traducción", "idioma", "turco", "inglés", "translate", "translation"],
+  "tr.title": "Traducir al turco",
+  "tr.subtitle": "En este Mac",
+  "en.title": "Traducir al inglés",
+  "en.subtitle": "En este Mac",
+  "summarize.title": "Resumir",
+  "summarize.keywords": ["resumir", "resumen", "acortar", "sinopsis", "summarize", "tl;dr"],
+  "verb.translate": "Traducir",
+  "verb.summarize": "Resumir",
+  "failTitle.summarize": "No se ha podido resumir",
+  "summarizing": "Resumiendo",
+  "sameLanguage.tr": "El texto ya está en turco",
+  "sameLanguage.en": "El texto ya está en inglés",
+  "empty.translate": "No hay texto que traducir",
+  "empty.summarize": "No hay texto que resumir",
+  "instructions": "Resume este texto en español sencillo en un máximo de 3 frases. Escribe solo el resumen."
+}
