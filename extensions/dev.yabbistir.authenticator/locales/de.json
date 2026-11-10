@@ -1,0 +1,17 @@
+{
+  "name": "Authenticator",
+  "description": "Zwei-Faktor-Codes aus dem Export deiner Authenticator-App, als Spalte. ↵ setzt den aktuellen Code ein. Liest otpauth-Links und Exporte aus LastPass, Google, Aegis, 2FAS und Bitwarden; Codes werden nie gespeichert oder angezeigt.",
+  "source.title": "Authenticator",
+  "code.title": "Code einsetzen",
+  "code.label": "Code",
+  "accounts.title": "Accounts",
+  "setUp": "Setze den Export deiner Authenticator-App unter Einstellungen › Erweiterungen › Authenticator in „Accounts“ ein.",
+  "encrypted": "Dieser {app}-Export ist verschlüsselt. Exportiere erneut ohne Passwort und setze ihn dann in den Einstellungen in „Accounts“ ein.",
+  "lastPassQr": "Die QR-Codes von LastPass Authenticator können hier nicht gelesen werden. Nutze dort Settings › Transfer accounts › Export accounts to file und setze diese Datei ein.",
+  "noTotp": "Dieser Export enthält keine zeitbasierten Accounts. HOTP- und Steam-Accounts werden nicht unterstützt.",
+  "unrecognized": "Keine Accounts gefunden. Setze otpauth-Links oder einen Export aus LastPass, Google, Aegis, 2FAS oder Bitwarden in den Einstellungen in „Accounts“ ein.",
+  "gone": "Dieser Account ist nicht mehr in den Einstellungen unter „Accounts“.",
+  "readFailed": "Die Accounts in den Einstellungen konnten nicht gelesen werden.",
+  "noCode": "Für diese Zeile gibt es keinen Code.",
+  "unnamed": "Unbenannter Account"
+}

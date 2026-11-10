@@ -1,0 +1,17 @@
+{
+  "name": "Authenticator",
+  "description": "Les codes à deux facteurs de l’export de votre application d’authentification, en colonne. ↵ colle le code actuel. Lit les liens otpauth et les exports de LastPass, Google, Aegis, 2FAS et Bitwarden ; les codes ne sont jamais enregistrés ni affichés.",
+  "source.title": "Authenticator",
+  "code.title": "Coller le code",
+  "code.label": "Code",
+  "accounts.title": "Comptes",
+  "setUp": "Collez l’export de votre application d’authentification dans Comptes, sous Réglages › Extensions › Authenticator.",
+  "encrypted": "Cet export {app} est chiffré. Exportez-le de nouveau sans mot de passe, puis collez-le dans Comptes, dans les Réglages.",
+  "lastPassQr": "Les codes QR de LastPass Authenticator ne peuvent pas être lus ici. Utilisez Settings › Transfer accounts › Export accounts to file, et collez ce fichier.",
+  "noTotp": "Aucun compte à code temporel dans cet export. Les comptes HOTP et Steam ne sont pas pris en charge.",
+  "unrecognized": "Aucun compte trouvé. Collez des liens otpauth, ou un export de LastPass, Google, Aegis, 2FAS ou Bitwarden, dans Comptes, dans les Réglages.",
+  "gone": "Ce compte ne figure plus dans Comptes, dans les Réglages.",
+  "readFailed": "Impossible de lire les comptes dans les Réglages.",
+  "noCode": "Il n’y a pas de code pour cette ligne.",
+  "unnamed": "Compte sans nom"
+}
