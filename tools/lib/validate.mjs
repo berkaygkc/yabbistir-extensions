@@ -22,7 +22,7 @@ export const APP_CODES = [
   "invalidToolName", "invalidMemberID", "duplicateID", "unknownPreferenceType", "secretDefault", "folderDefault",
   "choiceNeedsOptions", "unknownInput", "unknownOutput", "unknownTarget", "targetsOnlyNeedsTargets", "acceptsMissing",
   "kindsEmpty", "unknownKind", "invalidPattern", "captureRuleTags", "sourceActionCount", "unknownSourceActionKind",
-  "sourceSecretNeedsSensitive", "sourceSecretWithNetwork", "sourceCopyNeedsText", "indexMissing",
+  "sourceSecretNeedsSensitive", "sourceSecretWithNetwork", "sourceCopyNeedsText", "variantPreference", "indexMissing",
 ];
 
 /** Codes of the rules only the store has. */
@@ -156,6 +156,9 @@ export function validateExtension(folder, { store = true, relativeTo = process.c
   if (!store) return { issues };
 
   // ---- The store's rules ----
+  // The app loads a variant whose "preference" names no toggle, always shows it and warns; the store takes only a
+  // variant that its setting can hide.
+  for (const issue of issues) if (issue.code === "variantPreference") issue.level = "error";
   for (const language of locales.unreadable) {
     add(path.join("locales", `${language}.json`), "", "localeUnreadable", `locales/${language}.json is not a JSON object`,
       { fix: `Make locales/${language}.json a JSON object of keys and texts.` });
@@ -312,6 +315,19 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
 
   const list = (value) => (Array.isArray(value) ? value : []);
 
+  /** A variant's "preference" names one of the extension's toggles, which shows and hides it; anything else, a warning. */
+  const variantPreference = (value, field) => {
+    const warn = (message) => report(field, "variantPreference", message,
+      { fix: "Name one of this extension's \"toggle\" preferences, or remove \"preference\".", level: "warning" });
+    if (typeof value !== "string") { warn("\"preference\" must be the id of a toggle preference; this variant is always offered"); return; }
+    // The first preference with the id decides, as when the app reads the values.
+    const named = list(root.preferences).find((preference) => isObject(preference) && preference.id === value);
+    if (named === undefined) { warn(`there is no preference "${value}"; this variant is always offered`); return; }
+    if (named.type === "toggle") return;
+    const type = typeof named.type === "string" ? `a ${named.type} preference` : "a preference";
+    warn(`"${value}" is ${type}, not a toggle; this variant is always offered`);
+  };
+
   // Identity
   const id = string("id", root, "id", "Add an \"id\" such as \"dev.yourname.tool\".");
   if (id !== undefined) {
@@ -456,6 +472,7 @@ function checkManifest(root, { folder, defaultLocale, tables, source }, report) 
       memberID(variant, `${variantField}.id`, "variant", variantIDs);
       localeKey("title", variant, `${variantField}.title`);
       if (Object.hasOwn(variant, "failTitle")) localeKey("failTitle", variant, `${variantField}.failTitle`);
+      if (Object.hasOwn(variant, "preference") && variant.preference !== null) variantPreference(variant.preference, `${variantField}.preference`);
     });
   });
 

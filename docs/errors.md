@@ -27,6 +27,7 @@ The validator runs the app's own checks, with the app's messages, and then the s
 - `accepts.pattern` may use only what the store can verify ([`invalidPattern`](#invalidpattern)).
 - A license, README.md, CHANGELOG.md and a complete `locales/en.json` are required.
 - The folder holds regular files and folders only ([`notARegularFile`](#notaregularfile)).
+- A variant's `preference` names a toggle of the same extension ([`variantPreference`](#variantpreference)). The app only warns, and offers that variant always.
 
 ## Validator messages
 
@@ -197,6 +198,10 @@ A warning: `capture rules never see tags; this rule would never run`. A rule's `
 ### `sourceCopyNeedsText`
 
 `a secret action has no "<copyTitle, copied>"; secrets are never copied to be kept`. Reported once for each of the two keys. **Fix:** remove the key, or make the action `"kind": "text"`.
+
+### `variantPreference`
+
+`there is no preference "<id>"; this variant is always offered`, `"<id>" is a <text, choice, secret, folder> preference, not a toggle; this variant is always offered`, or `"preference" must be the id of a toggle preference; this variant is always offered`. A variant's `preference` names the switch that shows and hides it, so it must be one of the same extension's `toggle` preferences. The store refuses anything else. yabbistir itself still loads the extension, always offers that variant, and shows this as a warning in Settings → Extensions → Development. **Fix:** write the toggle's `id`, add that toggle to `preferences`, or remove `preference` ([the field](manifest.md#contributesactionsvariants)).
 
 ### `indexMissing`
 

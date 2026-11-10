@@ -563,4 +563,18 @@ describe("accepts", () => {
     const finder = { target: { bundleID: "com.apple.finder", name: "Finder", kind: "finder" } };
     assert.deepEqual(host.offers({ text: "ada@example.com" }, finder), ["save", "first", "lower"], "the target's actions lead");
   });
+
+  test("hostLeavesOutAnActionWhoseVariantsAreAllSwitchedOff", () => {
+    const manifest = { id: "dev.example.send", preferences: [
+      { id: "bear", type: "toggle", default: true }, { id: "notes", type: "toggle", default: false }, { id: "vault", type: "text" },
+    ], contributes: { actions: [
+      { id: "send", input: "item", accepts: { kinds: ["text"] }, variants: [{ id: "bear", preference: "bear" }, { id: "notes", preference: "notes" }] },
+      { id: "pin", input: "item", accepts: { kinds: ["text"] }, variants: [{ id: "a", preference: "vault" }] },
+      { id: "plain", input: "item", accepts: { kinds: ["text"] } },
+    ] } };
+    const offers = (preferences) => createFakeHost({ manifest, preferences }).offers({ text: "a" });
+    assert.deepEqual(offers(), ["send", "pin", "plain"], "bear is on by default");
+    assert.deepEqual(offers({ bear: false }), ["pin", "plain"], "every variant of send is off; pin's names no toggle");
+    assert.deepEqual(offers({ bear: false, notes: true }), ["send", "pin", "plain"]);
+  });
 });

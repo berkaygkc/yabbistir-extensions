@@ -404,6 +404,52 @@ describe("the store's rules", () => {
   });
 });
 
+describe("a variant's preference", () => {
+  const FIX = "Name one of this extension's \"toggle\" preferences, or remove \"preference\".";
+  const withPreference = (preference) => withManifest((m) => {
+    m.preferences.push({ id: "loud", type: "toggle", title: "mode.title", default: true });
+    m.contributes.actions[0].variants[0].preference = preference;
+  });
+  const variantIssues = (folder, options) => validateExtension(folder, options).issues.filter((issue) => issue.code === "variantPreference")
+    .map(({ field, level, message, fix }) => ({ field, level, message, fix }));
+
+  test("naming a toggle of the same extension passes", () => {
+    assert.deepEqual(codes(validateExtension(writeExtension({ manifest: withPreference("loud") }).folder).issues), []);
+  });
+
+  test("naming anything else fails in the store, and says what it names", () => {
+    const field = "contributes.actions[0].variants[0].preference";
+    for (const [preference, message] of [
+      ["quiet", "there is no preference \"quiet\"; this variant is always offered"],
+      ["mode", "\"mode\" is a choice preference, not a toggle; this variant is always offered"],
+      [true, "\"preference\" must be the id of a toggle preference; this variant is always offered"],
+    ]) {
+      const { folder } = writeExtension({ manifest: withPreference(preference) });
+      assert.deepEqual(codes(validateExtension(folder).issues), ["variantPreference"], String(preference));
+      assert.deepEqual(variantIssues(folder), [{ field, level: "error", message, fix: FIX }]);
+    }
+  });
+
+  test("the app loads it with a warning, in the app's words, and shows the variant", () => {
+    const folder = materialize(readFixture("valid/variant-preference-not-a-toggle.json"), scratch());
+    const at = (index) => `contributes.actions[0].variants[${index}].preference`;
+    assert.deepEqual(variantIssues(folder, { store: false }), [
+      { field: at(0), level: "warning", message: "there is no preference \"lower\"; this variant is always offered", fix: FIX },
+      { field: at(1), level: "warning", message: "\"mode\" is a choice preference, not a toggle; this variant is always offered", fix: FIX },
+      { field: at(2), level: "warning", message: "\"preference\" must be the id of a toggle preference; this variant is always offered", fix: FIX },
+    ]);
+    assert.ok(variantIssues(folder).every((issue) => issue.level === "error"));
+  });
+
+  test("npm run validate prints it and exits 1", () => {
+    const { root } = writeExtension({ manifest: withPreference("mode") });
+    const result = spawnSync(process.execPath, [cli, "--root", root, ID], { encoding: "utf8" });
+    assert.equal(result.status, 1, result.stderr);
+    assert.ok(result.stdout.split("\n").includes(`extensions/${ID}/manifest.json: contributes.actions[0].variants[0].preference: "mode" is a choice `
+      + `preference, not a toggle; this variant is always offered → fix: ${FIX}`), result.stdout);
+  });
+});
+
 describe("npm run validate", () => {
   const run = (root, ...args) => spawnSync(process.execPath, [cli, "--root", root, ...args], { encoding: "utf8" });
 

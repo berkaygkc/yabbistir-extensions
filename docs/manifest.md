@@ -103,7 +103,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `job` | boolean |  | Runs as a long-running job. See [Jobs](jobs.md). Without it, `run` must finish in 10 seconds. |
 | `verb` | [locale key](localization.md) |  | A job's label in the ⇧ panel: "↵ <verb> · ⌘C <verb> and copy", such as "Download". Without it a job says "Start". |
 | `failTitle` | [locale key](localization.md) |  | A failed job's title, such as "Couldn't download the video"; a variant's own wins. |
-| `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. |
+| `variants` | list of objects, see [`contributes.actions[].variants[]`](#contributesactionsvariants) |  | Ready-made choices of one action. Each is its own row, and `ctx.variant` is the chosen id. A variant tied to a toggle with `preference` can be hidden by the person. |
 | `hint` | boolean |  | Run early (500 ms limit) and show the output as the row's hint. The hint run has no effects (no network, programs, notices, AI or translation), and its result is what is pasted when the person picks the row, so it must be the real answer. A hint that returns `{ none: true }` leaves the action offered, with no preview on its row. Never for jobs or `file`/`files` output. |
 | `priority` | integer |  | Orders the extension's own actions on an item, highest first. Defaults to 0. |
 
@@ -129,6 +129,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 | `title` | [locale key](localization.md) | yes | The variant's row title. |
 | `subtitle` | [locale key](localization.md) |  | The variant's second line. |
 | `failTitle` | [locale key](localization.md) |  | The job card's title when this variant fails. |
+| `preference` | string |  | The id of one of the extension's toggle preferences: the variant is offered only while that toggle is on. Switched off in Settings, the variant leaves the ⇧ panel, ⌘K, search and ⇧↵, and an action whose variants are all off leaves with them. The toggle's title should say so, such as "Show Bear". `run` still gets `ctx.preferences`, so it can refuse a switched-off variant too. Needs yabbistir 0.5.1 or later: set `minAppVersion` to `"0.5.1"`, since an older app ignores the field and always offers the variant. |
 
 No other fields: the store rejects any it does not know ([`unknownField`](errors.md#unknownfield)).
 
@@ -191,6 +192,7 @@ No other fields: the store rejects any it does not know ([`unknownField`](errors
 - Ids are unique within their list (actions, variants of one action, detectors, capture rules, sources, actions of one source, preferences).
 - A `secret` preference has no `default`; a `folder` default starts with `~`; a `choice` has `options`.
 - `targetsOnly` needs at least one entry in `targets`.
+- A variant's `preference` names a `toggle` preference of the same extension.
 - A source has one or two actions. A `secret` action needs `"sensitive": true` on its source and has no `copyTitle` or `copied`, and an extension with one cannot ask for `network`.
 - `accepts.pattern` compiles as an ICU regular expression, the kind the app uses.
 - README.md and CHANGELOG.md exist, and, once built, so does `index.js`.
