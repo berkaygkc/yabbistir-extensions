@@ -1,0 +1,14 @@
+{
+  "name": "開發伺服器",
+  "description": "以直欄顯示這台Mac上正在監聽的本機伺服器。↵貼上http://localhost:3000，⇧↵貼上localhost:3000。",
+  "source.title": "開發伺服器",
+  "url.title": "貼上localhost連結",
+  "url.label": "連結",
+  "url.copyTitle": "拷貝localhost連結",
+  "url.copied": "已拷貝連結。",
+  "address.title": "貼上localhost位址",
+  "address.label": "位址",
+  "allInterfaces": "所有介面",
+  "listFailed": "lsof無法列出伺服器。",
+  "gone": "該伺服器已不在清單中。"
+}

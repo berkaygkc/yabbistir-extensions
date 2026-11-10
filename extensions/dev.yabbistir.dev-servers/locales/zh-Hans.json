@@ -1,0 +1,14 @@
+{
+  "name": "开发服务器",
+  "description": "以列的形式显示这台Mac上正在监听的本地服务器。↵粘贴http://localhost:3000，⇧↵粘贴localhost:3000。",
+  "source.title": "开发服务器",
+  "url.title": "粘贴localhost链接",
+  "url.label": "链接",
+  "url.copyTitle": "拷贝localhost链接",
+  "url.copied": "已拷贝链接。",
+  "address.title": "粘贴localhost地址",
+  "address.label": "地址",
+  "allInterfaces": "所有接口",
+  "listFailed": "lsof无法列出服务器。",
+  "gone": "该服务器已不在列表中。"
+}

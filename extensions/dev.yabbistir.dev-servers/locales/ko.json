@@ -1,0 +1,14 @@
+{
+  "name": "개발 서버",
+  "description": "Mac에서 수신 대기 중인 로컬 서버를 열로 표시합니다. ↵는 http://localhost:3000, ⇧↵는 localhost:3000을 붙여넣습니다.",
+  "source.title": "개발 서버",
+  "url.title": "localhost 링크 붙여넣기",
+  "url.label": "링크",
+  "url.copyTitle": "localhost 링크 복사하기",
+  "url.copied": "링크를 복사했습니다.",
+  "address.title": "localhost 주소 붙여넣기",
+  "address.label": "주소",
+  "allInterfaces": "모든 인터페이스",
+  "listFailed": "lsof가 서버 목록을 가져오지 못했습니다.",
+  "gone": "이 서버는 더 이상 목록에 없습니다."
+}
