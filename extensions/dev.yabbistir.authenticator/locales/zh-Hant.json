@@ -1,0 +1,17 @@
+{
+  "name": "驗證器",
+  "description": "以直欄顯示驗證器匯出檔中的雙重驗證碼。↵貼上目前的驗證碼。可讀取otpauth連結，以及LastPass、Google、Aegis、2FAS和Bitwarden的匯出內容；驗證碼絕不會被儲存或顯示。",
+  "source.title": "驗證器",
+  "code.title": "貼上驗證碼",
+  "code.label": "驗證碼",
+  "accounts.title": "帳號",
+  "setUp": "請將驗證器的匯出內容貼到「設定 › 延伸功能 › 驗證器」的「帳號」中。",
+  "encrypted": "這份{app}匯出檔已加密。請不設密碼重新匯出，然後貼到設定裡的「帳號」中。",
+  "lastPassQr": "這裡無法讀取LastPass Authenticator的QR code。請使用「設定 › 轉移帳號 › 將帳號匯出至檔案」，並貼上該檔案。",
+  "noTotp": "這份匯出內容中沒有以時間為基礎的帳號。不支援HOTP和Steam帳號。",
+  "unrecognized": "找不到帳號。請將otpauth連結，或LastPass、Google、Aegis、2FAS、Bitwarden的匯出內容貼到設定裡的「帳號」中。",
+  "gone": "設定裡的「帳號」中已沒有這個帳號。",
+  "readFailed": "無法讀取設定裡的帳號。",
+  "noCode": "這一列沒有驗證碼。",
+  "unnamed": "未命名帳號"
+}

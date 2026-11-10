@@ -1,0 +1,17 @@
+{
+  "name": "身份验证器",
+  "description": "以列的形式显示验证器导出文件中的双重验证码。↵粘贴当前验证码。可读取otpauth链接，以及LastPass、Google、Aegis、2FAS和Bitwarden的导出内容；验证码绝不会被存储或显示。",
+  "source.title": "身份验证器",
+  "code.title": "粘贴验证码",
+  "code.label": "验证码",
+  "accounts.title": "账户",
+  "setUp": "请将验证器的导出内容粘贴到“设置 › 扩展 › 身份验证器”的“账户”中。",
+  "encrypted": "这份{app}导出文件已加密。请不设密码重新导出，然后粘贴到设置里的“账户”中。",
+  "lastPassQr": "这里无法读取LastPass Authenticator的二维码。请使用“设置 › 转移账户 › 将账户导出到文件”，并粘贴该文件。",
+  "noTotp": "这份导出内容中没有基于时间的账户。不支持HOTP和Steam账户。",
+  "unrecognized": "未找到账户。请将otpauth链接，或LastPass、Google、Aegis、2FAS、Bitwarden的导出内容粘贴到设置里的“账户”中。",
+  "gone": "设置里的“账户”中已没有这个账户。",
+  "readFailed": "无法读取设置里的账户。",
+  "noCode": "这一行没有验证码。",
+  "unnamed": "未命名账户"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Autenticador",
+  "description": "Códigos de dos factores a partir de la exportación de tu autenticador, en una columna. ↵ pega el código actual. Lee enlaces otpauth y exportaciones de LastPass, Google, Aegis, 2FAS y Bitwarden; los códigos nunca se guardan ni se muestran.",
+  "source.title": "Autenticador",
+  "code.title": "Pegar código",
+  "code.label": "Código",
+  "accounts.title": "Cuentas",
+  "setUp": "Pega la exportación de tu autenticador en Cuentas, en Ajustes › Extensiones › Autenticador.",
+  "encrypted": "Esta exportación de {app} está cifrada. Vuelve a exportarla sin contraseña y pégala en Cuentas, en Ajustes.",
+  "lastPassQr": "Los códigos QR de LastPass Authenticator no se pueden leer aquí. Usa Ajustes › Transferir cuentas › Exportar cuentas a archivo y pega ese archivo.",
+  "noTotp": "No hay cuentas basadas en tiempo en esta exportación. Las cuentas HOTP y Steam no son compatibles.",
+  "unrecognized": "No se han encontrado cuentas. Pega enlaces otpauth o una exportación de LastPass, Google, Aegis, 2FAS o Bitwarden en Cuentas, en Ajustes.",
+  "gone": "Esta cuenta ya no está en Cuentas, en Ajustes.",
+  "readFailed": "No se han podido leer las cuentas de Ajustes.",
+  "noCode": "No hay ningún código para esta fila.",
+  "unnamed": "Cuenta sin nombre"
+}

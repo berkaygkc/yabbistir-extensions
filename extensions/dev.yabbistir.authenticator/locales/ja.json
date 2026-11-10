@@ -1,0 +1,17 @@
+{
+  "name": "Authenticator",
+  "description": "認証アプリのエクスポートから、2ファクタ認証コードをカラムに表示します。↵で現在のコードをペースト。otpauthリンクと、LastPass、Google、Aegis、2FAS、Bitwardenのエクスポートに対応。コードは保存も表示もされません。",
+  "source.title": "Authenticator",
+  "code.title": "コードをペースト",
+  "code.label": "コード",
+  "accounts.title": "アカウント",
+  "setUp": "認証アプリのエクスポートを、設定 › 機能拡張 › Authenticatorの“アカウント”にペーストしてください。",
+  "encrypted": "この{app}のエクスポートは暗号化されています。パスワードなしでもう一度エクスポートし、設定の“アカウント”にペーストしてください。",
+  "lastPassQr": "LastPass AuthenticatorのQRコードはここでは読み取れません。“Settings › Transfer accounts › Export accounts to file”を使い、そのファイルをペーストしてください。",
+  "noTotp": "このエクスポートに時間ベースのアカウントはありません。HOTPとSteamのアカウントには対応していません。",
+  "unrecognized": "アカウントが見つかりません。otpauthリンク、またはLastPass、Google、Aegis、2FAS、Bitwardenのエクスポートを、設定の“アカウント”にペーストしてください。",
+  "gone": "このアカウントは設定の“アカウント”にありません。",
+  "readFailed": "設定のアカウントを読み取れませんでした。",
+  "noCode": "この行にはコードがありません。",
+  "unnamed": "名称未設定のアカウント"
+}
