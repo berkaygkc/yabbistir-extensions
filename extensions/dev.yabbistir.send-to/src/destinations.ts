@@ -158,23 +158,27 @@ export function fit(dest: (typeof URL_DESTINATIONS)[number], text: string, o: Op
   return { url: buildUrl(dest, head(body, low).trimEnd() + "…", o), cut: true };
 }
 
-/** The constant AppleScript sources. The text never becomes part of them: it arrives as arguments. */
-const STRIP = `on plain(s)
+/**
+ * The constant AppleScript sources. The text never becomes part of them: it arrives as arguments. The handler that
+ * drops each argument's leading "x" is `unmark`: `plain` is a reserved AppleScript constant (a text style), and a
+ * handler named after it never compiles.
+ */
+const STRIP = `on unmark(s)
 	if (length of s) > 1 then return text 2 thru -1 of s
 	return ""
-end plain
+end unmark
 `;
 
 export const REMINDERS_SCRIPT = STRIP + `on run argv
 	set n to count of argv
-	set theBody to my plain(item n of argv)
-	set theTitle to my plain(item (n - 1) of argv)
+	set theBody to my unmark(item n of argv)
+	set theTitle to my unmark(item (n - 1) of argv)
 	tell application "Reminders" to make new reminder with properties {name:theTitle, body:theBody}
 end run`;
 
 export const NOTES_SCRIPT = STRIP + `on run argv
 	set n to count of argv
-	set theBody to my plain(item n of argv)
+	set theBody to my unmark(item n of argv)
 	tell application "Notes" to make new note with properties {body:theBody}
 end run`;
 

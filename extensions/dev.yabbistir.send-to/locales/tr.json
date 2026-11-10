@@ -28,6 +28,7 @@
   "notInstalled": "{app} uygulamasına ulaşılamadı. Yüklü mü?",
   "denied": "Sistem Ayarları › Gizlilik ve Güvenlik › Otomasyon bölümünde yabbistir’in {app} uygulamasını denetlemesine izin ver, sonra yeniden dene.",
   "failed": "{app} uygulamasına gönderilemedi.",
+  "failedCode": "{app} uygulamasına gönderilemedi (hata {code}).",
   "badFolder": "Ayarlardaki Obsidian klasörü geçerli bir klasör yolu değil.",
   "pref.vault": "Obsidian kasa adı",
   "pref.folder": "Obsidian klasörü",

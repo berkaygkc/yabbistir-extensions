@@ -1,5 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createFakeHost } from "@yabbistir/api/fake-host";
 
 import { actions } from "../src/index.ts";
@@ -217,6 +221,23 @@ describe("AppleScript destinations", () => {
   });
 });
 
+// osacompile only compiles a script; nothing runs. macOS only: the store's checks also run on Linux.
+describe("AppleScript", { skip: process.platform !== "darwin" && "osacompile is macOS only" }, () => {
+  for (const [name, script] of [["Reminders", REMINDERS_SCRIPT], ["Notes", NOTES_SCRIPT]]) {
+    test(`the${name}ScriptCompiles`, () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "send-to-script-"));
+      try {
+        const source = path.join(dir, `${name}.applescript`);
+        fs.writeFileSync(source, script);
+        const result = spawnSync("osacompile", ["-o", path.join(dir, `${name}.scpt`), source], { encoding: "utf8" });
+        assert.equal(result.status, 0, result.stderr);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 describe("preferences", () => {
   test("remindersAndNotesAreOffByDefault", async () => {
     const host = createFakeHost({ folder, exec: { open: ok, osascript: ok } });
@@ -232,6 +253,16 @@ describe("preferences", () => {
     const result = await send(host, "x", "bear");
     assert.match(result.message, /Bear is turned off/);
     assert.equal(calls.length, 0);
+  });
+
+  // yabbistir 0.5.1 lists a variant only while the toggle its "preference" names is on.
+  test("eachDestinationIsShownByItsOwnToggle", () => {
+    const manifest = JSON.parse(fs.readFileSync(new URL("manifest.json", folder), "utf8"));
+    const toggles = manifest.preferences.filter((preference) => preference.type === "toggle").map((preference) => preference.id);
+    const variants = manifest.contributes.actions.find((action) => action.id === "send").variants;
+    assert.deepEqual(variants.map((variant) => variant.preference), variants.map((variant) => variant.id));
+    assert.deepEqual([...toggles].sort(), variants.map((variant) => variant.id).sort());
+    assert.equal(manifest.minAppVersion, "0.5.1");
   });
 });
 
@@ -300,7 +331,22 @@ describe("speed", () => {
 
   test("onlyAnchoredCodesCountAsAppMissing", async () => {
     const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr: "odd (-6000) and Can't get object. (-1728)" }) });
-    await assert.rejects(send(host, "x", "notes"), /Couldn’t send to Notes\./);
+    await assert.rejects(send(host, "x", "notes"), { message: "Couldn’t send to Notes (error -1728)." });
+  });
+
+  test("anyOtherScriptErrorGivesMacOSNumberAndNoneOfStderr", async () => {
+    const stderr = "41:120: execution error: Reminders got an error: AppleEvent handler failed for \"Buy oat milk\". (-1744)\n";
+    const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+    await assert.rejects(send(host, "Buy oat milk", "reminders"), { message: "Couldn’t send to Reminders (error -1744)." });
+    const { host: tr } = make({ language: "tr", osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+    await assert.rejects(send(tr, "Buy oat milk", "reminders"), { message: "Hatırlatıcılar uygulamasına gönderilemedi (hata -1744)." });
+  });
+
+  test("aScriptErrorWithoutANumberKeepsThePlainMessage", async () => {
+    for (const stderr of ["", "something odd happened", "a number in the text (-1744) is not at the end."]) {
+      const { host } = make({ osascript: () => ({ exitCode: 1, stdout: "", stderr }) });
+      await assert.rejects(send(host, "x", "notes"), { message: "Couldn’t send to Notes." }, JSON.stringify(stderr));
+    }
   });
 
   test("turkishUsesLocalizedNamesForRemindersAndNotes", async () => {
