@@ -1,0 +1,19 @@
+{
+  "name": "連結工具",
+  "description": "顯示短網址的去向，並產生短網址。",
+  "tag": "短網址",
+  "expand.title": "展開短網址",
+  "expand.keywords": ["展開", "還原", "短網址", "連結", "目標", "重新導向", "expand", "unshorten", "redirect"],
+  "shorten.title": "以is.gd縮短",
+  "shorten.keywords": ["縮短", "短網址", "連結", "網址", "shorten", "isgd", "url"],
+  "notShort": "這不是is.gd或v.gd連結。",
+  "noLink": "沒有可縮短的連結。",
+  "tooMany": "這個短網址經過了超過5個短網址的跳轉。",
+  "loop": "這個短網址又指回了它自己。",
+  "lookupFailed": "is.gd找不到這個連結的去向。",
+  "rateLimit": "is.gd正忙。請1分鐘後再試。",
+  "shortenFailed": "is.gd無法縮短這個連結。",
+  "badLocation": "這個短網址指向的不是網頁連結。",
+  "alreadyShort": "這個連結已經很短了。",
+  "hasCredentials": "這個連結包含使用者名稱或密碼，因此不會傳送給is.gd。"
+}
