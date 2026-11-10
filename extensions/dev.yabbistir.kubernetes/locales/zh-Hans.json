@@ -1,0 +1,22 @@
+{
+  "name": "Kubernetes",
+  "description": "以列的形式显示当前Kubernetes上下文中的pod。↵粘贴pod名称，⇧↵粘贴kubectl logs或exec命令。使用kubectl。",
+  "source.title": "Pod",
+  "name.title": "粘贴pod名称",
+  "name.label": "Pod名称",
+  "name.copyTitle": "拷贝pod名称",
+  "name.copied": "已拷贝pod名称。",
+  "command.title": "粘贴kubectl命令",
+  "command.label": "命令",
+  "namespace.title": "命名空间（留空表示全部）",
+  "shift.title": "⇧↵粘贴",
+  "shift.logs": "kubectl logs -f",
+  "shift.exec": "kubectl exec -it … -- sh",
+  "noContext": "未选择Kubernetes上下文",
+  "unreachable": "无法连接集群",
+  "unauthorized": "kubectl未登录集群",
+  "forbidden": "你的账户无法在此列出pod",
+  "badNamespace": "设置中的命名空间无效",
+  "listFailed": "kubectl无法列出pod。",
+  "badRow": "无法使用这个pod。"
+}
