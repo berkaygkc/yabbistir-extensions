@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "以直欄顯示你的Docker容器。↵貼上名稱，⇧↵貼上docker exec指令。支援Docker Desktop、OrbStack和Colima。",
+  "all.title": "包含已停止的容器",
+  "source.title": "容器",
+  "name.title": "貼上名稱",
+  "name.label": "名稱",
+  "name.copyTitle": "拷貝名稱",
+  "name.copied": "已拷貝名稱。",
+  "exec.title": "貼上exec指令",
+  "exec.label": "exec指令",
+  "locked": "Docker未在執行",
+  "denied": "Docker拒絕了存取",
+  "listFailed": "Docker無法列出容器。",
+  "badRow": "無法使用這個容器。",
+  "morePorts": "+{count}"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "Deine Docker-Container als Spalte. ↵ setzt den Namen ein, ⇧↵ einen docker exec-Befehl. Funktioniert mit Docker Desktop, OrbStack und Colima.",
+  "all.title": "Gestoppte Container einbeziehen",
+  "source.title": "Container",
+  "name.title": "Namen einsetzen",
+  "name.label": "Name",
+  "name.copyTitle": "Namen kopieren",
+  "name.copied": "Name kopiert.",
+  "exec.title": "exec-Befehl einsetzen",
+  "exec.label": "exec-Befehl",
+  "locked": "Docker läuft nicht",
+  "denied": "Docker hat den Zugriff verweigert",
+  "listFailed": "Docker konnte die Container nicht auflisten.",
+  "badRow": "Dieser Container kann nicht verwendet werden.",
+  "morePorts": "+{count}"
+}

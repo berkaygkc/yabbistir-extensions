@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "Vos conteneurs Docker en colonne. ↵ colle le nom, ⇧↵ colle une commande docker exec. Fonctionne avec Docker Desktop, OrbStack et Colima.",
+  "all.title": "Inclure les conteneurs arrêtés",
+  "source.title": "Conteneurs",
+  "name.title": "Coller le nom",
+  "name.label": "Nom",
+  "name.copyTitle": "Copier le nom",
+  "name.copied": "Nom copié.",
+  "exec.title": "Coller la commande exec",
+  "exec.label": "Commande exec",
+  "locked": "Docker n’est pas lancé",
+  "denied": "Docker a refusé l’accès",
+  "listFailed": "Docker n’a pas pu lister les conteneurs.",
+  "badRow": "Ce conteneur ne peut pas être utilisé.",
+  "morePorts": "+{count}"
+}

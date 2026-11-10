@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "Docker 컨테이너를 열로 표시합니다. ↵는 이름, ⇧↵는 docker exec 명령을 붙여넣습니다. Docker Desktop, OrbStack, Colima에서 작동합니다.",
+  "all.title": "중지된 컨테이너 포함",
+  "source.title": "컨테이너",
+  "name.title": "이름 붙여넣기",
+  "name.label": "이름",
+  "name.copyTitle": "이름 복사하기",
+  "name.copied": "이름을 복사했습니다.",
+  "exec.title": "exec 명령 붙여넣기",
+  "exec.label": "exec 명령",
+  "locked": "Docker가 실행 중이 아닙니다",
+  "denied": "Docker가 접근을 거부했습니다",
+  "listFailed": "Docker가 컨테이너 목록을 가져오지 못했습니다.",
+  "badRow": "이 컨테이너는 사용할 수 없습니다.",
+  "morePorts": "+{count}"
+}

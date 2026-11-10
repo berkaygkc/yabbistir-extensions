@@ -1,0 +1,17 @@
+{
+  "name": "Docker",
+  "description": "Dockerのコンテナをカラムに表示します。↵で名前、⇧↵でdocker execコマンドをペースト。Docker Desktop、OrbStack、Colimaに対応。",
+  "all.title": "停止中のコンテナも含める",
+  "source.title": "コンテナ",
+  "name.title": "名前をペースト",
+  "name.label": "名前",
+  "name.copyTitle": "名前をコピー",
+  "name.copied": "名前をコピーしました。",
+  "exec.title": "execコマンドをペースト",
+  "exec.label": "execコマンド",
+  "locked": "Dockerが実行されていません",
+  "denied": "Dockerがアクセスを拒否しました",
+  "listFailed": "Dockerがコンテナの一覧を取得できませんでした。",
+  "badRow": "このコンテナは使用できません。",
+  "morePorts": "+{count}"
+}
