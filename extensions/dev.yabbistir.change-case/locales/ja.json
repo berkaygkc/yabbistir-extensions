@@ -1,0 +1,23 @@
+{
+  "name": "大文字・小文字の変換",
+  "description": "テキストをcamelCase、snake_case、Title Case、URLスラッグなどに変換し、結果を先に表示します。",
+  "changeCase.title": "大文字・小文字を変換",
+  "changeCase.keywords": ["大文字", "小文字", "ケース", "変換", "キャメル", "スネーク", "スラッグ", "case", "camel", "snake"],
+  "camel.title": "camelCase",
+  "pascal.title": "PascalCase",
+  "snake.title": "snake_case",
+  "constant.title": "CONSTANT_CASE",
+  "kebab.title": "kebab-case",
+  "dot.title": "dot.case",
+  "title.title": "Title Case",
+  "sentence.title": "Sentence case",
+  "upper.title": "UPPERCASE",
+  "lower.title": "lowercase",
+  "slug.title": "URLスラッグ",
+  "casing.title": "大文字・小文字のルール",
+  "casing.auto": "自動（アプリの言語）",
+  "casing.tr": "トルコ語",
+  "casing.en": "英語",
+  "empty": "変更するテキストがありません。",
+  "emptySlug": "このテキストには、スラッグにできる文字がありません。"
+}
