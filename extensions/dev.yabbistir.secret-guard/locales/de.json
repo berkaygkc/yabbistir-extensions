@@ -1,0 +1,7 @@
+{
+  "name": "Geheimnisschutz",
+  "description": "Hält API-Schlüssel, private Schlüssel und andere Geheimnisse, die du kopierst, aus deinem Verlauf heraus.",
+  "guard.title": "Geheimnisse aus dem Verlauf heraushalten",
+  "guard.description": "Eine Kopie mit einem API-Schlüssel, Token, privaten Schlüssel, Datenbankpasswort oder Zwei-Faktor-Seed lässt sich weiterhin einsetzen, wird aber nie gespeichert.",
+  "jwt.title": "JSON Web Tokens als Geheimnisse behandeln"
+}

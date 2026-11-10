@@ -1,0 +1,7 @@
+{
+  "name": "机密守卫",
+  "description": "让你拷贝的API密钥、私钥和其他机密信息不进入历史记录。",
+  "guard.title": "让机密信息不进入历史记录",
+  "guard.description": "含有API密钥、令牌、私钥、数据库密码或双重验证种子的拷贝仍可粘贴，但绝不会被存储。",
+  "jwt.title": "将JSON Web Token视为机密信息"
+}

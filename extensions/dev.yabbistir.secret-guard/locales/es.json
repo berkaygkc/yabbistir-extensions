@@ -1,0 +1,7 @@
+{
+  "name": "Guardián de secretos",
+  "description": "Mantiene fuera de tu historial las claves de API, las claves privadas y otros secretos que copias.",
+  "guard.title": "Mantener los secretos fuera del historial",
+  "guard.description": "Una copia con una clave de API, un token, una clave privada, una contraseña de base de datos o una semilla de dos factores se sigue pudiendo pegar, pero nunca se guarda.",
+  "jwt.title": "Tratar los JSON Web Tokens como secretos"
+}

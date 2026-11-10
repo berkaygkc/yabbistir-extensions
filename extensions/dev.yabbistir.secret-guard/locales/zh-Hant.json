@@ -1,0 +1,7 @@
+{
+  "name": "機密守衛",
+  "description": "讓你拷貝的API金鑰、私密金鑰和其他機密資訊不進入記錄。",
+  "guard.title": "讓機密資訊不進入記錄",
+  "guard.description": "含有API金鑰、權杖、私密金鑰、資料庫密碼或雙重驗證種子的拷貝仍可貼上，但絕不會被儲存。",
+  "jwt.title": "將JSON Web Token視為機密資訊"
+}
