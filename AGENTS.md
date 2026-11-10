@@ -10,7 +10,7 @@ Every coding agent works from this file; `CLAUDE.md` only imports it (`@AGENTS.m
 extensions/<id>/             one extension per folder; <id> is its reverse-domain id
   manifest.json              what it is, its permissions, what it contributes
   src/index.ts               exports actions, detectors, captureRules and/or sources
-  locales/en.json            English strings (required); locales/tr.json optional
+  locales/en.json            English strings (required); other languages optional (de, es, fr, tr, ja, ko, zh-Hans, zh-Hant)
   tests/*.test.mjs           node:test tests against the fake host
   README.md, CHANGELOG.md    required
   icon.png                   optional; most use an SF Symbol ("sf:<name>") instead

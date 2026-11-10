@@ -204,7 +204,7 @@ The manifest of [Download Video](../extensions/dev.yabbistir.video-download), wh
 ```json
 {
   "id": "dev.yabbistir.video-download",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": 1,
   "defaultLocale": "en",
   "name": "name",
