@@ -1,6 +1,9 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createFakeHost } from "@yabbistir/api/fake-host";
 
 import { actions } from "../src/index.ts";
@@ -216,6 +219,23 @@ describe("AppleScript destinations", () => {
       return true;
     });
   });
+});
+
+// osacompile only compiles a script; nothing runs. macOS only: the store's checks also run on Linux.
+describe("AppleScript", { skip: process.platform !== "darwin" && "osacompile is macOS only" }, () => {
+  for (const [name, script] of [["Reminders", REMINDERS_SCRIPT], ["Notes", NOTES_SCRIPT]]) {
+    test(`the${name}ScriptCompiles`, () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "send-to-script-"));
+      try {
+        const source = path.join(dir, `${name}.applescript`);
+        fs.writeFileSync(source, script);
+        const result = spawnSync("osacompile", ["-o", path.join(dir, `${name}.scpt`), source], { encoding: "utf8" });
+        assert.equal(result.status, 0, result.stderr);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 });
 
 describe("preferences", () => {
