@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "LastPass 항목을 열로 표시합니다. ↵는 암호, ⇧↵는 사용자 이름을 붙여넣습니다. 보관함 전체를 읽을 수 있는 lpass를 사용하며, 암호는 저장하거나 표시하지 않습니다.",
+  "source.title": "LastPass",
+  "password.title": "암호 붙여넣기",
+  "password.label": "암호",
+  "username.title": "사용자 이름 붙여넣기",
+  "username.label": "사용자 이름",
+  "username.copyTitle": "사용자 이름 복사하기",
+  "username.copied": "사용자 이름을 복사했습니다.",
+  "locked": "LastPass가 잠겨 있습니다",
+  "emailPlaceholder": "<이메일>",
+  "updateNeeded": "lpass를 업데이트해야 합니다",
+  "listFailed": "lpass가 보관함 목록을 가져오지 못했습니다.",
+  "showFailed": "lpass가 이 항목을 읽지 못했습니다.",
+  "emptyPassword": "이 항목의 암호를 읽지 못했습니다(lpass 업데이트가 필요할 수 있습니다).",
+  "emptyUsername": "이 항목에는 사용자 이름이 없습니다."
+}

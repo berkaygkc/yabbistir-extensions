@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "Tus entradas de LastPass en una columna. ↵ pega la contraseña y ⇧↵ el nombre de usuario. Usa lpass, que puede leer toda tu caja fuerte; las contraseñas nunca se guardan ni se muestran.",
+  "source.title": "LastPass",
+  "password.title": "Pegar contraseña",
+  "password.label": "Contraseña",
+  "username.title": "Pegar nombre de usuario",
+  "username.label": "Nombre de usuario",
+  "username.copyTitle": "Copiar nombre de usuario",
+  "username.copied": "Nombre de usuario copiado.",
+  "locked": "LastPass está bloqueado",
+  "emailPlaceholder": "<correo>",
+  "updateNeeded": "lpass necesita una actualización",
+  "listFailed": "lpass no ha podido listar la caja fuerte.",
+  "showFailed": "lpass no ha podido leer esta entrada.",
+  "emptyPassword": "No se ha podido leer la contraseña de esta entrada (puede que lpass necesite una actualización).",
+  "emptyUsername": "Esta entrada no tiene nombre de usuario."
+}

@@ -1,0 +1,18 @@
+{
+  "name": "LastPass",
+  "description": "Deine LastPass-Einträge als Spalte. ↵ setzt das Passwort ein, ⇧↵ den Benutzernamen. Nutzt lpass, das deinen gesamten Tresor lesen kann; Passwörter werden nie gespeichert oder angezeigt.",
+  "source.title": "LastPass",
+  "password.title": "Passwort einsetzen",
+  "password.label": "Passwort",
+  "username.title": "Benutzernamen einsetzen",
+  "username.label": "Benutzername",
+  "username.copyTitle": "Benutzernamen kopieren",
+  "username.copied": "Benutzername kopiert.",
+  "locked": "LastPass ist gesperrt",
+  "emailPlaceholder": "<E-Mail>",
+  "updateNeeded": "lpass braucht ein Update",
+  "listFailed": "lpass konnte den Tresor nicht auflisten.",
+  "showFailed": "lpass konnte diesen Eintrag nicht lesen.",
+  "emptyPassword": "Das Passwort dieses Eintrags konnte nicht gelesen werden (lpass braucht vielleicht ein Update).",
+  "emptyUsername": "Dieser Eintrag hat keinen Benutzernamen."
+}
