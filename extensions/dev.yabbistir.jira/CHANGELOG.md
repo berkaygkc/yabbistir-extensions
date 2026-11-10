@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Translations: Chinese (Simplified and Traditional), Japanese, Korean, German, French and Spanish.
+
 ## 1.0.0
 
 - First version: your open Jira issues as a column. ↵ pastes the link, ⇧↵ a Markdown link, and ⌘C copies the link.
