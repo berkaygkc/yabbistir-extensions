@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "コピーしたJSON Web Tokenを認識して、中身を表示します。",
+  "tag": "JWT",
+  "header": "ヘッダ",
+  "payload": "ペイロード",
+  "info": "情報",
+  "expired": "期限切れ",
+  "unchecked": "署名は検証されていません"
+}

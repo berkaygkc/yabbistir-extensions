@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "识别拷贝的JSON Web Token并显示其中的内容。",
+  "tag": "JWT",
+  "header": "头部",
+  "payload": "载荷",
+  "info": "信息",
+  "expired": "已过期",
+  "unchecked": "未校验签名"
+}

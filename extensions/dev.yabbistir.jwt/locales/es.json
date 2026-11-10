@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "Reconoce los JSON Web Tokens copiados y muestra lo que contienen.",
+  "tag": "JWT",
+  "header": "Cabecera",
+  "payload": "Carga útil",
+  "info": "Información",
+  "expired": "caducado",
+  "unchecked": "La firma no se comprueba"
+}
