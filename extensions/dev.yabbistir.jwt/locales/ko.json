@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "복사한 JSON Web Token을 인식하여 안에 든 내용을 보여줍니다.",
+  "tag": "JWT",
+  "header": "헤더",
+  "payload": "페이로드",
+  "info": "정보",
+  "expired": "만료됨",
+  "unchecked": "서명은 확인하지 않습니다"
+}

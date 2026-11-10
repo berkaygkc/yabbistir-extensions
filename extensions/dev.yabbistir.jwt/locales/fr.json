@@ -1,0 +1,10 @@
+{
+  "name": "JWT",
+  "description": "Reconnaît les JSON Web Tokens copiés et affiche ce qu’ils contiennent.",
+  "tag": "JWT",
+  "header": "En-tête",
+  "payload": "Charge utile",
+  "info": "Infos",
+  "expired": "expiré",
+  "unchecked": "La signature n’est pas vérifiée"
+}
