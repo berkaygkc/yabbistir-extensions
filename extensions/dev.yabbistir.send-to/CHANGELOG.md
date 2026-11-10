@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Translations: Chinese (Simplified and Traditional), Japanese, Korean, German, French and Spanish.
+
 ## 1.0.1
 
 - Switching a destination off in settings now takes it out of the list: the ⇧ panel, ⌘K, search and ⇧↵ no longer offer it. Reminders and Notes, off by default, appear once you turn them on.
