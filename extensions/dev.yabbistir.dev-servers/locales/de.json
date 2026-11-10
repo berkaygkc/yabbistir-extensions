@@ -1,0 +1,14 @@
+{
+  "name": "Entwicklungsserver",
+  "description": "Die lokalen Server, die auf deinem Mac lauschen, als Spalte. ↵ setzt http://localhost:3000 ein, ⇧↵ setzt localhost:3000 ein.",
+  "source.title": "Entwicklungsserver",
+  "url.title": "localhost-Link einsetzen",
+  "url.label": "Link",
+  "url.copyTitle": "localhost-Link kopieren",
+  "url.copied": "Link kopiert.",
+  "address.title": "localhost-Adresse einsetzen",
+  "address.label": "Adresse",
+  "allInterfaces": "alle Schnittstellen",
+  "listFailed": "lsof konnte die Server nicht auflisten.",
+  "gone": "Dieser Server ist nicht mehr aufgeführt."
+}

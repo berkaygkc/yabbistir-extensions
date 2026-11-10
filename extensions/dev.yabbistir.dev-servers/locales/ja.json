@@ -1,0 +1,14 @@
+{
+  "name": "開発サーバ",
+  "description": "Macで待ち受けているローカルサーバをカラムに表示します。↵でhttp://localhost:3000、⇧↵でlocalhost:3000をペーストします。",
+  "source.title": "開発サーバ",
+  "url.title": "localhostリンクをペースト",
+  "url.label": "リンク",
+  "url.copyTitle": "localhostリンクをコピー",
+  "url.copied": "リンクをコピーしました。",
+  "address.title": "localhostアドレスをペースト",
+  "address.label": "アドレス",
+  "allInterfaces": "すべてのインターフェイス",
+  "listFailed": "lsofがサーバの一覧を取得できませんでした。",
+  "gone": "このサーバは一覧にありません。"
+}

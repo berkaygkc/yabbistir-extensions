@@ -1,0 +1,14 @@
+{
+  "name": "Servidores de desarrollo",
+  "description": "Los servidores locales que escuchan en tu Mac, en una columna. ↵ pega http://localhost:3000 y ⇧↵ pega localhost:3000.",
+  "source.title": "Servidores de desarrollo",
+  "url.title": "Pegar enlace de localhost",
+  "url.label": "Enlace",
+  "url.copyTitle": "Copiar enlace de localhost",
+  "url.copied": "Enlace copiado.",
+  "address.title": "Pegar dirección de localhost",
+  "address.label": "Dirección",
+  "allInterfaces": "todas las interfaces",
+  "listFailed": "lsof no ha podido listar los servidores.",
+  "gone": "Este servidor ya no aparece en la lista."
+}
