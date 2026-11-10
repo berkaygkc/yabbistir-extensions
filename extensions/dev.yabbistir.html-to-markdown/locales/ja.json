@@ -1,0 +1,10 @@
+{
+  "name": "HTMLからMarkdownへ",
+  "description": "Webページや書類からコピーしたリッチテキストを、きれいなMarkdownに変換します。",
+  "markdown.title": "Markdownとしてペースト",
+  "markdown.subtitle": "コピーした書式から変換",
+  "markdown.keywords": ["マークダウン", "リッチテキスト", "書式", "変換", "markdown", "html", "md"],
+  "noRichText": "このコピーには、Markdownに変換できる書式がありません",
+  "empty": "このコピーには、Markdownに変換できるテキストがありません",
+  "unreadable": "このコピーの書式を読み取れませんでした"
+}

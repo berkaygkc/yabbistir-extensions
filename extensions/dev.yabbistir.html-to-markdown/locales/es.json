@@ -1,0 +1,10 @@
+{
+  "name": "HTML a Markdown",
+  "description": "Convierte el texto enriquecido copiado de páginas web y documentos en Markdown limpio.",
+  "markdown.title": "Pegar como Markdown",
+  "markdown.subtitle": "A partir del formato copiado",
+  "markdown.keywords": ["markdown", "md", "html", "texto enriquecido", "formato", "convertir"],
+  "noRichText": "Esta copia no tiene formato que convertir a Markdown",
+  "empty": "Esta copia no tiene texto que convertir a Markdown",
+  "unreadable": "No se ha podido leer el formato de esta copia"
+}

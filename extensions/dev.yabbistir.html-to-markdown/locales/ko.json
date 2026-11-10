@@ -1,0 +1,10 @@
+{
+  "name": "HTML을 Markdown으로",
+  "description": "웹 페이지와 문서에서 복사한 서식 있는 텍스트를 깔끔한 Markdown으로 바꿉니다.",
+  "markdown.title": "Markdown으로 붙여넣기",
+  "markdown.subtitle": "복사한 서식에서 변환",
+  "markdown.keywords": ["markdown", "마크다운", "서식", "서식 있는 텍스트", "리치 텍스트", "html", "md"],
+  "noRichText": "이 복사본에는 Markdown으로 바꿀 서식이 없습니다",
+  "empty": "이 복사본에는 Markdown으로 바꿀 텍스트가 없습니다",
+  "unreadable": "이 복사본의 서식을 읽지 못했습니다"
+}
